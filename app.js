@@ -1,7 +1,7 @@
 const STORAGE_KEY = "racetimer-settings";
 const LINES_KEY = "racetimer-lines";
 const EARTH_RADIUS = 6371000;
-const DEBUG_GPS_DEFAULT = true;
+const DEBUG_GPS_DEFAULT = false;
 const DEBUG_COORDS = { lat: 55.0, lon: 12.0 };
 const COORD_DECIMAL_DIGITS = 10;
 const COORD_DD_DIGITS = 6;
