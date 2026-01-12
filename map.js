@@ -1,4 +1,5 @@
-const STORAGE_KEY = "racetimer-settings";
+import { loadSettings as loadSettingsFromStorage, saveSettings as saveSettingsToStorage } from "./settings.js";
+
 const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 
 const els = {
@@ -25,28 +26,17 @@ const state = {
 };
 
 function loadSettings() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed.line) {
-      state.line = parsed.line;
-    }
-  } catch (err) {
-    console.warn("Failed to load settings", err);
+  const settings = loadSettingsFromStorage();
+  if (settings.line) {
+    state.line = settings.line;
   }
 }
 
 function saveSettings() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    parsed.line = state.line;
-    parsed.lineMeta = { name: null, sourceId: null };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-  } catch (err) {
-    console.warn("Failed to save settings", err);
-  }
+  saveSettingsToStorage({
+    line: state.line,
+    lineMeta: { name: null, sourceId: null },
+  });
 }
 
 function initMap() {
