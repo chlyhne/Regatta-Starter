@@ -12,6 +12,62 @@ const START_BEEP_FREQUENCY = 1320;
 const LONG_BEEP_DURATION_MS = 750;
 const BEEP_DURATION_MS = Math.round(LONG_BEEP_DURATION_MS / 2);
 const START_BEEP_DURATION_MS = 2000;
+const TRACK_MAX_POINTS = 600;
+const TRACK_WINDOW_MS = 3 * 60 * 1000;
+const SPEED_UNITS = {
+  ms: { factor: 1, label: "m/s" },
+  kn: { factor: 1.943844, label: "kn" },
+  mph: { factor: 2.236936, label: "mph" },
+};
+const DISTANCE_UNITS = {
+  m: { factor: 1, label: "m" },
+  ft: { factor: 3.28084, label: "ft" },
+  yd: { factor: 1.093613, label: "yd" },
+};
+
+function formatUnitLabel(label) {
+  return `[${String(label).toLowerCase()}]`;
+}
+
+function formatBowOffsetValue(meters) {
+  if (!Number.isFinite(meters)) return "";
+  const { factor } = getDistanceUnitMeta();
+  const value = meters * factor;
+  const rounded = Math.round(value * 100) / 100;
+  return trimTrailingZeros(rounded.toFixed(2));
+}
+
+function parseBowOffsetInput() {
+  if (!els.bowOffset || !state.useKalman) return state.bowOffsetMeters;
+  const raw = Number.parseFloat(String(els.bowOffset.value || "").replace(",", "."));
+  if (!Number.isFinite(raw)) return 0;
+  const safe = Math.max(0, raw);
+  const { factor } = getDistanceUnitMeta();
+  return safe / factor;
+}
+
+function syncBowOffsetInput() {
+  const enabled = state.useKalman;
+  if (els.bowOffset) {
+    els.bowOffset.disabled = !enabled;
+    els.bowOffset.style.display = enabled ? "" : "none";
+    if (enabled) {
+      els.bowOffset.value = formatBowOffsetValue(state.bowOffsetMeters);
+    } else {
+      els.bowOffset.value = "";
+    }
+  }
+  if (els.bowOffsetUnit) {
+    els.bowOffsetUnit.textContent = formatUnitLabel(getDistanceUnitMeta().label);
+    els.bowOffsetUnit.style.display = enabled ? "" : "none";
+  }
+  if (els.bowOffsetNa) {
+    els.bowOffsetNa.style.display = enabled ? "none" : "";
+  }
+  if (els.bowOffsetLabel) {
+    els.bowOffsetLabel.style.display = enabled ? "" : "none";
+  }
+}
 const GPS_OPTIONS_RACE = {
   enableHighAccuracy: true,
   maximumAge: 0,
@@ -105,9 +161,13 @@ const els = {
   statusDistance: document.getElementById("status-distance"),
   statusLineName: document.getElementById("status-line-name"),
   statusLineLength: document.getElementById("status-line-length"),
+  statusDistanceValue: document.getElementById("status-distance-value"),
+  statusDistanceUnit: document.getElementById("status-distance-unit"),
+  statusLineLengthValue: document.getElementById("status-line-length-value"),
+  statusLineLengthUnit: document.getElementById("status-line-length-unit"),
   statusStartTime: document.getElementById("status-start-time"),
   statusTime: document.getElementById("status-time"),
-  currentTime: document.getElementById("current-time"),
+  absoluteTime: document.getElementById("absolute-time"),
   gpsIcon: document.getElementById("gps-icon"),
   projDirect: document.getElementById("proj-direct"),
   distDirect: document.getElementById("dist-direct"),
@@ -117,6 +177,8 @@ const els = {
   raceStartClock: document.getElementById("race-start-clock"),
   raceMetricLabelDirect: document.getElementById("race-label-direct"),
   raceMetricLabelClosing: document.getElementById("race-label-closing"),
+  raceHintUnitDirect: document.getElementById("race-hint-unit-direct"),
+  raceHintUnitClosing: document.getElementById("race-hint-unit-closing"),
   raceMetricDistance: document.getElementById("race-metric-distance"),
   raceMetricTime: document.getElementById("race-metric-time"),
   raceProjDirect: document.getElementById("race-proj-direct"),
@@ -127,7 +189,6 @@ const els = {
   countdownHours: document.getElementById("countdown-hours"),
   countdownMinutes: document.getElementById("countdown-minutes"),
   countdownSeconds: document.getElementById("countdown-seconds"),
-  absoluteTime: document.getElementById("absolute-time"),
   setCountdown: document.getElementById("set-countdown"),
   setAbsolute: document.getElementById("set-absolute"),
   goRace: document.getElementById("go-race"),
@@ -138,8 +199,25 @@ const els = {
   closeSettings: document.getElementById("close-settings"),
   kalmanOn: document.getElementById("kalman-on"),
   kalmanOff: document.getElementById("kalman-off"),
+  bowOffset: document.getElementById("bow-offset"),
+  bowOffsetUnit: document.getElementById("bow-offset-unit"),
+  bowOffsetNa: document.getElementById("bow-offset-na"),
+  bowOffsetLabel: document.getElementById("bow-offset-label"),
+  soundOn: document.getElementById("sound-on"),
+  soundOff: document.getElementById("sound-off"),
+  timeFormat24: document.getElementById("time-format-24"),
+  timeFormat12: document.getElementById("time-format-12"),
+  speedUnitMs: document.getElementById("speed-unit-ms"),
+  speedUnitKn: document.getElementById("speed-unit-kn"),
+  speedUnitMph: document.getElementById("speed-unit-mph"),
+  distanceUnitM: document.getElementById("distance-unit-m"),
+  distanceUnitFt: document.getElementById("distance-unit-ft"),
+  distanceUnitYd: document.getElementById("distance-unit-yd"),
   debugPanel: document.getElementById("debug-panel"),
   debugGpsToggle: document.getElementById("debug-gps-toggle"),
+  openTrack: document.getElementById("open-track"),
+  closeTrack: document.getElementById("close-track"),
+  trackCanvas: document.getElementById("track-canvas"),
   debugRefresh: document.getElementById("debug-refresh"),
 };
 
@@ -153,6 +231,11 @@ const state = {
   lineName: null,
   lineSourceId: null,
   coordsFormat: "dd",
+  timeFormat: "24h",
+  speedUnit: "ms",
+  distanceUnit: "m",
+  bowOffsetMeters: 0,
+  soundEnabled: true,
   debugGpsEnabled: DEBUG_GPS_DEFAULT,
   useKalman: true,
   debugIntervalId: null,
@@ -176,6 +259,8 @@ const state = {
   savedLines: [],
   selectedLineId: null,
   wakeLock: null,
+  gpsTrackRaw: [],
+  gpsTrackFiltered: [],
   kalman: null,
   audio: {
     ctx: null,
@@ -243,6 +328,7 @@ function ensureAudio() {
 }
 
 function playBeep(durationMs = BEEP_DURATION_MS, frequency = BEEP_FREQUENCY) {
+  if (!state.soundEnabled) return;
   ensureAudio();
   if (!state.audio.ctx) return;
   const ctx = state.audio.ctx;
@@ -355,21 +441,99 @@ function fromMeters(point, origin) {
   return { lat, lon };
 }
 
-function formatMeters(value) {
-  const abs = Math.abs(value);
+function applyForwardOffset(position, velocity, offsetMeters) {
+  if (!position || !velocity) return position;
+  if (!Number.isFinite(offsetMeters) || offsetMeters <= 0) return position;
+  const speed = Math.hypot(velocity.x, velocity.y);
+  if (!Number.isFinite(speed) || speed <= 0) return position;
+  const unit = { x: velocity.x / speed, y: velocity.y / speed };
+  const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
+  const coords = fromMeters(
+    { x: unit.x * offsetMeters, y: unit.y * offsetMeters },
+    origin
+  );
+  return {
+    coords: {
+      latitude: coords.lat,
+      longitude: coords.lon,
+      accuracy: position.coords.accuracy,
+    },
+    timestamp: position.timestamp,
+  };
+}
+
+function normalizeTimeFormat(format) {
+  return format === "12h" ? "12h" : "24h";
+}
+
+function normalizeSpeedUnit(unit) {
+  if (unit === "kn" || unit === "mph") return unit;
+  return "ms";
+}
+
+function normalizeDistanceUnit(unit) {
+  if (unit === "ft" || unit === "yd") return unit;
+  return "m";
+}
+
+function getSpeedUnitMeta() {
+  const key = normalizeSpeedUnit(state.speedUnit);
+  return SPEED_UNITS[key] || SPEED_UNITS.ms;
+}
+
+function getDistanceUnitMeta() {
+  const key = normalizeDistanceUnit(state.distanceUnit);
+  return DISTANCE_UNITS[key] || DISTANCE_UNITS.m;
+}
+
+function formatDistanceValue(value) {
+  if (!Number.isFinite(value)) {
+    return "--";
+  }
+  const { factor } = getDistanceUnitMeta();
+  const abs = Math.abs(value) * factor;
   return String(Math.round(abs));
 }
 
-function formatRate(value) {
+function formatDistanceWithUnit(value) {
+  const { label } = getDistanceUnitMeta();
+  const unitLabel = formatUnitLabel(label);
   if (!Number.isFinite(value)) {
-    return "-- m/s";
+    return `-- ${unitLabel}`;
   }
-  const rounded = Math.round(value);
-  return `${rounded} m/s`;
+  return `${formatDistanceValue(value)} ${unitLabel}`;
+}
+
+function formatMeters(value) {
+  return formatDistanceValue(value);
+}
+
+function formatRate(value) {
+  const { factor, label } = getSpeedUnitMeta();
+  const unitLabel = formatUnitLabel(label);
+  if (!Number.isFinite(value)) {
+    return `-- ${unitLabel}`;
+  }
+  const rounded = Math.round(value * factor);
+  return `${rounded} ${unitLabel}`;
 }
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function formatClockTime(date, includeSeconds) {
+  const format = normalizeTimeFormat(state.timeFormat);
+  const locale = format === "12h" ? "en-US" : "en-GB";
+  const options = {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: format === "12h",
+  };
+  if (includeSeconds) {
+    options.second = "2-digit";
+  }
+  return date.toLocaleTimeString(locale, options);
 }
 
 function formatTimeInput(date) {
@@ -377,6 +541,18 @@ function formatTimeInput(date) {
   const minutes = String(date.getMinutes()).padStart(2, "0");
   const seconds = String(date.getSeconds()).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
+}
+
+function parseTimeInput(value) {
+  if (!value) return null;
+  const parts = value.split(":").map((part) => Number.parseInt(part, 10));
+  const hours = parts[0];
+  const minutes = parts[1];
+  const seconds = parts.length > 2 ? parts[2] : 0;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const date = new Date();
+  date.setHours(hours, minutes, Number.isFinite(seconds) ? seconds : 0, 0);
+  return date;
 }
 
 function formatTimeRemainingHMSFull(seconds) {
@@ -444,12 +620,12 @@ function getCountdownSecondsFromPicker() {
 
 function formatOverUnder(value) {
   if (!Number.isFinite(value)) {
-    return "-- m";
+    return `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
   }
   if (value < 0) {
-    return `Over by ${formatMeters(value)} m`;
+    return `Over by ${formatDistanceWithUnit(value)}`;
   }
-  return `Under by ${formatMeters(value)} m`;
+  return `Under by ${formatDistanceWithUnit(value)}`;
 }
 
 function formatRaceSign(value) {
@@ -461,15 +637,17 @@ function formatRaceSign(value) {
 
 function formatRaceDelta(value) {
   if (!Number.isFinite(value)) {
-    return "-- m";
+    return "--";
   }
-  if (value < -250) {
-    return "< -250";
+  const limitMeters = 250;
+  const limitDisplay = Math.round(limitMeters * getDistanceUnitMeta().factor);
+  if (value < -limitMeters) {
+    return `< -${limitDisplay}`;
   }
-  if (value > 250) {
-    return "> 250";
+  if (value > limitMeters) {
+    return `> ${limitDisplay}`;
   }
-  const abs = Math.round(Math.abs(value));
+  const abs = formatDistanceValue(value);
   return value < 0 ? `+${abs}` : `-${abs}`;
 }
 
@@ -534,6 +712,7 @@ function updateRaceMetricLabels() {
   if (els.raceMetricLabelClosing) {
     els.raceMetricLabelClosing.textContent = label;
   }
+  updateRaceHintUnits();
   fitRaceText();
   if (els.raceMetricDistance) {
     els.raceMetricDistance.setAttribute(
@@ -564,13 +743,117 @@ function updateKalmanToggle() {
   }
 }
 
+function updateSoundToggle() {
+  if (els.soundOn) {
+    els.soundOn.setAttribute("aria-pressed", state.soundEnabled ? "true" : "false");
+  }
+  if (els.soundOff) {
+    els.soundOff.setAttribute("aria-pressed", state.soundEnabled ? "false" : "true");
+  }
+}
+
+function updateTimeFormatToggle() {
+  const format = normalizeTimeFormat(state.timeFormat);
+  if (els.timeFormat24) {
+    els.timeFormat24.setAttribute("aria-pressed", format === "24h" ? "true" : "false");
+  }
+  if (els.timeFormat12) {
+    els.timeFormat12.setAttribute("aria-pressed", format === "12h" ? "true" : "false");
+  }
+}
+
+function updateSpeedUnitToggle() {
+  const unit = normalizeSpeedUnit(state.speedUnit);
+  if (els.speedUnitMs) {
+    els.speedUnitMs.setAttribute("aria-pressed", unit === "ms" ? "true" : "false");
+  }
+  if (els.speedUnitKn) {
+    els.speedUnitKn.setAttribute("aria-pressed", unit === "kn" ? "true" : "false");
+  }
+  if (els.speedUnitMph) {
+    els.speedUnitMph.setAttribute("aria-pressed", unit === "mph" ? "true" : "false");
+  }
+}
+
+function updateDistanceUnitToggle() {
+  const unit = normalizeDistanceUnit(state.distanceUnit);
+  if (els.distanceUnitM) {
+    els.distanceUnitM.setAttribute("aria-pressed", unit === "m" ? "true" : "false");
+  }
+  if (els.distanceUnitFt) {
+    els.distanceUnitFt.setAttribute("aria-pressed", unit === "ft" ? "true" : "false");
+  }
+  if (els.distanceUnitYd) {
+    els.distanceUnitYd.setAttribute("aria-pressed", unit === "yd" ? "true" : "false");
+  }
+}
+
+function updateStatusUnitLabels() {
+  const unit = formatUnitLabel(getDistanceUnitMeta().label);
+  if (els.statusDistanceUnit) {
+    els.statusDistanceUnit.textContent = unit;
+  }
+  if (els.statusLineLengthUnit) {
+    els.statusLineLengthUnit.textContent = unit;
+  }
+}
+
+function updateRaceHintUnits() {
+  const showUnit = state.raceMetric === "distance";
+  const unit = formatUnitLabel(getDistanceUnitMeta().label);
+  if (els.raceHintUnitDirect) {
+    els.raceHintUnitDirect.textContent = unit;
+    els.raceHintUnitDirect.style.display = showUnit ? "" : "none";
+  }
+  if (els.raceHintUnitClosing) {
+    els.raceHintUnitClosing.textContent = unit;
+    els.raceHintUnitClosing.style.display = showUnit ? "" : "none";
+  }
+}
+
+
 function setKalmanEnabled(enabled) {
   state.useKalman = Boolean(enabled);
   if (!state.useKalman) {
     state.kalman = null;
+    state.gpsTrackFiltered = [];
   }
   saveSettings();
   updateKalmanToggle();
+  syncBowOffsetInput();
+}
+
+function setSoundEnabled(enabled) {
+  state.soundEnabled = Boolean(enabled);
+  saveSettings();
+  updateSoundToggle();
+}
+
+function setTimeFormat(format) {
+  state.timeFormat = normalizeTimeFormat(format);
+  saveSettings();
+  updateTimeFormatToggle();
+  updateCurrentTime();
+  updateStartDisplay();
+}
+
+function setSpeedUnit(unit) {
+  state.speedUnit = normalizeSpeedUnit(unit);
+  saveSettings();
+  updateSpeedUnitToggle();
+  updateLineProjection();
+  updateGPSDisplay();
+}
+
+function setDistanceUnit(unit) {
+  state.distanceUnit = normalizeDistanceUnit(unit);
+  saveSettings();
+  updateDistanceUnitToggle();
+  updateStatusUnitLabels();
+  updateRaceHintUnits();
+  syncBowOffsetInput();
+  updateLineProjection();
+  updateGPSDisplay();
 }
 
 function updateRaceValueStyles(directOver, closingOver) {
@@ -579,6 +862,178 @@ function updateRaceValueStyles(directOver, closingOver) {
   }
   if (els.raceProjClosing) {
     els.raceProjClosing.classList.toggle("race-value-over", Boolean(closingOver));
+  }
+}
+
+function appendTrackPoint(list, point) {
+  list.push(point);
+  if (list.length > TRACK_MAX_POINTS) {
+    list.splice(0, list.length - TRACK_MAX_POINTS);
+  }
+}
+
+function pruneTrackPoints(list, cutoff) {
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i].ts < cutoff) {
+      list.splice(0, i + 1);
+      break;
+    }
+  }
+}
+
+function recordTrackPoints(rawPosition, filteredPosition) {
+  if (!rawPosition) return;
+  const cutoff = Date.now() - TRACK_WINDOW_MS;
+  appendTrackPoint(state.gpsTrackRaw, {
+    lat: rawPosition.coords.latitude,
+    lon: rawPosition.coords.longitude,
+    ts: rawPosition.timestamp || Date.now(),
+  });
+  pruneTrackPoints(state.gpsTrackRaw, cutoff);
+  if (filteredPosition) {
+    appendTrackPoint(state.gpsTrackFiltered, {
+      lat: filteredPosition.coords.latitude,
+      lon: filteredPosition.coords.longitude,
+      ts: filteredPosition.timestamp || Date.now(),
+    });
+    pruneTrackPoints(state.gpsTrackFiltered, cutoff);
+  }
+  if (document.body.classList.contains("track-mode")) {
+    renderTrack();
+  }
+}
+
+function renderTrack() {
+  if (!els.trackCanvas) return;
+  const canvas = els.trackCanvas;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 300;
+  const height = canvas.clientHeight || 300;
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const rawPoints = state.gpsTrackRaw;
+  const filteredPoints = state.gpsTrackFiltered;
+  const allPoints = rawPoints.length ? rawPoints : filteredPoints;
+  if (!allPoints.length) {
+    ctx.fillStyle = "#666666";
+    ctx.font = "14px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No GPS data yet", width / 2, height / 2);
+    return;
+  }
+
+  const meanLat =
+    allPoints.reduce((sum, p) => sum + p.lat, 0) / allPoints.length;
+  const meanLon =
+    allPoints.reduce((sum, p) => sum + p.lon, 0) / allPoints.length;
+  const origin = { lat: meanLat, lon: meanLon };
+
+  const toXY = (point) => toMeters(point, origin);
+  const collectBounds = (points) => {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    points.forEach((point) => {
+      const xy = toXY(point);
+      minX = Math.min(minX, xy.x);
+      maxX = Math.max(maxX, xy.x);
+      minY = Math.min(minY, xy.y);
+      maxY = Math.max(maxY, xy.y);
+    });
+    return { minX, maxX, minY, maxY };
+  };
+
+  let bounds = collectBounds(allPoints);
+  if (filteredPoints.length) {
+    const filteredBounds = collectBounds(filteredPoints);
+    bounds = {
+      minX: Math.min(bounds.minX, filteredBounds.minX),
+      maxX: Math.max(bounds.maxX, filteredBounds.maxX),
+      minY: Math.min(bounds.minY, filteredBounds.minY),
+      maxY: Math.max(bounds.maxY, filteredBounds.maxY),
+    };
+  }
+
+  const padding = 16;
+  const spanX = Math.max(1, bounds.maxX - bounds.minX);
+  const spanY = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.min(
+    (width - padding * 2) / spanX,
+    (height - padding * 2) / spanY
+  );
+
+  const project = (point) => {
+    const xy = toXY(point);
+    const x = padding + (xy.x - bounds.minX) * scale;
+    const y = padding + (bounds.maxY - xy.y) * scale;
+    return { x, y };
+  };
+  const projectMeters = (xMeters, yMeters) => {
+    const x = padding + (xMeters - bounds.minX) * scale;
+    const y = padding + (bounds.maxY - yMeters) * scale;
+    return { x, y };
+  };
+
+  const drawLine = (points, color, lineWidth) => {
+    if (!points.length) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const { x, y } = project(point);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+
+  const gridSpacing = 10;
+  const gridStartX = Math.floor(bounds.minX / gridSpacing) * gridSpacing;
+  const gridEndX = Math.ceil(bounds.maxX / gridSpacing) * gridSpacing;
+  const gridStartY = Math.floor(bounds.minY / gridSpacing) * gridSpacing;
+  const gridEndY = Math.ceil(bounds.maxY / gridSpacing) * gridSpacing;
+
+  ctx.strokeStyle = "#e2e2e2";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = gridStartX; x <= gridEndX; x += gridSpacing) {
+    const p1 = projectMeters(x, bounds.minY);
+    const p2 = projectMeters(x, bounds.maxY);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+  }
+  for (let y = gridStartY; y <= gridEndY; y += gridSpacing) {
+    const p1 = projectMeters(bounds.minX, y);
+    const p2 = projectMeters(bounds.maxX, y);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+  }
+  ctx.stroke();
+
+  drawLine(rawPoints, "#9a9a9a", 2);
+  drawLine(filteredPoints, "#000000", 2.5);
+
+  const latest = (filteredPoints.length ? filteredPoints : rawPoints)[
+    (filteredPoints.length ? filteredPoints : rawPoints).length - 1
+  ];
+  if (latest) {
+    const { x, y } = project(latest);
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -717,6 +1172,22 @@ function loadSettings() {
     if (typeof parsed.useKalman === "boolean") {
       state.useKalman = parsed.useKalman;
     }
+    const bowOffset = Number.parseFloat(parsed.bowOffsetMeters);
+    if (Number.isFinite(bowOffset)) {
+      state.bowOffsetMeters = bowOffset;
+    }
+    if (typeof parsed.soundEnabled === "boolean") {
+      state.soundEnabled = parsed.soundEnabled;
+    }
+    if (parsed.timeFormat === "12h" || parsed.timeFormat === "24h") {
+      state.timeFormat = parsed.timeFormat;
+    }
+    if (parsed.speedUnit === "ms" || parsed.speedUnit === "kn" || parsed.speedUnit === "mph") {
+      state.speedUnit = parsed.speedUnit;
+    }
+    if (parsed.distanceUnit === "m" || parsed.distanceUnit === "ft" || parsed.distanceUnit === "yd") {
+      state.distanceUnit = parsed.distanceUnit;
+    }
     state.start = { ...state.start, ...parsed.start };
     delete state.start.preStartSign;
   } catch (err) {
@@ -734,6 +1205,11 @@ function saveSettings() {
     coordsFormat: state.coordsFormat,
     debugGpsEnabled: state.debugGpsEnabled,
     useKalman: state.useKalman,
+    bowOffsetMeters: state.bowOffsetMeters,
+    soundEnabled: state.soundEnabled,
+    timeFormat: state.timeFormat,
+    speedUnit: state.speedUnit,
+    distanceUnit: state.distanceUnit,
     start: {
       mode: state.start.mode,
       countdownSeconds: state.start.countdownSeconds,
@@ -839,6 +1315,13 @@ function updateInputs() {
   syncCoordinateInputs();
   syncCountdownPicker();
   updateKalmanToggle();
+  syncBowOffsetInput();
+  updateSoundToggle();
+  updateTimeFormatToggle();
+  updateSpeedUnitToggle();
+  updateDistanceUnitToggle();
+  updateStatusUnitLabels();
+  updateRaceHintUnits();
   els.absoluteTime.value = state.start.absoluteTime || "";
 }
 
@@ -1035,6 +1518,7 @@ function initCountdownPicker() {
   populateNumberSelect(els.countdownMinutes, { max: 59, pad: 2, placeholder: false });
   populateNumberSelect(els.countdownSeconds, { max: 59, pad: 2, placeholder: false });
 }
+
 
 function applyDDMDegreeLimit(group, maxDegrees) {
   if (!group || !group.deg || !group.min || !group.minDec) return;
@@ -1405,16 +1889,12 @@ function updateStartDisplay() {
     handleCountdownBeeps(delta);
   }
   const startDate = new Date(state.start.startTs);
-  const formattedTime = startDate.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const formattedTime = formatClockTime(startDate, false);
   if (els.raceStartClock) {
     els.raceStartClock.textContent = `Start at ${formattedTime}`;
   }
   if (els.statusStartTime) {
-    els.statusStartTime.textContent = formatTimeInput(startDate);
+    els.statusStartTime.textContent = formatClockTime(startDate, true);
   }
   if (delta <= 0) {
     if (!state.audio.startBeeped) {
@@ -1461,18 +1941,13 @@ function updateGPSDisplay() {
     els.gpsIcon.classList.add("bad");
     els.gpsIcon.classList.remove("ok");
   }
-  els.gpsIcon.title = `GPS accuracy ${accuracy.toFixed(0)} m`;
+  els.gpsIcon.title = `GPS accuracy ${formatDistanceWithUnit(accuracy)}`;
 }
 
 function updateCurrentTime() {
   if (!els.currentTime) return;
   const now = new Date();
-  els.currentTime.textContent = now.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  els.currentTime.textContent = formatClockTime(now, true);
 }
 
 function getGpsOptionsForMode(mode) {
@@ -1553,6 +2028,8 @@ function resetPositionState() {
   state.velocity = { x: 0, y: 0 };
   state.speed = 0;
   state.kalman = null;
+  state.gpsTrackRaw = [];
+  state.gpsTrackFiltered = [];
   updateGPSDisplay();
   updateLineProjection();
 }
@@ -1565,6 +2042,7 @@ function setDebugGpsEnabled(enabled) {
   }
   state.debugGpsEnabled = next;
   saveSettings();
+  state.kalman = null;
   if (state.debugGpsEnabled) {
     startDebugGps();
   } else {
@@ -1837,20 +2315,41 @@ function isFalseStart(signedDistance) {
 
 function updateLineProjection() {
   if (!hasLine() || !state.position) {
-    if (els.projDirect) els.projDirect.textContent = "-- m";
-    if (els.distDirect) els.distDirect.textContent = "Distance to line -- m";
-    if (els.projClosing) els.projClosing.textContent = "-- m";
-    if (els.closingRate) els.closingRate.textContent = "Closing rate -- m/s";
+    if (els.projDirect) {
+      els.projDirect.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
+    }
+    if (els.distDirect) {
+      els.distDirect.textContent = `Distance to line -- ${formatUnitLabel(
+        getDistanceUnitMeta().label
+      )}`;
+    }
+    if (els.projClosing) {
+      els.projClosing.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
+    }
+    if (els.closingRate) {
+      els.closingRate.textContent = `Closing rate -- ${formatUnitLabel(
+        getSpeedUnitMeta().label
+      )}`;
+    }
     els.raceProjDirect.textContent = "--";
     els.raceProjClosing.textContent = "--";
     updateRaceValueStyles(false, false);
     fitRaceText();
     if (els.statusDistance) {
-      els.statusDistance.textContent = "--";
+      if (els.statusDistanceValue) {
+        els.statusDistanceValue.textContent = "--";
+      } else {
+        els.statusDistance.textContent = "--";
+      }
     }
     if (els.statusLineLength) {
-      els.statusLineLength.textContent = "--";
+      if (els.statusLineLengthValue) {
+        els.statusLineLengthValue.textContent = "--";
+      } else {
+        els.statusLineLength.textContent = "--";
+      }
     }
+    updateStatusUnitLabels();
     return;
   }
 
@@ -1883,7 +2382,7 @@ function updateLineProjection() {
 
   if (els.projDirect) els.projDirect.textContent = formatOverUnder(projectedDirect);
   if (els.distDirect) {
-    els.distDirect.textContent = `Distance to line ${formatMeters(distance)} m`;
+    els.distDirect.textContent = `Distance to line ${formatDistanceWithUnit(distance)}`;
   }
   if (els.projClosing) els.projClosing.textContent = formatOverUnder(projectedClosing);
   if (els.closingRate) {
@@ -1900,11 +2399,20 @@ function updateLineProjection() {
   updateRaceValueStyles(overshootDirect, overshootClosing);
   fitRaceText();
   if (els.statusDistance) {
-    els.statusDistance.textContent = `${formatMeters(distance)}`;
+    if (els.statusDistanceValue) {
+      els.statusDistanceValue.textContent = `${formatDistanceValue(distance)}`;
+    } else {
+      els.statusDistance.textContent = `${formatDistanceValue(distance)}`;
+    }
   }
   if (els.statusLineLength) {
-    els.statusLineLength.textContent = `${formatMeters(lineLen)}`;
+    if (els.statusLineLengthValue) {
+      els.statusLineLengthValue.textContent = `${formatDistanceValue(lineLen)}`;
+    } else {
+      els.statusLineLength.textContent = `${formatDistanceValue(lineLen)}`;
+    }
   }
+  updateStatusUnitLabels();
 
   if (state.start.startTs && timeToStart <= 0 && !state.start.freeze) {
     const nextFalseStart = isFalseStart(signedDistance);
@@ -1958,8 +2466,17 @@ function handlePosition(position) {
   if (!state.useKalman && state.kalman) {
     state.kalman = null;
   }
-  const activePosition = filtered ? filtered.position : position;
+  let activePosition = position;
+  if (filtered) {
+    filtered.position = applyForwardOffset(
+      filtered.position,
+      filtered.velocity,
+      state.bowOffsetMeters
+    );
+    activePosition = filtered.position;
+  }
   state.position = activePosition;
+  recordTrackPoints(position, filtered ? filtered.position : null);
   if (filtered) {
     state.speed = filtered.speed;
     state.velocity = filtered.velocity;
@@ -2146,6 +2663,12 @@ function bindEvents() {
     });
   }
 
+  if (els.openTrack) {
+    els.openTrack.addEventListener("click", () => {
+      setView("track");
+    });
+  }
+
   els.saveLine.addEventListener("click", () => {
     if (!hasLine()) {
       window.alert("No start line defined. Set port and starboard marks first.");
@@ -2240,10 +2763,12 @@ function bindEvents() {
     });
   }
 
-  els.absoluteTime.addEventListener("change", () => {
-    state.start.absoluteTime = els.absoluteTime.value;
-    saveSettings();
-  });
+  if (els.absoluteTime) {
+    els.absoluteTime.addEventListener("change", () => {
+      state.start.absoluteTime = els.absoluteTime.value;
+      saveSettings();
+    });
+  }
 
   els.setCountdown.addEventListener("click", () => {
     unlockAudio();
@@ -2251,11 +2776,13 @@ function bindEvents() {
     state.start.countdownSeconds = getCountdownSecondsFromPicker();
     saveSettings();
     setStart({ goToRace: false });
-    if (state.start.startTs && els.absoluteTime) {
+    if (state.start.startTs) {
       const startDate = new Date(state.start.startTs);
       const absoluteValue = formatTimeInput(startDate);
       state.start.absoluteTime = absoluteValue;
-      els.absoluteTime.value = absoluteValue;
+      if (els.absoluteTime) {
+        els.absoluteTime.value = absoluteValue;
+      }
       saveSettings();
     }
     updateStartDisplay();
@@ -2295,6 +2822,12 @@ function bindEvents() {
     });
   }
 
+  if (els.closeTrack) {
+    els.closeTrack.addEventListener("click", () => {
+      setView("setup");
+    });
+  }
+
   if (els.kalmanOn) {
     els.kalmanOn.addEventListener("click", () => {
       setKalmanEnabled(true);
@@ -2304,6 +2837,79 @@ function bindEvents() {
   if (els.kalmanOff) {
     els.kalmanOff.addEventListener("click", () => {
       setKalmanEnabled(false);
+    });
+  }
+
+  if (els.bowOffset) {
+    els.bowOffset.addEventListener("change", () => {
+      state.bowOffsetMeters = parseBowOffsetInput();
+      saveSettings();
+    });
+    els.bowOffset.addEventListener("focus", () => {
+      const raw = String(els.bowOffset.value || "").trim();
+      if (/^0([.,]0+)?$/.test(raw)) {
+        els.bowOffset.value = "";
+      }
+    });
+  }
+
+  if (els.soundOn) {
+    els.soundOn.addEventListener("click", () => {
+      setSoundEnabled(true);
+    });
+  }
+
+  if (els.soundOff) {
+    els.soundOff.addEventListener("click", () => {
+      setSoundEnabled(false);
+    });
+  }
+
+  if (els.timeFormat24) {
+    els.timeFormat24.addEventListener("click", () => {
+      setTimeFormat("24h");
+    });
+  }
+
+  if (els.timeFormat12) {
+    els.timeFormat12.addEventListener("click", () => {
+      setTimeFormat("12h");
+    });
+  }
+
+  if (els.speedUnitMs) {
+    els.speedUnitMs.addEventListener("click", () => {
+      setSpeedUnit("ms");
+    });
+  }
+
+  if (els.speedUnitKn) {
+    els.speedUnitKn.addEventListener("click", () => {
+      setSpeedUnit("kn");
+    });
+  }
+
+  if (els.speedUnitMph) {
+    els.speedUnitMph.addEventListener("click", () => {
+      setSpeedUnit("mph");
+    });
+  }
+
+  if (els.distanceUnitM) {
+    els.distanceUnitM.addEventListener("click", () => {
+      setDistanceUnit("m");
+    });
+  }
+
+  if (els.distanceUnitFt) {
+    els.distanceUnitFt.addEventListener("click", () => {
+      setDistanceUnit("ft");
+    });
+  }
+
+  if (els.distanceUnitYd) {
+    els.distanceUnitYd.addEventListener("click", () => {
+      setDistanceUnit("yd");
     });
   }
 
@@ -2369,9 +2975,11 @@ function setView(view) {
     document.body.classList.remove("coords-mode");
     document.body.classList.remove("location-mode");
     document.body.classList.remove("settings-mode");
+    document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "false");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("settings-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#race");
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -2386,10 +2994,12 @@ function setView(view) {
     document.body.classList.add("coords-mode");
     document.body.classList.remove("location-mode");
     document.body.classList.remove("settings-mode");
+    document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "false");
     document.getElementById("location-view").setAttribute("aria-hidden", "true");
     document.getElementById("settings-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#coords");
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -2402,10 +3012,12 @@ function setView(view) {
     document.body.classList.remove("coords-mode");
     document.body.classList.add("location-mode");
     document.body.classList.remove("settings-mode");
+    document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("location-view").setAttribute("aria-hidden", "false");
     document.getElementById("settings-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#location");
     releaseWakeLock();
@@ -2418,10 +3030,12 @@ function setView(view) {
     document.body.classList.remove("coords-mode");
     document.body.classList.remove("location-mode");
     document.body.classList.add("settings-mode");
+    document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("location-view").setAttribute("aria-hidden", "true");
     document.getElementById("settings-view").setAttribute("aria-hidden", "false");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#settings");
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -2429,14 +3043,35 @@ function setView(view) {
     setGpsMode("setup");
     return;
   }
+  if (view === "track") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("settings-mode");
+    document.body.classList.add("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "false");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    history.replaceState(null, "", "#track");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    releaseWakeLock();
+    setGpsMode("setup");
+    renderTrack();
+    return;
+  }
   document.body.classList.remove("race-mode");
   document.body.classList.remove("coords-mode");
   document.body.classList.remove("location-mode");
   document.body.classList.remove("settings-mode");
+  document.body.classList.remove("track-mode");
   document.getElementById("race-view").setAttribute("aria-hidden", "true");
   document.getElementById("coords-view").setAttribute("aria-hidden", "true");
   document.getElementById("location-view").setAttribute("aria-hidden", "true");
   document.getElementById("settings-view").setAttribute("aria-hidden", "true");
+  document.getElementById("track-view").setAttribute("aria-hidden", "true");
   document.getElementById("setup-view").setAttribute("aria-hidden", "false");
   history.replaceState(null, "", "#setup");
   releaseWakeLock();
@@ -2458,6 +3093,10 @@ function syncViewFromHash() {
   }
   if (location.hash === "#settings") {
     setView("settings");
+    return;
+  }
+  if (location.hash === "#track") {
+    setView("track");
     return;
   }
   setView("setup");
@@ -2489,6 +3128,12 @@ updateGPSDisplay();
 updateCurrentTime();
 syncViewFromHash();
 tick();
+
+window.addEventListener("resize", () => {
+  if (document.body.classList.contains("track-mode")) {
+    renderTrack();
+  }
+});
 
 document.addEventListener("click", unlockAudio, { once: true });
 document.addEventListener("touchstart", unlockAudio, { once: true });

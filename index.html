@@ -23,7 +23,16 @@
             <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
           </div>
           <button id="open-settings" class="icon-btn" type="button" aria-label="Settings">
-            ⚙
+            <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+              <path
+                d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-width="2"
+              />
+            </svg>
           </button>
         </div>
       </header>
@@ -33,12 +42,18 @@
         <div class="hint">Line name</div>
         <div id="status-line-name" class="value">--</div>
         <div class="hint">Distance to line</div>
-        <div id="status-distance" class="value">--</div>
+        <div id="status-distance" class="value value-split">
+          <span id="status-distance-value">--</span>
+          <span id="status-distance-unit" class="value-unit">[m]</span>
+        </div>
         <div class="hint">Line length</div>
-        <div id="status-line-length" class="value">--</div>
+        <div id="status-line-length" class="value value-split">
+          <span id="status-line-length-value">--</span>
+          <span id="status-line-length-unit" class="value-unit">[m]</span>
+        </div>
         <div class="hint">Start time</div>
         <div id="status-start-time" class="value">--</div>
-        <div class="hint">Time to start</div>
+        <div class="hint">Time until start</div>
         <div id="status-time" class="value">--</div>
       </section>
 
@@ -70,7 +85,6 @@
         <h2>Set Countdown</h2>
         <div class="grid">
           <div>
-            <label>Current time <span id="current-time"></span></label>
             <div class="countdown-picker" role="group" aria-label="Countdown duration">
               <select id="countdown-hours" aria-label="Countdown hours"></select>
               <span class="countdown-sep" aria-hidden="true">:</span>
@@ -96,6 +110,7 @@
         <h2>Debug</h2>
         <div class="row stack">
           <button id="debug-gps-toggle">Simulate GPS: off</button>
+          <button id="open-track" class="ghost">View GPS track</button>
           <button id="debug-refresh">Reload</button>
         </div>
       </section>
@@ -140,12 +155,18 @@
         <div class="race-block">
           <div id="race-label-direct" class="race-label">Distance to Line</div>
           <div id="race-proj-direct" class="race-value">--</div>
-          <div class="race-hint">If heading to line at this speed</div>
+          <div class="race-hint race-hint-split">
+            <span>If heading to line at this speed</span>
+            <span id="race-hint-unit-direct" class="race-hint-unit">[m]</span>
+          </div>
         </div>
         <div class="race-block">
           <div id="race-label-closing" class="race-label">Distance to Line</div>
           <div id="race-proj-closing" class="race-value">--</div>
-          <div class="race-hint">At this heading and speed</div>
+          <div class="race-hint race-hint-split">
+            <span>At this heading and speed</span>
+            <span id="race-hint-unit-closing" class="race-hint-unit">[m]</span>
+          </div>
         </div>
       </div>
     </section>
@@ -495,7 +516,7 @@
         <h2>Settings</h2>
         <div class="row stack">
           <div>
-            <div class="hint">Kalman filter</div>
+            <div class="hint">Advanced position estimation</div>
             <div class="race-toggle" role="group" aria-label="Kalman filter">
               <button id="kalman-on" class="race-toggle-btn" type="button" aria-pressed="true">
                 On
@@ -507,7 +528,100 @@
           </div>
         </div>
         <div class="row stack">
+          <div>
+            <label id="bow-offset-label" for="bow-offset">Phone to bow</label>
+            <div class="input-with-unit">
+              <input
+                id="bow-offset"
+                type="number"
+                inputmode="decimal"
+                step="0.1"
+                min="0"
+                placeholder="0"
+              />
+              <span id="bow-offset-unit" class="input-unit">[m]</span>
+              <span id="bow-offset-na" class="input-na">N/A</span>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
+          <div>
+            <div class="hint">Sound</div>
+            <div class="race-toggle" role="group" aria-label="Sound">
+              <button id="sound-on" class="race-toggle-btn" type="button" aria-pressed="true">
+                On
+              </button>
+              <button id="sound-off" class="race-toggle-btn" type="button" aria-pressed="false">
+                Off
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
+          <div>
+            <div class="hint">Time format</div>
+            <div class="race-toggle" role="group" aria-label="Time format">
+              <button id="time-format-24" class="race-toggle-btn" type="button" aria-pressed="true">
+                24 h
+              </button>
+              <button id="time-format-12" class="race-toggle-btn" type="button" aria-pressed="false">
+                AM/PM
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
+          <div>
+            <div class="hint">Speed unit</div>
+            <div class="race-toggle" role="group" aria-label="Speed unit">
+              <button id="speed-unit-ms" class="race-toggle-btn" type="button" aria-pressed="true">
+                [m/s]
+              </button>
+              <button id="speed-unit-kn" class="race-toggle-btn" type="button" aria-pressed="false">
+                [kn]
+              </button>
+              <button id="speed-unit-mph" class="race-toggle-btn" type="button" aria-pressed="false">
+                [mph]
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
+          <div>
+            <div class="hint">Distance unit</div>
+            <div class="race-toggle" role="group" aria-label="Distance unit">
+              <button id="distance-unit-m" class="race-toggle-btn" type="button" aria-pressed="true">
+                [m]
+              </button>
+              <button id="distance-unit-ft" class="race-toggle-btn" type="button" aria-pressed="false">
+                [ft]
+              </button>
+              <button id="distance-unit-yd" class="race-toggle-btn" type="button" aria-pressed="false">
+                [yd]
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
           <button id="close-settings">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="track-view" class="track-view" aria-hidden="true">
+      <div class="coords-panel">
+        <h2>GPS Track</h2>
+        <div class="track-canvas-wrap">
+          <canvas id="track-canvas" width="300" height="300" aria-label="GPS track"></canvas>
+        </div>
+        <div class="track-legend">
+          <span class="track-swatch raw"></span>
+          <span>Raw GPS</span>
+          <span class="track-swatch filtered"></span>
+          <span>Estimated</span>
+        </div>
+        <div class="row stack">
+          <button id="close-track">Done</button>
         </div>
       </div>
     </section>
