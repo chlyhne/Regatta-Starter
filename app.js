@@ -3109,7 +3109,7 @@ function setView(view) {
     history.replaceState(null, "", "#track");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
-    setGpsMode("setup");
+    setGpsMode("setup", { force: true, highAccuracy: true });
     renderTrack();
     return;
   }
