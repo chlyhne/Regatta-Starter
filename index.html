@@ -17,9 +17,14 @@
     <main id="setup-view" class="shell">
       <header class="hero setup-head">
         <h1>Setup</h1>
-        <div class="gps-status">
-          <span>GPS</span>
-          <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
+        <div class="setup-actions">
+          <div class="gps-status">
+            <span>GPS</span>
+            <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
+          </div>
+          <button id="open-settings" class="icon-btn" type="button" aria-label="Settings">
+            ⚙
+          </button>
         </div>
       </header>
 
@@ -481,6 +486,28 @@
         </div>
         <div class="row stack">
           <button id="close-location">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings-view" class="settings-view" aria-hidden="true">
+      <div class="coords-panel">
+        <h2>Settings</h2>
+        <div class="row stack">
+          <div>
+            <div class="hint">Kalman filter</div>
+            <div class="race-toggle" role="group" aria-label="Kalman filter">
+              <button id="kalman-on" class="race-toggle-btn" type="button" aria-pressed="true">
+                On
+              </button>
+              <button id="kalman-off" class="race-toggle-btn" type="button" aria-pressed="false">
+                Off
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
+          <button id="close-settings">Done</button>
         </div>
       </div>
     </section>

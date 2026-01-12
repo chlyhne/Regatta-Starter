@@ -65,7 +65,11 @@ body {
 .coords-mode .shell,
 .coords-mode .race-view,
 .location-mode .shell,
-.location-mode .race-view {
+.location-mode .race-view,
+.settings-mode .shell,
+.settings-mode .race-view,
+.settings-mode .coords-view,
+.settings-mode .location-view {
   display: none;
 }
 
@@ -74,6 +78,10 @@ body {
 }
 
 .location-mode .location-view {
+  display: flex;
+}
+
+.settings-mode .settings-view {
   display: flex;
 }
 
@@ -184,6 +192,24 @@ body {
 .setup-head {
   grid-template-columns: 1fr auto;
   align-items: center;
+}
+
+.setup-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.icon-btn {
+  border: 2px solid #000000;
+  background: transparent;
+  color: #000000;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .gps-status {
@@ -622,7 +648,8 @@ button:active {
 }
 
 .coords-view,
-.location-view {
+.location-view,
+.settings-view {
   display: none;
   min-height: 100vh;
   flex-direction: column;

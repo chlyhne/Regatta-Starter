@@ -92,6 +92,7 @@ const els = {
   openMap: document.getElementById("open-map"),
   openCoords: document.getElementById("open-coords"),
   openLocation: document.getElementById("open-location"),
+  openSettings: document.getElementById("open-settings"),
   loadLine: document.getElementById("load-line"),
   saveLine: document.getElementById("save-line"),
   loadModal: document.getElementById("load-line-modal"),
@@ -134,6 +135,9 @@ const els = {
   coordsDoneTop: document.getElementById("coords-done-top"),
   closeCoords: document.getElementById("close-coords"),
   closeLocation: document.getElementById("close-location"),
+  closeSettings: document.getElementById("close-settings"),
+  kalmanOn: document.getElementById("kalman-on"),
+  kalmanOff: document.getElementById("kalman-off"),
   debugPanel: document.getElementById("debug-panel"),
   debugGpsToggle: document.getElementById("debug-gps-toggle"),
   debugRefresh: document.getElementById("debug-refresh"),
@@ -150,6 +154,7 @@ const state = {
   lineSourceId: null,
   coordsFormat: "dd",
   debugGpsEnabled: DEBUG_GPS_DEFAULT,
+  useKalman: true,
   debugIntervalId: null,
   geoWatchId: null,
   gpsMode: "setup",
@@ -171,6 +176,7 @@ const state = {
   savedLines: [],
   selectedLineId: null,
   wakeLock: null,
+  kalman: null,
   audio: {
     ctx: null,
     lastBeepSecond: null,
@@ -340,6 +346,15 @@ function toMeters(point, origin) {
   return { x, y };
 }
 
+function fromMeters(point, origin) {
+  const originLatRad = toRadians(origin.lat);
+  const lat = origin.lat + (point.y / EARTH_RADIUS) * (180 / Math.PI);
+  const lon =
+    origin.lon +
+    (point.x / (EARTH_RADIUS * Math.cos(originLatRad))) * (180 / Math.PI);
+  return { lat, lon };
+}
+
 function formatMeters(value) {
   const abs = Math.abs(value);
   return String(Math.round(abs));
@@ -351,6 +366,10 @@ function formatRate(value) {
   }
   const rounded = Math.round(value);
   return `${rounded} m/s`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function formatTimeInput(date) {
@@ -536,6 +555,24 @@ function setRaceMetric(metric) {
   updateLineProjection();
 }
 
+function updateKalmanToggle() {
+  if (els.kalmanOn) {
+    els.kalmanOn.setAttribute("aria-pressed", state.useKalman ? "true" : "false");
+  }
+  if (els.kalmanOff) {
+    els.kalmanOff.setAttribute("aria-pressed", state.useKalman ? "false" : "true");
+  }
+}
+
+function setKalmanEnabled(enabled) {
+  state.useKalman = Boolean(enabled);
+  if (!state.useKalman) {
+    state.kalman = null;
+  }
+  saveSettings();
+  updateKalmanToggle();
+}
+
 function updateRaceValueStyles(directOver, closingOver) {
   if (els.raceProjDirect) {
     els.raceProjDirect.classList.toggle("race-value-over", Boolean(directOver));
@@ -677,6 +714,9 @@ function loadSettings() {
     if (typeof parsed.debugGpsEnabled === "boolean") {
       state.debugGpsEnabled = parsed.debugGpsEnabled;
     }
+    if (typeof parsed.useKalman === "boolean") {
+      state.useKalman = parsed.useKalman;
+    }
     state.start = { ...state.start, ...parsed.start };
     delete state.start.preStartSign;
   } catch (err) {
@@ -693,6 +733,7 @@ function saveSettings() {
     },
     coordsFormat: state.coordsFormat,
     debugGpsEnabled: state.debugGpsEnabled,
+    useKalman: state.useKalman,
     start: {
       mode: state.start.mode,
       countdownSeconds: state.start.countdownSeconds,
@@ -797,6 +838,7 @@ function updateModalButtons() {
 function updateInputs() {
   syncCoordinateInputs();
   syncCountdownPicker();
+  updateKalmanToggle();
   els.absoluteTime.value = state.start.absoluteTime || "";
 }
 
@@ -1510,6 +1552,7 @@ function resetPositionState() {
   state.lastPosition = null;
   state.velocity = { x: 0, y: 0 };
   state.speed = 0;
+  state.kalman = null;
   updateGPSDisplay();
   updateLineProjection();
 }
@@ -1580,6 +1623,189 @@ function computeVelocityFromPositions(current, previous) {
   const dy = currentM.y - previousM.y;
   const speed = Math.hypot(dx, dy) / dt;
   return { x: dx / dt, y: dy / dt, speed };
+}
+
+function initKalmanState(position) {
+  const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
+  const accuracy = clamp(position.coords.accuracy || 10, 3, 50);
+  let vx = 0;
+  let vy = 0;
+  if (Number.isFinite(position.coords.speed) && Number.isFinite(position.coords.heading)) {
+    const velocity = computeVelocityFromHeading(position.coords.speed, position.coords.heading);
+    vx = velocity.x;
+    vy = velocity.y;
+  }
+  const sigma2 = accuracy ** 2;
+  return {
+    origin,
+    lastTs: position.timestamp || Date.now(),
+    x: [0, 0, vx, vy],
+    P: [
+      sigma2, 0, 0, 0,
+      0, sigma2, 0, 0,
+      0, 0, 25, 0,
+      0, 0, 0, 25,
+    ],
+  };
+}
+
+function applyKalmanFilter(position) {
+  if (!position) return null;
+  if (!state.kalman) {
+    state.kalman = initKalmanState(position);
+  }
+  const filter = state.kalman;
+  const timestamp = position.timestamp || Date.now();
+  const dtRaw = (timestamp - filter.lastTs) / 1000;
+  if (!Number.isFinite(dtRaw) || dtRaw <= 0) {
+    const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
+    return {
+      position: {
+        coords: {
+          latitude: coords.lat,
+          longitude: coords.lon,
+          accuracy: position.coords.accuracy,
+        },
+        timestamp,
+      },
+      velocity: { x: filter.x[2], y: filter.x[3] },
+      speed: Math.hypot(filter.x[2], filter.x[3]),
+    };
+  }
+
+  const dt = clamp(dtRaw, 0.2, 5);
+  filter.lastTs = timestamp;
+
+  const q = 0.8;
+  const dt2 = dt * dt;
+  const dt3 = dt2 * dt;
+  const dt4 = dt2 * dt2;
+
+  const F = [
+    1, 0, dt, 0,
+    0, 1, 0, dt,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ];
+  const Q = [
+    q * dt4 / 4, 0, q * dt3 / 2, 0,
+    0, q * dt4 / 4, 0, q * dt3 / 2,
+    q * dt3 / 2, 0, q * dt2, 0,
+    0, q * dt3 / 2, 0, q * dt2,
+  ];
+
+  const x = filter.x;
+  const P = filter.P;
+
+  const xPred = [
+    x[0] + x[2] * dt,
+    x[1] + x[3] * dt,
+    x[2],
+    x[3],
+  ];
+
+  const FP = new Array(16).fill(0);
+  for (let r = 0; r < 4; r += 1) {
+    for (let c = 0; c < 4; c += 1) {
+      FP[r * 4 + c] =
+        F[r * 4 + 0] * P[0 * 4 + c] +
+        F[r * 4 + 1] * P[1 * 4 + c] +
+        F[r * 4 + 2] * P[2 * 4 + c] +
+        F[r * 4 + 3] * P[3 * 4 + c];
+    }
+  }
+  const PPred = new Array(16).fill(0);
+  for (let r = 0; r < 4; r += 1) {
+    for (let c = 0; c < 4; c += 1) {
+      PPred[r * 4 + c] =
+        FP[r * 4 + 0] * F[c * 4 + 0] +
+        FP[r * 4 + 1] * F[c * 4 + 1] +
+        FP[r * 4 + 2] * F[c * 4 + 2] +
+        FP[r * 4 + 3] * F[c * 4 + 3] +
+        Q[r * 4 + c];
+    }
+  }
+
+  const measurement = toMeters(
+    { lat: position.coords.latitude, lon: position.coords.longitude },
+    filter.origin
+  );
+  const z = [measurement.x, measurement.y];
+  const accuracy = clamp(position.coords.accuracy || 10, 3, 50);
+  const r = accuracy ** 2;
+  const S00 = PPred[0] + r;
+  const S01 = PPred[1];
+  const S10 = PPred[4];
+  const S11 = PPred[5] + r;
+  const det = S00 * S11 - S01 * S10;
+  if (!Number.isFinite(det) || det === 0) {
+    filter.x = xPred;
+    filter.P = PPred;
+  } else {
+    const invS00 = S11 / det;
+    const invS01 = -S01 / det;
+    const invS10 = -S10 / det;
+    const invS11 = S00 / det;
+
+    const PHt = [
+      PPred[0], PPred[1],
+      PPred[4], PPred[5],
+      PPred[8], PPred[9],
+      PPred[12], PPred[13],
+    ];
+    const K = [
+      PHt[0] * invS00 + PHt[1] * invS10,
+      PHt[0] * invS01 + PHt[1] * invS11,
+      PHt[2] * invS00 + PHt[3] * invS10,
+      PHt[2] * invS01 + PHt[3] * invS11,
+      PHt[4] * invS00 + PHt[5] * invS10,
+      PHt[4] * invS01 + PHt[5] * invS11,
+      PHt[6] * invS00 + PHt[7] * invS10,
+      PHt[6] * invS01 + PHt[7] * invS11,
+    ];
+
+    const y0 = z[0] - xPred[0];
+    const y1 = z[1] - xPred[1];
+
+    xPred[0] += K[0] * y0 + K[1] * y1;
+    xPred[1] += K[2] * y0 + K[3] * y1;
+    xPred[2] += K[4] * y0 + K[5] * y1;
+    xPred[3] += K[6] * y0 + K[7] * y1;
+
+    const HP = [
+      PPred[0], PPred[1], PPred[2], PPred[3],
+      PPred[4], PPred[5], PPred[6], PPred[7],
+    ];
+    const KHP = new Array(16).fill(0);
+    for (let rIdx = 0; rIdx < 4; rIdx += 1) {
+      const k0 = K[rIdx * 2];
+      const k1 = K[rIdx * 2 + 1];
+      KHP[rIdx * 4 + 0] = k0 * HP[0] + k1 * HP[4];
+      KHP[rIdx * 4 + 1] = k0 * HP[1] + k1 * HP[5];
+      KHP[rIdx * 4 + 2] = k0 * HP[2] + k1 * HP[6];
+      KHP[rIdx * 4 + 3] = k0 * HP[3] + k1 * HP[7];
+    }
+    for (let i = 0; i < 16; i += 1) {
+      PPred[i] -= KHP[i];
+    }
+
+    filter.x = xPred;
+    filter.P = PPred;
+  }
+
+  const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
+  return {
+    position: {
+      coords: {
+        latitude: coords.lat,
+        longitude: coords.lon,
+        accuracy: position.coords.accuracy,
+      },
+      timestamp,
+    },
+    velocity: { x: filter.x[2], y: filter.x[3] },
+    speed: Math.hypot(filter.x[2], filter.x[3]),
+  };
 }
 
 function computeLineMetrics(position) {
@@ -1728,19 +1954,28 @@ function updateLineProjection() {
 
 
 function handlePosition(position) {
-  state.position = position;
-  const coords = position.coords;
-
-  if (Number.isFinite(coords.speed) && Number.isFinite(coords.heading)) {
-    state.speed = coords.speed;
-    state.velocity = computeVelocityFromHeading(coords.speed, coords.heading);
+  const filtered = state.useKalman ? applyKalmanFilter(position) : null;
+  if (!state.useKalman && state.kalman) {
+    state.kalman = null;
+  }
+  const activePosition = filtered ? filtered.position : position;
+  state.position = activePosition;
+  if (filtered) {
+    state.speed = filtered.speed;
+    state.velocity = filtered.velocity;
   } else {
-    const computed = computeVelocityFromPositions(position, state.lastPosition);
-    state.speed = computed.speed;
-    state.velocity = { x: computed.x, y: computed.y };
+    const coords = position.coords;
+    if (Number.isFinite(coords.speed) && Number.isFinite(coords.heading)) {
+      state.speed = coords.speed;
+      state.velocity = computeVelocityFromHeading(coords.speed, coords.heading);
+    } else {
+      const computed = computeVelocityFromPositions(position, state.lastPosition);
+      state.speed = computed.speed;
+      state.velocity = { x: computed.x, y: computed.y };
+    }
   }
 
-  state.lastPosition = position;
+  state.lastPosition = activePosition;
   updateGPSDisplay();
   updateLineProjection();
 }
@@ -1905,6 +2140,12 @@ function bindEvents() {
     setView("location");
   });
 
+  if (els.openSettings) {
+    els.openSettings.addEventListener("click", () => {
+      setView("settings");
+    });
+  }
+
   els.saveLine.addEventListener("click", () => {
     if (!hasLine()) {
       window.alert("No start line defined. Set port and starboard marks first.");
@@ -2048,6 +2289,24 @@ function bindEvents() {
     setView("setup");
   });
 
+  if (els.closeSettings) {
+    els.closeSettings.addEventListener("click", () => {
+      setView("setup");
+    });
+  }
+
+  if (els.kalmanOn) {
+    els.kalmanOn.addEventListener("click", () => {
+      setKalmanEnabled(true);
+    });
+  }
+
+  if (els.kalmanOff) {
+    els.kalmanOff.addEventListener("click", () => {
+      setKalmanEnabled(false);
+    });
+  }
+
   if (els.syncRace) {
     els.syncRace.addEventListener("click", () => {
       if (!state.start.startTs || state.start.startTs <= Date.now()) return;
@@ -2109,8 +2368,10 @@ function setView(view) {
     document.body.classList.add("race-mode");
     document.body.classList.remove("coords-mode");
     document.body.classList.remove("location-mode");
+    document.body.classList.remove("settings-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "false");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#race");
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -2124,9 +2385,11 @@ function setView(view) {
     document.body.classList.remove("race-mode");
     document.body.classList.add("coords-mode");
     document.body.classList.remove("location-mode");
+    document.body.classList.remove("settings-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "false");
     document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#coords");
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -2138,21 +2401,42 @@ function setView(view) {
     document.body.classList.remove("race-mode");
     document.body.classList.remove("coords-mode");
     document.body.classList.add("location-mode");
+    document.body.classList.remove("settings-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("location-view").setAttribute("aria-hidden", "false");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#location");
     releaseWakeLock();
     setGpsMode("setup", { force: true, highAccuracy: true });
     return;
   }
+  if (view === "settings") {
+    updateInputs();
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.add("settings-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "false");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    history.replaceState(null, "", "#settings");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    releaseWakeLock();
+    setGpsMode("setup");
+    return;
+  }
   document.body.classList.remove("race-mode");
   document.body.classList.remove("coords-mode");
   document.body.classList.remove("location-mode");
+  document.body.classList.remove("settings-mode");
   document.getElementById("race-view").setAttribute("aria-hidden", "true");
   document.getElementById("coords-view").setAttribute("aria-hidden", "true");
   document.getElementById("location-view").setAttribute("aria-hidden", "true");
+  document.getElementById("settings-view").setAttribute("aria-hidden", "true");
   document.getElementById("setup-view").setAttribute("aria-hidden", "false");
   history.replaceState(null, "", "#setup");
   releaseWakeLock();
@@ -2170,6 +2454,10 @@ function syncViewFromHash() {
   }
   if (location.hash === "#location") {
     setView("location");
+    return;
+  }
+  if (location.hash === "#settings") {
+    setView("settings");
     return;
   }
   setView("setup");
