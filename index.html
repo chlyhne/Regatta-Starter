@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0e2a2f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="style.css" />
+    <title>RaceTimer Start</title>
+  </head>
+  <body>
+    <main id="setup-view" class="shell">
+      <header class="hero setup-head">
+        <h1>Setup</h1>
+        <div class="gps-status">
+          <span>GPS</span>
+          <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h2 class="panel-title">My Race</h2>
+        <div class="hint">Line name</div>
+        <div id="status-line-name" class="value">--</div>
+        <div class="hint">Distance to line</div>
+        <div id="status-distance" class="value">--</div>
+        <div class="hint">Line length</div>
+        <div id="status-line-length" class="value">--</div>
+        <div class="hint">Start time</div>
+        <div id="status-start-time" class="value">--</div>
+        <div class="hint">Time to start</div>
+        <div id="status-time" class="value">--</div>
+      </section>
+
+      <section class="panel">
+        <h2>Define Start Line</h2>
+        <div class="row stack">
+          <button id="open-map" class="ghost">Select on map</button>
+          <button id="load-line" class="ghost">Saved start lines</button>
+          <button id="save-line" class="ghost">Save start line…</button>
+          <button id="open-location" class="ghost">Use GPS position</button>
+          <button id="open-coords" class="ghost">Enter coordinates</button>
+          <span id="line-status" class="hint">Line not set</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Set Start Time</h2>
+        <div class="grid">
+          <div>
+            <input id="absolute-time" type="time" step="1" aria-label="Start time" />
+          </div>
+        </div>
+        <div class="row stack">
+          <button id="set-absolute">Set start time</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Set Countdown</h2>
+        <div class="grid">
+          <div>
+            <label>Current time <span id="current-time"></span></label>
+            <div class="countdown-picker" role="group" aria-label="Countdown duration">
+              <select id="countdown-hours" aria-label="Countdown hours"></select>
+              <span class="countdown-sep" aria-hidden="true">:</span>
+              <select id="countdown-minutes" aria-label="Countdown minutes"></select>
+              <span class="countdown-sep" aria-hidden="true">:</span>
+              <select id="countdown-seconds" aria-label="Countdown seconds"></select>
+            </div>
+          </div>
+        </div>
+        <div class="row stack">
+          <button id="set-countdown">Start countdown</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Race Mode</h2>
+        <div class="row stack">
+          <button id="go-race">Enter race mode</button>
+        </div>
+      </section>
+
+      <section id="debug-panel" class="panel">
+        <h2>Debug</h2>
+        <div class="row stack">
+          <button id="debug-gps-toggle">Simulate GPS: off</button>
+          <button id="debug-refresh">Reload</button>
+        </div>
+      </section>
+
+    </main>
+
+    <section id="race-view" class="race-view" aria-hidden="true">
+      <div class="race-head">
+        <div>
+          <div id="race-countdown" class="race-value">--:--</div>
+        </div>
+        <div class="race-controls">
+          <div class="race-toggle" role="group" aria-label="Race metric">
+            <button
+              id="race-metric-distance"
+              class="race-toggle-btn"
+              type="button"
+              aria-pressed="true"
+            >
+              Distance
+            </button>
+            <button
+              id="race-metric-time"
+              class="race-toggle-btn"
+              type="button"
+              aria-pressed="false"
+            >
+              Time
+            </button>
+          </div>
+          <div class="race-stack">
+            <button id="race-plus" class="race-btn">+1 s</button>
+            <button id="race-minus" class="race-btn">−1 s</button>
+          </div>
+          <div class="race-stack">
+            <button id="close-race" class="race-btn">Back to setup</button>
+            <button id="sync-race" class="race-btn">Sync to minute</button>
+          </div>
+        </div>
+      </div>
+      <div class="race-grid">
+        <div class="race-block">
+          <div id="race-label-direct" class="race-label">Distance to Line</div>
+          <div id="race-proj-direct" class="race-value">--</div>
+          <div class="race-hint">If heading to line at this speed</div>
+        </div>
+        <div class="race-block">
+          <div id="race-label-closing" class="race-label">Distance to Line</div>
+          <div id="race-proj-closing" class="race-value">--</div>
+          <div class="race-hint">At this heading and speed</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="coords-view" class="coords-view" aria-hidden="true">
+      <div class="coords-panel">
+        <h2>Enter Coordinates</h2>
+        <div class="row coords-format-row">
+          <button id="coords-format" class="ghost" type="button">Format: Decimal</button>
+          <button id="coords-done-top" class="ghost" type="button" hidden>Done</button>
+        </div>
+
+        <div id="coords-format-dd">
+          <div class="grid">
+            <div>
+              <label for="lat-a">Port mark (lat)</label>
+              <input id="lat-a" type="number" step="0.000001" placeholder="55.000000" />
+            </div>
+            <div>
+              <label for="lon-a">Port mark (lon)</label>
+              <input id="lon-a" type="number" step="0.000001" placeholder="12.000000" />
+            </div>
+            <div>
+              <label for="lat-b">Starboard mark (lat)</label>
+              <input id="lat-b" type="number" step="0.000001" placeholder="55.000000" />
+            </div>
+            <div>
+              <label for="lon-b">Starboard mark (lon)</label>
+              <input id="lon-b" type="number" step="0.000001" placeholder="12.000000" />
+            </div>
+          </div>
+        </div>
+
+        <div id="coords-format-ddm" hidden>
+          <div class="coords-marks">
+            <div class="coords-mark-panel">
+              <h3>Port mark</h3>
+              <div class="coords-latlon">
+                <div class="coords-latlon-row">
+                  <div>
+                    <label for="lat-a-deg-ddm">Lat (°)</label>
+                    <select id="lat-a-deg-ddm"></select>
+                  </div>
+                  <div>
+                    <label for="lat-a-min-ddm">Lat (')</label>
+                    <div class="coords-composite-input">
+                      <select id="lat-a-min-ddm"></select>
+                      <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lat-a-min-dec-ddm"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Port latitude minutes decimals"
+                    />
+                    </div>
+                  </div>
+                <div>
+                  <label for="lat-a-hemi-ddm">Lat</label>
+                  <input type="hidden" id="lat-a-hemi-ddm" value="N" />
+                  <div class="coords-hemis" data-target="lat-a-hemi-ddm">
+                    <button type="button" class="coords-hemisphere" data-value="N" aria-label="North">N</button>
+                    <button type="button" class="coords-hemisphere" data-value="S" aria-label="South">S</button>
+                  </div>
+                </div>
+                </div>
+
+                <div class="coords-latlon-row">
+                  <div>
+                    <label for="lon-a-deg-ddm">Lon (°)</label>
+                    <select id="lon-a-deg-ddm"></select>
+                  </div>
+                  <div>
+                    <label for="lon-a-min-ddm">Lon (')</label>
+                    <div class="coords-composite-input">
+                      <select id="lon-a-min-ddm"></select>
+                      <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lon-a-min-dec-ddm"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Port longitude minutes decimals"
+                    />
+                    </div>
+                  </div>
+                <div>
+                  <label for="lon-a-hemi-ddm">Lon</label>
+                  <input type="hidden" id="lon-a-hemi-ddm" value="E" />
+                  <div class="coords-hemis" data-target="lon-a-hemi-ddm">
+                    <button type="button" class="coords-hemisphere" data-value="E" aria-label="East">E</button>
+                    <button type="button" class="coords-hemisphere" data-value="W" aria-label="West">W</button>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="coords-mark-panel">
+              <h3>Starboard mark</h3>
+              <div class="coords-latlon">
+                <div class="coords-latlon-row">
+                  <div>
+                    <label for="lat-b-deg-ddm">Lat (°)</label>
+                    <select id="lat-b-deg-ddm"></select>
+                  </div>
+                  <div>
+                    <label for="lat-b-min-ddm">Lat (')</label>
+                    <div class="coords-composite-input">
+                      <select id="lat-b-min-ddm"></select>
+                      <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lat-b-min-dec-ddm"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Starboard latitude minutes decimals"
+                    />
+                    </div>
+                  </div>
+                <div>
+                  <label for="lat-b-hemi-ddm">Lat</label>
+                  <input type="hidden" id="lat-b-hemi-ddm" value="N" />
+                  <div class="coords-hemis" data-target="lat-b-hemi-ddm">
+                    <button type="button" class="coords-hemisphere" data-value="N" aria-label="North">N</button>
+                    <button type="button" class="coords-hemisphere" data-value="S" aria-label="South">S</button>
+                  </div>
+                </div>
+                </div>
+
+                <div class="coords-latlon-row">
+                  <div>
+                    <label for="lon-b-deg-ddm">Lon (°)</label>
+                    <select id="lon-b-deg-ddm"></select>
+                  </div>
+                  <div>
+                    <label for="lon-b-min-ddm">Lon (')</label>
+                    <div class="coords-composite-input">
+                      <select id="lon-b-min-ddm"></select>
+                      <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lon-b-min-dec-ddm"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Starboard longitude minutes decimals"
+                    />
+                    </div>
+                  </div>
+                <div>
+                  <label for="lon-b-hemi-ddm">Lon</label>
+                  <input type="hidden" id="lon-b-hemi-ddm" value="E" />
+                  <div class="coords-hemis" data-target="lon-b-hemi-ddm">
+                    <button type="button" class="coords-hemisphere" data-value="E" aria-label="East">E</button>
+                    <button type="button" class="coords-hemisphere" data-value="W" aria-label="West">W</button>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="coords-format-dms" hidden>
+          <div class="coords-marks">
+            <div class="coords-mark-panel">
+              <h3>Port mark</h3>
+              <div class="grid">
+                <div>
+                  <label for="lat-a-deg-dms">Lat (°)</label>
+                  <select id="lat-a-deg-dms"></select>
+                </div>
+                <div>
+                  <label for="lat-a-min-dms">Lat (')</label>
+                  <select id="lat-a-min-dms"></select>
+                </div>
+                <div>
+                  <label for="lat-a-sec-dms">Lat (")</label>
+                  <div class="coords-composite-input">
+                    <select id="lat-a-sec-dms"></select>
+                    <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lat-a-sec-dec-dms"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Port latitude seconds decimals"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label for="lat-a-hemi-dms">Lat</label>
+                  <input type="hidden" id="lat-a-hemi-dms" value="N" />
+                  <div class="coords-hemis" data-target="lat-a-hemi-dms">
+                    <button type="button" class="coords-hemisphere" data-value="N" aria-label="North">N</button>
+                    <button type="button" class="coords-hemisphere" data-value="S" aria-label="South">S</button>
+                  </div>
+                </div>
+
+                <div>
+                  <label for="lon-a-deg-dms">Lon (°)</label>
+                  <select id="lon-a-deg-dms"></select>
+                </div>
+                <div>
+                  <label for="lon-a-min-dms">Lon (')</label>
+                  <select id="lon-a-min-dms"></select>
+                </div>
+                <div>
+                  <label for="lon-a-sec-dms">Lon (")</label>
+                  <div class="coords-composite-input">
+                    <select id="lon-a-sec-dms"></select>
+                    <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lon-a-sec-dec-dms"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Port longitude seconds decimals"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label for="lon-a-hemi-dms">Lon</label>
+                  <input type="hidden" id="lon-a-hemi-dms" value="E" />
+                  <div class="coords-hemis" data-target="lon-a-hemi-dms">
+                    <button type="button" class="coords-hemisphere" data-value="E" aria-label="East">E</button>
+                    <button type="button" class="coords-hemisphere" data-value="W" aria-label="West">W</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="coords-mark-panel">
+              <h3>Starboard mark</h3>
+              <div class="grid">
+                <div>
+                  <label for="lat-b-deg-dms">Lat (°)</label>
+                  <select id="lat-b-deg-dms"></select>
+                </div>
+                <div>
+                  <label for="lat-b-min-dms">Lat (')</label>
+                  <select id="lat-b-min-dms"></select>
+                </div>
+                <div>
+                  <label for="lat-b-sec-dms">Lat (")</label>
+                  <div class="coords-composite-input">
+                    <select id="lat-b-sec-dms"></select>
+                    <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lat-b-sec-dec-dms"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Starboard latitude seconds decimals"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label for="lat-b-hemi-dms">Lat</label>
+                  <input type="hidden" id="lat-b-hemi-dms" value="N" />
+                  <div class="coords-hemis" data-target="lat-b-hemi-dms">
+                    <button type="button" class="coords-hemisphere" data-value="N" aria-label="North">N</button>
+                    <button type="button" class="coords-hemisphere" data-value="S" aria-label="South">S</button>
+                  </div>
+                </div>
+
+                <div>
+                  <label for="lon-b-deg-dms">Lon (°)</label>
+                  <select id="lon-b-deg-dms"></select>
+                </div>
+                <div>
+                  <label for="lon-b-min-dms">Lon (')</label>
+                  <select id="lon-b-min-dms"></select>
+                </div>
+                <div>
+                  <label for="lon-b-sec-dms">Lon (")</label>
+                  <div class="coords-composite-input">
+                    <select id="lon-b-sec-dms"></select>
+                    <span class="coords-decimal-dot" aria-hidden="true">.</span>
+                    <input
+                      id="lon-b-sec-dec-dms"
+                      class="coords-decimals"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="10"
+                      placeholder="0000000000"
+                      aria-label="Starboard longitude seconds decimals"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label for="lon-b-hemi-dms">Lon</label>
+                  <input type="hidden" id="lon-b-hemi-dms" value="E" />
+                  <div class="coords-hemis" data-target="lon-b-hemi-dms">
+                    <button type="button" class="coords-hemisphere" data-value="E" aria-label="East">E</button>
+                    <button type="button" class="coords-hemisphere" data-value="W" aria-label="West">W</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row stack">
+          <button id="close-coords">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="location-view" class="location-view" aria-hidden="true">
+      <div class="coords-panel">
+        <h2>Use GPS</h2>
+        <div class="row stack">
+          <button id="use-a" class="ghost">Set port mark (GPS)</button>
+          <button id="use-b" class="ghost">Set starboard mark (GPS)</button>
+        </div>
+        <div class="row stack">
+          <button id="close-location">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="load-line-modal" class="modal" aria-hidden="true">
+      <div class="modal-panel">
+        <h2>Load Start Line</h2>
+        <div id="saved-lines-list" class="modal-list"></div>
+        <div class="modal-actions">
+          <button id="confirm-load">Use line</button>
+          <button id="confirm-delete" class="ghost danger">Delete line</button>
+          <button id="close-load" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <script src="app.js"></script>
+  </body>
+</html>

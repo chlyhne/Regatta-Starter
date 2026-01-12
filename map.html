@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="stylesheet" href="vendor/leaflet.css" />
+    <link rel="stylesheet" href="map.css" />
+    <title>Select Mark</title>
+  </head>
+  <body>
+    <header class="map-head">
+      <div id="map-title" class="map-title">Select marks</div>
+      <div class="map-actions">
+        <button id="set-map-a" class="map-btn">Set P</button>
+        <button id="set-map-b" class="map-btn">Set SB</button>
+        <button id="close-map" class="map-btn">Done</button>
+      </div>
+    </header>
+    <main class="map-wrap">
+      <div id="map" class="map"></div>
+      <div class="map-crosshair" aria-hidden="true"></div>
+      <div class="map-caption">Drag the map. The crosshair is the exact point.</div>
+      <div id="map-status" class="map-status">Loading map...</div>
+    </main>
+
+    <script src="vendor/leaflet.js"></script>
+    <script src="map.js"></script>
+  </body>
+</html>
