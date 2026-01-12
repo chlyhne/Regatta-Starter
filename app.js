@@ -14,6 +14,8 @@ const BEEP_DURATION_MS = Math.round(LONG_BEEP_DURATION_MS / 2);
 const START_BEEP_DURATION_MS = 2000;
 const TRACK_MAX_POINTS = 600;
 const TRACK_WINDOW_MS = 3 * 60 * 1000;
+const GPS_RETRY_DELAY_MS = 2000;
+const GPS_STALE_MS = 15000;
 const SPEED_UNITS = {
   ms: { factor: 1, label: "m/s" },
   kn: { factor: 1.943844, label: "kn" },
@@ -215,6 +217,7 @@ const els = {
   distanceUnitYd: document.getElementById("distance-unit-yd"),
   debugPanel: document.getElementById("debug-panel"),
   debugGpsToggle: document.getElementById("debug-gps-toggle"),
+  debugGpsStatus: document.getElementById("debug-gps-status"),
   openTrack: document.getElementById("open-track"),
   closeTrack: document.getElementById("close-track"),
   trackCanvas: document.getElementById("track-canvas"),
@@ -240,6 +243,8 @@ const state = {
   useKalman: true,
   debugIntervalId: null,
   geoWatchId: null,
+  gpsRetryTimer: null,
+  lastGpsFixAt: null,
   gpsMode: "setup",
   start: {
     mode: "countdown",
@@ -1963,6 +1968,22 @@ function updateDebugControls() {
       state.debugGpsEnabled ? "true" : "false"
     );
   }
+  if (els.debugGpsStatus) {
+    let status = "GPS: --";
+    if (state.debugGpsEnabled) {
+      status = "GPS: debug";
+    } else if (!navigator.geolocation) {
+      status = "GPS: unavailable";
+    } else if (state.geoWatchId === null) {
+      status = "GPS: idle";
+    } else if (!state.lastGpsFixAt) {
+      status = "GPS: waiting";
+    } else {
+      const ageSec = Math.max(0, Math.round((Date.now() - state.lastGpsFixAt) / 1000));
+      status = `GPS: ${ageSec}s ago`;
+    }
+    els.debugGpsStatus.textContent = status;
+  }
 }
 
 function stopDebugGps() {
@@ -1971,11 +1992,18 @@ function stopDebugGps() {
   state.debugIntervalId = null;
 }
 
+function clearGpsRetryTimer() {
+  if (!state.gpsRetryTimer) return;
+  clearTimeout(state.gpsRetryTimer);
+  state.gpsRetryTimer = null;
+}
+
 function stopRealGps() {
   if (state.geoWatchId !== null && navigator.geolocation) {
     navigator.geolocation.clearWatch(state.geoWatchId);
   }
   state.geoWatchId = null;
+  clearGpsRetryTimer();
 }
 
 function startDebugGps() {
@@ -2007,6 +2035,23 @@ function startRealGps(options = GPS_OPTIONS_SETUP) {
   );
 }
 
+function isGpsStale() {
+  if (state.debugGpsEnabled) return false;
+  if (state.geoWatchId === null) return false;
+  if (!state.lastGpsFixAt) return true;
+  return Date.now() - state.lastGpsFixAt > GPS_STALE_MS;
+}
+
+function scheduleGpsRetry() {
+  if (state.debugGpsEnabled) return;
+  if (state.gpsRetryTimer) return;
+  state.gpsRetryTimer = setTimeout(() => {
+    state.gpsRetryTimer = null;
+    if (state.debugGpsEnabled) return;
+    startRealGps(GPS_OPTIONS_RACE);
+  }, GPS_RETRY_DELAY_MS);
+}
+
 function requestHighPrecisionPosition(callback) {
   if (!navigator.geolocation) {
     handlePositionError(new Error("Geolocation unavailable"));
@@ -2030,6 +2075,7 @@ function resetPositionState() {
   state.kalman = null;
   state.gpsTrackRaw = [];
   state.gpsTrackFiltered = [];
+  state.lastGpsFixAt = null;
   updateGPSDisplay();
   updateLineProjection();
 }
@@ -2062,7 +2108,7 @@ function setGpsMode(mode, options = {}) {
   if (state.debugGpsEnabled) {
     return;
   }
-  if (!force && state.geoWatchId !== null && prev === next && !highAccuracy) {
+  if (!force && state.geoWatchId !== null && prev === next && !highAccuracy && !isGpsStale()) {
     return;
   }
   const gpsOptions = highAccuracy ? GPS_OPTIONS_RACE : getGpsOptionsForMode(state.gpsMode);
@@ -2466,6 +2512,8 @@ function handlePosition(position) {
   if (!state.useKalman && state.kalman) {
     state.kalman = null;
   }
+  state.lastGpsFixAt = position.timestamp || Date.now();
+  clearGpsRetryTimer();
   let activePosition = position;
   if (filtered) {
     filtered.position = applyForwardOffset(
@@ -2502,6 +2550,9 @@ function handlePositionError(err) {
   els.gpsIcon.classList.add("bad");
   els.gpsIcon.classList.remove("ok");
   els.gpsIcon.title = `GPS error: ${err.message}`;
+  if (!state.debugGpsEnabled && err && (err.code === 2 || err.code === 3)) {
+    scheduleGpsRetry();
+  }
 }
 
 function initGeolocation() {
@@ -3106,6 +3157,10 @@ function tick() {
   updateLineProjection();
   updateStartDisplay();
   updateCurrentTime();
+  updateDebugControls();
+  if (isGpsStale()) {
+    scheduleGpsRetry();
+  }
   requestAnimationFrame(() => {
     setTimeout(tick, 1000);
   });
