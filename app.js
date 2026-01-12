@@ -218,6 +218,7 @@ const els = {
   debugPanel: document.getElementById("debug-panel"),
   debugGpsToggle: document.getElementById("debug-gps-toggle"),
   debugGpsStatus: document.getElementById("debug-gps-status"),
+  debugGpsDelta: document.getElementById("debug-gps-delta"),
   openTrack: document.getElementById("open-track"),
   closeTrack: document.getElementById("close-track"),
   trackCanvas: document.getElementById("track-canvas"),
@@ -1983,6 +1984,22 @@ function updateDebugControls() {
       status = `GPS: ${ageSec}s ago`;
     }
     els.debugGpsStatus.textContent = status;
+  }
+  if (els.debugGpsDelta) {
+    let deltaText = "Δ: --";
+    if (state.gpsTrackRaw.length >= 2) {
+      const current = state.gpsTrackRaw[state.gpsTrackRaw.length - 1];
+      const previous = state.gpsTrackRaw[state.gpsTrackRaw.length - 2];
+      const origin = { lat: previous.lat, lon: previous.lon };
+      const delta = toMeters(current, origin);
+      const deltaMeters = Math.hypot(delta.x, delta.y);
+      const accuracy = state.position?.coords?.accuracy;
+      const accuracyText = Number.isFinite(accuracy)
+        ? ` ±${formatDistanceWithUnit(accuracy)}`
+        : "";
+      deltaText = `Δ: ${formatDistanceWithUnit(deltaMeters)}${accuracyText}`;
+    }
+    els.debugGpsDelta.textContent = deltaText;
   }
 }
 
