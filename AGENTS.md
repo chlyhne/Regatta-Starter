@@ -1,0 +1,35 @@
+# AGENTS.md
+
+Instructions for coding agents working in this repo.
+
+## Product intent
+- RaceTimer is a minimal, high-contrast race start tool for sailors.
+- UI must stay readable one-handed under stress; keep copy short and buttons large.
+
+## Tech constraints
+- Static PWA: vanilla HTML/CSS/JS modules with no build step or framework.
+- Keep dependencies minimal; Leaflet in `vendor/` is the only map library.
+- Reuse helpers in `format.js`, `geo.js`, `velocity.js`, and `kalman.js` instead of re-implementing logic.
+
+## UX and style
+- Black/white theme with strong contrast.
+- Avoid decorative elements, extra text, or crowded layouts.
+- Avoid small tap targets; prioritize legibility over density.
+
+## Data and storage
+- Settings and saved lines live in `localStorage` via `state.js` and `settings.js`.
+- If you change stored shapes, bump `SETTINGS_VERSION` and add migration logic.
+
+## GPS behavior
+- Race mode should use high-accuracy, high-frequency GPS.
+- Setup and post-start should use lower-intensity GPS to save battery.
+
+## PWA and offline
+- If you add/rename assets, update `ASSETS` and bump `CACHE_NAME` in `sw.js`.
+- Map tiles are networked; the app must still work without tiles once lines are set.
+
+## Debug and QA
+- Debug mode is optional and enabled via `?debug=true`.
+
+## Run locally
+- Open `index.html` directly, or serve the folder with a static server (e.g., `python3 -m http.server`).

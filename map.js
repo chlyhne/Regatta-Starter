@@ -1,4 +1,5 @@
 import { loadSettings as loadSettingsFromStorage, saveSettings as saveSettingsToStorage } from "./settings.js";
+import { toMeters, fromMeters } from "./geo.js";
 
 const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 
@@ -15,6 +16,10 @@ const state = {
   markerA: null,
   markerB: null,
   lineOverlay: null,
+  arrowLine: null,
+  arrowHead: null,
+  portIcon: null,
+  starboardIcon: null,
   line: {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
@@ -54,6 +59,17 @@ function initMap() {
     zoomControl: true,
     center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lon],
     zoom: 14,
+  });
+
+  state.portIcon = L.divIcon({
+    className: "map-mark map-mark-port",
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+  state.starboardIcon = L.divIcon({
+    className: "map-mark map-mark-starboard",
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
 
   const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -116,9 +132,13 @@ function updateMapOverlays() {
 
   if (hasA) {
     if (!state.markerA) {
-      state.markerA = L.marker([state.line.a.lat, state.line.a.lon]).addTo(state.map);
+      state.markerA = L.marker([state.line.a.lat, state.line.a.lon], {
+        icon: state.portIcon,
+        interactive: false,
+      }).addTo(state.map);
     } else {
       state.markerA.setLatLng([state.line.a.lat, state.line.a.lon]);
+      state.markerA.setIcon(state.portIcon);
     }
   } else if (state.markerA) {
     state.map.removeLayer(state.markerA);
@@ -127,9 +147,13 @@ function updateMapOverlays() {
 
   if (hasB) {
     if (!state.markerB) {
-      state.markerB = L.marker([state.line.b.lat, state.line.b.lon]).addTo(state.map);
+      state.markerB = L.marker([state.line.b.lat, state.line.b.lon], {
+        icon: state.starboardIcon,
+        interactive: false,
+      }).addTo(state.map);
     } else {
       state.markerB.setLatLng([state.line.b.lat, state.line.b.lon]);
+      state.markerB.setIcon(state.starboardIcon);
     }
   } else if (state.markerB) {
     state.map.removeLayer(state.markerB);
@@ -137,6 +161,76 @@ function updateMapOverlays() {
   }
 
   if (hasA && hasB) {
+    const origin = {
+      lat: (state.line.a.lat + state.line.b.lat) / 2,
+      lon: (state.line.a.lon + state.line.b.lon) / 2,
+    };
+    const pointA = toMeters(state.line.a, origin);
+    const pointB = toMeters(state.line.b, origin);
+    const lineVec = { x: pointB.x - pointA.x, y: pointB.y - pointA.y };
+    const lineLen = Math.hypot(lineVec.x, lineVec.y);
+    if (lineLen >= 1) {
+      const normal = { x: -lineVec.y / lineLen, y: lineVec.x / lineLen };
+      const tangent = { x: lineVec.x / lineLen, y: lineVec.y / lineLen };
+      const mid = { x: (pointA.x + pointB.x) / 2, y: (pointA.y + pointB.y) / 2 };
+      const arrowLength = Math.min(60, Math.max(15, lineLen * 0.25));
+      const headLength = Math.min(18, Math.max(8, arrowLength * 0.4));
+      const headWidth = headLength * 0.9;
+      const tip = {
+        x: mid.x + normal.x * arrowLength,
+        y: mid.y + normal.y * arrowLength,
+      };
+      const base = {
+        x: tip.x - normal.x * headLength,
+        y: tip.y - normal.y * headLength,
+      };
+      const left = {
+        x: base.x + tangent.x * (headWidth / 2),
+        y: base.y + tangent.y * (headWidth / 2),
+      };
+      const right = {
+        x: base.x - tangent.x * (headWidth / 2),
+        y: base.y - tangent.y * (headWidth / 2),
+      };
+      const stemLatLngs = [
+        fromMeters(mid, origin),
+        fromMeters(base, origin),
+      ];
+      const headLatLngs = [
+        fromMeters(tip, origin),
+        fromMeters(left, origin),
+        fromMeters(right, origin),
+      ];
+      if (!state.arrowLine) {
+        state.arrowLine = L.polyline(stemLatLngs, {
+          color: "#000000",
+          weight: 3,
+          opacity: 0.9,
+        }).addTo(state.map);
+      } else {
+        state.arrowLine.setLatLngs(stemLatLngs);
+      }
+      if (!state.arrowHead) {
+        state.arrowHead = L.polygon(headLatLngs, {
+          color: "#000000",
+          fillColor: "#000000",
+          weight: 1,
+          fillOpacity: 0.9,
+        }).addTo(state.map);
+      } else {
+        state.arrowHead.setLatLngs(headLatLngs);
+      }
+    } else {
+      if (state.arrowLine) {
+        state.map.removeLayer(state.arrowLine);
+        state.arrowLine = null;
+      }
+      if (state.arrowHead) {
+        state.map.removeLayer(state.arrowHead);
+        state.arrowHead = null;
+      }
+    }
+
     const latlngs = [
       [state.line.a.lat, state.line.a.lon],
       [state.line.b.lat, state.line.b.lon],
@@ -149,9 +243,19 @@ function updateMapOverlays() {
     } else {
       state.lineOverlay.setLatLngs(latlngs);
     }
-  } else if (state.lineOverlay) {
-    state.map.removeLayer(state.lineOverlay);
-    state.lineOverlay = null;
+  } else {
+    if (state.lineOverlay) {
+      state.map.removeLayer(state.lineOverlay);
+      state.lineOverlay = null;
+    }
+    if (state.arrowLine) {
+      state.map.removeLayer(state.arrowLine);
+      state.arrowLine = null;
+    }
+    if (state.arrowHead) {
+      state.map.removeLayer(state.arrowHead);
+      state.arrowHead = null;
+    }
   }
 }
 

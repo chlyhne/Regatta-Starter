@@ -71,11 +71,19 @@ body {
 .settings-mode .coords-view,
 .settings-mode .location-view,
 .settings-mode .boat-view,
+.settings-mode .info-view,
 .boat-mode .shell,
 .boat-mode .race-view,
 .boat-mode .coords-view,
 .boat-mode .location-view,
 .boat-mode .settings-view,
+.boat-mode .info-view,
+.info-mode .shell,
+.info-mode .race-view,
+.info-mode .coords-view,
+.info-mode .location-view,
+.info-mode .settings-view,
+.info-mode .boat-view,
 .track-mode .shell,
 .track-mode .race-view,
 .track-mode .coords-view,
@@ -97,6 +105,10 @@ body {
 }
 
 .boat-mode .boat-view {
+  display: flex;
+}
+
+.info-mode .info-view {
   display: flex;
 }
 
@@ -238,6 +250,12 @@ body {
 }
 
 .icon-btn .icon-boat {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.icon-btn .icon-info {
   width: 20px;
   height: 20px;
   display: block;
@@ -590,6 +608,13 @@ button.ghost {
   box-shadow: none;
 }
 
+.race-enter {
+  background: #000000;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px #c00000;
+}
+
 button:active {
   transform: translateY(1px);
 }
@@ -709,6 +734,32 @@ button:active {
 
 .boat-view .input-with-unit input {
   width: 6ch;
+}
+
+.info-text {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: #000000;
+}
+
+.info-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: #000000;
+}
+
+.info-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 1.2rem;
+  list-style: disc;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #000000;
 }
 
 .race-toggle-btn[aria-pressed="true"] {
@@ -867,7 +918,8 @@ button:active {
 .coords-view,
 .location-view,
 .settings-view,
-.boat-view {
+.boat-view,
+.info-view {
   display: none;
   min-height: 100vh;
   flex-direction: column;
