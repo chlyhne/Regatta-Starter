@@ -58,6 +58,8 @@ import {
   formatTimeRemainingHMS,
 } from "./format.js";
 
+const NO_CACHE_KEY = "racetimer-nocache";
+
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
   const { factor } = getDistanceUnitMeta();
@@ -164,17 +166,33 @@ function applyDebugFlagFromUrl() {
   state.debugGpsEnabled = flag;
 }
 
+function syncNoCacheToken() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("nocache");
+  if (token) {
+    sessionStorage.setItem(NO_CACHE_KEY, token);
+  }
+}
+
+function getNoCacheQuery() {
+  const token = sessionStorage.getItem(NO_CACHE_KEY);
+  if (!token) return "";
+  return `?nocache=${encodeURIComponent(token)}`;
+}
+
 function hardReload() {
   const url = new URL(window.location.href);
-  url.searchParams.set("nocache", String(Date.now()));
+  const token = String(Date.now());
+  sessionStorage.setItem(NO_CACHE_KEY, token);
+  url.searchParams.set("nocache", token);
   window.location.replace(url.toString());
 }
 
 function clearNoCacheParam() {
   const url = new URL(window.location.href);
-  if (!url.searchParams.has("nocache")) return;
-  url.searchParams.delete("nocache");
-  history.replaceState(null, "", url.toString());
+  const token = url.searchParams.get("nocache");
+  if (!token) return;
+  sessionStorage.setItem(NO_CACHE_KEY, token);
 }
 
 function setRaceTimingControlsEnabled(enabled) {
@@ -1268,7 +1286,7 @@ function bindEvents() {
   });
 
   els.openMap.addEventListener("click", () => {
-    window.location.href = "map.html";
+    window.location.href = `map.html${getNoCacheQuery()}`;
   });
 
   els.openCoords.addEventListener("click", () => {
@@ -1859,6 +1877,7 @@ function tick() {
 
 loadSettings();
 applyDebugFlagFromUrl();
+syncNoCacheToken();
 initCoordinatePickers();
 initCountdownPicker();
 initHemisphereToggles();

@@ -1,6 +1,8 @@
 import { loadSettings as loadSettingsFromStorage, saveSettings as saveSettingsToStorage } from "./settings.js";
 import { toMeters, fromMeters } from "./geo.js";
 
+const NO_CACHE_KEY = "racetimer-nocache";
+
 const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 
 const els = {
@@ -41,6 +43,14 @@ function saveSettings() {
     line: state.line,
     lineMeta: { name: null, sourceId: null },
   });
+}
+
+function getNoCacheQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("nocache") || sessionStorage.getItem(NO_CACHE_KEY);
+  if (!token) return "";
+  sessionStorage.setItem(NO_CACHE_KEY, token);
+  return `?nocache=${encodeURIComponent(token)}`;
 }
 
 function initMap() {
@@ -342,7 +352,7 @@ function bindEvents() {
   });
 
   els.closeMap.addEventListener("click", () => {
-    window.location.href = "index.html#setup";
+    window.location.href = `index.html${getNoCacheQuery()}#setup`;
   });
 }
 
