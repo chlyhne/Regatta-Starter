@@ -80,22 +80,6 @@ body {
   background: #cce8ff;
 }
 
-.map-mark {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid #000000;
-  background: #000000;
-}
-
-.map-mark-port {
-  background: #d62020;
-}
-
-.map-mark-starboard {
-  background: #10a64a;
-}
-
 .map-crosshair {
   position: absolute;
   top: 50%;

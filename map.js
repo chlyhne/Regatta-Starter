@@ -18,8 +18,6 @@ const state = {
   lineOverlay: null,
   arrowLine: null,
   arrowHead: null,
-  portIcon: null,
-  starboardIcon: null,
   line: {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
@@ -59,17 +57,6 @@ function initMap() {
     zoomControl: true,
     center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lon],
     zoom: 14,
-  });
-
-  state.portIcon = L.divIcon({
-    className: "map-mark map-mark-port",
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
-  state.starboardIcon = L.divIcon({
-    className: "map-mark map-mark-starboard",
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
   });
 
   const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -131,14 +118,22 @@ function updateMapOverlays() {
   const hasB = Number.isFinite(state.line.b.lat) && Number.isFinite(state.line.b.lon);
 
   if (hasA) {
+    const portStyle = {
+      radius: 8,
+      color: "#000000",
+      weight: 2,
+      fillColor: "#d62020",
+      fillOpacity: 1,
+      interactive: false,
+    };
     if (!state.markerA) {
-      state.markerA = L.marker([state.line.a.lat, state.line.a.lon], {
-        icon: state.portIcon,
-        interactive: false,
-      }).addTo(state.map);
+      state.markerA = L.circleMarker(
+        [state.line.a.lat, state.line.a.lon],
+        portStyle
+      ).addTo(state.map);
     } else {
       state.markerA.setLatLng([state.line.a.lat, state.line.a.lon]);
-      state.markerA.setIcon(state.portIcon);
+      state.markerA.setStyle(portStyle);
     }
   } else if (state.markerA) {
     state.map.removeLayer(state.markerA);
@@ -146,14 +141,22 @@ function updateMapOverlays() {
   }
 
   if (hasB) {
+    const starboardStyle = {
+      radius: 8,
+      color: "#000000",
+      weight: 2,
+      fillColor: "#10a64a",
+      fillOpacity: 1,
+      interactive: false,
+    };
     if (!state.markerB) {
-      state.markerB = L.marker([state.line.b.lat, state.line.b.lon], {
-        icon: state.starboardIcon,
-        interactive: false,
-      }).addTo(state.map);
+      state.markerB = L.circleMarker(
+        [state.line.b.lat, state.line.b.lon],
+        starboardStyle
+      ).addTo(state.map);
     } else {
       state.markerB.setLatLng([state.line.b.lat, state.line.b.lon]);
-      state.markerB.setIcon(state.starboardIcon);
+      state.markerB.setStyle(starboardStyle);
     }
   } else if (state.markerB) {
     state.map.removeLayer(state.markerB);
@@ -173,8 +176,8 @@ function updateMapOverlays() {
       const normal = { x: -lineVec.y / lineLen, y: lineVec.x / lineLen };
       const tangent = { x: lineVec.x / lineLen, y: lineVec.y / lineLen };
       const mid = { x: (pointA.x + pointB.x) / 2, y: (pointA.y + pointB.y) / 2 };
-      const arrowLength = Math.min(60, Math.max(15, lineLen * 0.25));
-      const headLength = Math.min(18, Math.max(8, arrowLength * 0.4));
+      const arrowLength = Math.min(180, Math.max(45, lineLen * 0.75));
+      const headLength = Math.min(54, Math.max(24, arrowLength * 0.4));
       const headWidth = headLength * 0.9;
       const tip = {
         x: mid.x + normal.x * arrowLength,
@@ -204,7 +207,7 @@ function updateMapOverlays() {
       if (!state.arrowLine) {
         state.arrowLine = L.polyline(stemLatLngs, {
           color: "#000000",
-          weight: 3,
+          weight: 6,
           opacity: 0.9,
         }).addTo(state.map);
       } else {
@@ -256,6 +259,22 @@ function updateMapOverlays() {
       state.map.removeLayer(state.arrowHead);
       state.arrowHead = null;
     }
+  }
+
+  if (state.arrowLine) {
+    state.arrowLine.bringToBack();
+  }
+  if (state.arrowHead) {
+    state.arrowHead.bringToBack();
+  }
+  if (state.lineOverlay) {
+    state.lineOverlay.bringToFront();
+  }
+  if (state.markerA) {
+    state.markerA.bringToFront();
+  }
+  if (state.markerB) {
+    state.markerB.bringToFront();
   }
 }
 
