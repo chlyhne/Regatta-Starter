@@ -111,6 +111,22 @@ function createDebugPosition() {
   };
 }
 
+function readDebugFlagFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("debug");
+  if (raw === null) return null;
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return null;
+}
+
+function applyDebugFlagFromUrl() {
+  const flag = readDebugFlagFromUrl();
+  if (flag === null) return;
+  state.debugGpsEnabled = flag;
+}
+
 function hardReload() {
   const url = new URL(window.location.href);
   url.searchParams.set("nocache", String(Date.now()));
@@ -1711,6 +1727,7 @@ function tick() {
 }
 
 loadSettings();
+applyDebugFlagFromUrl();
 initCoordinatePickers();
 initCountdownPicker();
 initHemisphereToggles();
