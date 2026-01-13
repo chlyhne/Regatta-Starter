@@ -1687,6 +1687,9 @@ function tick() {
   updateStartDisplay();
   updateCurrentTime();
   updateDebugControls();
+  if (document.body.classList.contains("track-mode")) {
+    renderTrack();
+  }
   if (isGpsStale()) {
     scheduleGpsRetry(handlePosition, handlePositionError);
   }

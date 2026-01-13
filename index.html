@@ -611,21 +611,8 @@
     </section>
 
     <section id="track-view" class="track-view" aria-hidden="true">
-      <div class="coords-panel">
-        <h2>GPS Track</h2>
-        <div class="track-canvas-wrap">
-          <canvas id="track-canvas" width="300" height="300" aria-label="GPS track"></canvas>
-        </div>
-        <div class="track-legend">
-          <span class="track-swatch raw"></span>
-          <span>Raw GPS</span>
-          <span class="track-swatch filtered"></span>
-          <span>Estimated</span>
-        </div>
-        <div class="row stack">
-          <button id="close-track">Done</button>
-        </div>
-      </div>
+      <canvas id="track-canvas" width="300" height="300" aria-label="GPS debug view"></canvas>
+      <button id="close-track" class="track-close">Done</button>
     </section>
 
     <section id="load-line-modal" class="modal" aria-hidden="true">

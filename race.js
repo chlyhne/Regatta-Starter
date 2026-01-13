@@ -122,6 +122,46 @@ function setRaceMetric(metric) {
   updateLineProjection();
 }
 
+function cross2d(a, b) {
+  return a.x * b.y - a.y * b.x;
+}
+
+function distanceToSegment(point, pointA, pointB) {
+  const abx = pointB.x - pointA.x;
+  const aby = pointB.y - pointA.y;
+  const apx = point.x - pointA.x;
+  const apy = point.y - pointA.y;
+  const abLenSq = abx * abx + aby * aby;
+  let t = 0;
+  if (abLenSq > 0) {
+    t = (apx * abx + apy * aby) / abLenSq;
+  }
+  const clampedT = Math.min(1, Math.max(0, t));
+  const closest = {
+    x: pointA.x + abx * clampedT,
+    y: pointA.y + aby * clampedT,
+  };
+  const dx = point.x - closest.x;
+  const dy = point.y - closest.y;
+  return { distance: Math.hypot(dx, dy), t, closest };
+}
+
+function headingIntersectsSegment(point, velocity, pointA, pointB) {
+  if (!velocity || !Number.isFinite(velocity.x) || !Number.isFinite(velocity.y)) {
+    return false;
+  }
+  const speedSq = velocity.x * velocity.x + velocity.y * velocity.y;
+  if (speedSq < 1e-6) return false;
+  const r = velocity;
+  const s = { x: pointB.x - pointA.x, y: pointB.y - pointA.y };
+  const denom = cross2d(r, s);
+  if (Math.abs(denom) < 1e-9) return false;
+  const qp = { x: pointA.x - point.x, y: pointA.y - point.y };
+  const t = cross2d(qp, s) / denom;
+  const u = cross2d(qp, r) / denom;
+  return t >= 0 && u >= 0 && u <= 1;
+}
+
 function computeLineMetrics(position) {
   if (!hasLine() || !position) return null;
   const origin = {
@@ -142,7 +182,16 @@ function computeLineMetrics(position) {
 
   const normal = { x: -lineVec.y / lineLen, y: lineVec.x / lineLen };
   const signedDistance = (boat.x - pointA.x) * normal.x + (boat.y - pointA.y) * normal.y;
-  return { normal, signedDistance, distance: Math.abs(signedDistance), lineLen };
+  const segment = distanceToSegment(boat, pointA, pointB);
+  return {
+    normal,
+    signedDistance,
+    lineLen,
+    boat,
+    pointA,
+    pointB,
+    segmentDistance: segment.distance,
+  };
 }
 
 function isFalseStart(signedDistance) {
@@ -204,9 +253,35 @@ function updateLineProjection() {
     els.lineStatus.textContent = "";
   }
 
-  const { normal, signedDistance, distance, lineLen } = metrics;
+  const { normal, signedDistance, lineLen, boat, pointA, pointB, segmentDistance } =
+    metrics;
   const distanceSign = Math.sign(signedDistance) || 1;
-  state.latestDistance = distance;
+  const distanceToLine = Math.abs(signedDistance);
+  const distanceToSegmentActual = segmentDistance;
+  const bowOffsetMeters = state.useKalman ? state.bowOffsetMeters : 0;
+  let phone = boat;
+  if (bowOffsetMeters > 0) {
+    const speed = Math.hypot(state.velocity.x, state.velocity.y);
+    if (Number.isFinite(speed) && speed > 0) {
+      phone = {
+        x: boat.x - (state.velocity.x / speed) * bowOffsetMeters,
+        y: boat.y - (state.velocity.y / speed) * bowOffsetMeters,
+      };
+    }
+  }
+  const phoneSegment = distanceToSegment(phone, pointA, pointB);
+  let directBow = phone;
+  if (bowOffsetMeters > 0 && phoneSegment.distance > 0) {
+    const ux = (phoneSegment.closest.x - phone.x) / phoneSegment.distance;
+    const uy = (phoneSegment.closest.y - phone.y) / phoneSegment.distance;
+    directBow = {
+      x: phone.x + ux * bowOffsetMeters,
+      y: phone.y + uy * bowOffsetMeters,
+    };
+  }
+  const directSegment = distanceToSegment(directBow, pointA, pointB);
+  const directDistanceToSegment = directSegment.distance;
+  state.latestDistance = distanceToSegmentActual;
   state.latestSignedDistance = signedDistance;
 
   const timeToStart = state.start.startTs
@@ -214,11 +289,15 @@ function updateLineProjection() {
     : 0;
 
   const speed = state.speed;
-  const closingRate =
-    -(state.velocity.x * normal.x + state.velocity.y * normal.y) * distanceSign;
+  const headingHitsLine = headingIntersectsSegment(boat, state.velocity, pointA, pointB);
+  const closingRate = headingHitsLine
+    ? -(state.velocity.x * normal.x + state.velocity.y * normal.y) * distanceSign
+    : Number.NaN;
   const sideSign = isFalseStart(signedDistance) ? -1 : 1;
-  const projectedDirect = (distance - speed * timeToStart) * sideSign;
-  const projectedClosing = (distance - closingRate * timeToStart) * sideSign;
+  const projectedDirect = (directDistanceToSegment - speed * timeToStart) * sideSign;
+  const projectedClosing = Number.isFinite(closingRate)
+    ? (distanceToLine - closingRate * timeToStart) * sideSign
+    : Number.NaN;
   const isClosing = Number.isFinite(closingRate) && closingRate > 0;
   const overshootDirect = Number.isFinite(projectedDirect) && projectedDirect < 0;
   const overshootClosing =
@@ -226,7 +305,9 @@ function updateLineProjection() {
 
   if (els.projDirect) els.projDirect.textContent = formatOverUnder(projectedDirect);
   if (els.distDirect) {
-    els.distDirect.textContent = `Distance to line ${formatDistanceWithUnit(distance)}`;
+    els.distDirect.textContent = `Distance to line ${formatDistanceWithUnit(
+      distanceToSegmentActual
+    )}`;
   }
   if (els.projClosing) els.projClosing.textContent = formatOverUnder(projectedClosing);
   if (els.closingRate) {
@@ -248,9 +329,11 @@ function updateLineProjection() {
   fitRaceText();
   if (els.statusDistance) {
     if (els.statusDistanceValue) {
-      els.statusDistanceValue.textContent = `${formatDistanceValue(distance)}`;
+      els.statusDistanceValue.textContent = `${formatDistanceValue(
+        distanceToSegmentActual
+      )}`;
     } else {
-      els.statusDistance.textContent = `${formatDistanceValue(distance)}`;
+      els.statusDistance.textContent = `${formatDistanceValue(distanceToSegmentActual)}`;
     }
   }
   if (els.statusLineLength) {

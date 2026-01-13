@@ -91,7 +91,7 @@ body {
 }
 
 .track-mode .track-view {
-  display: flex;
+  display: block;
 }
 
 .modal-open #load-line-modal {
@@ -260,6 +260,24 @@ body {
 
 .track-swatch.filtered {
   background: #000000;
+}
+
+.track-swatch.line {
+  background: #000000;
+  height: 4px;
+}
+
+.track-swatch.marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 2px solid #000000;
+  background: #ffffff;
+}
+
+.track-swatch.marker.heading {
+  background: #000000;
+  border-color: #000000;
 }
 
 .gps-status {
@@ -752,8 +770,7 @@ button:active {
 
 .coords-view,
 .location-view,
-.settings-view,
-.track-view {
+.settings-view {
   display: none;
   min-height: 100vh;
   flex-direction: column;
@@ -762,6 +779,38 @@ button:active {
   padding: 24px;
   background: #ffffff;
   color: #000000;
+}
+
+.track-view {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #ffffff;
+  color: #000000;
+  overflow: hidden;
+}
+
+.track-view canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.track-close {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 2;
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-weight: 700;
+  min-width: 140px;
 }
 
 .coords-panel {
