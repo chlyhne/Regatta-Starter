@@ -60,6 +60,24 @@ function getRaceMetricValues(projectedDirect, projectedClosing, speed, closingRa
   };
 }
 
+function formatRaceValue(prefix, value) {
+  if (value === "--") return value;
+  return `${prefix}: ${value}`;
+}
+
+function setRaceValues(directValue, closingValue, closingMiss) {
+  if (els.raceProjDirect) {
+    els.raceProjDirect.textContent = formatRaceValue("D", directValue);
+  }
+  if (els.raceProjClosing) {
+    if (closingMiss) {
+      els.raceProjClosing.innerHTML = '<span class="race-miss">line<br>miss</span>';
+    } else {
+      els.raceProjClosing.textContent = formatRaceValue("C", closingValue);
+    }
+  }
+}
+
 function updateRaceValueStyles(directOver, closingOver) {
   if (els.raceProjDirect) {
     els.raceProjDirect.classList.toggle("race-value-over", Boolean(directOver));
@@ -368,12 +386,7 @@ function updateLineProjection() {
     speed,
     closingRate
   );
-  if (els.raceProjDirect) {
-    els.raceProjDirect.textContent = raceValues.direct;
-  }
-  if (els.raceProjClosing) {
-    els.raceProjClosing.textContent = raceValues.closing;
-  }
+  setRaceValues(raceValues.direct, raceValues.closing, !isClosing);
   updateRaceValueStyles(overshootDirect, overshootClosing);
   fitRaceText();
   if (els.statusDistance) {
@@ -423,14 +436,9 @@ function updateLineProjection() {
         freeze.race.speed,
         freeze.race.closingRate
       );
-      if (els.raceProjDirect) {
-        els.raceProjDirect.textContent = frozenValues.direct;
-      }
-      if (els.raceProjClosing) {
-        els.raceProjClosing.textContent = frozenValues.closing;
-      }
       const frozenClosing =
         Number.isFinite(freeze.race.closingRate) && freeze.race.closingRate > 0;
+      setRaceValues(frozenValues.direct, frozenValues.closing, !frozenClosing);
       const frozenOvershootDirect =
         Number.isFinite(freeze.race.projectedDirect) && freeze.race.projectedDirect < 0;
       const frozenOvershootClosing =

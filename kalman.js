@@ -6,6 +6,14 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function getProcessNoiseVariance() {
+  const baseQ = 0.8;
+  const baseLength = 3;
+  const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : 0;
+  const effectiveLength = Math.max(baseLength, boatLength);
+  return baseQ * (baseLength / effectiveLength);
+}
+
 function initKalmanState(position) {
   const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
   const accuracy = clamp(position.coords.accuracy || 10, 3, 50);
@@ -57,11 +65,7 @@ function applyKalmanFilter(position) {
   const dt = clamp(dtRaw, 0.2, 5);
   filter.lastTs = timestamp;
 
-  const baseQ = 0.8;
-  const baseLength = 3;
-  const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : 0;
-  const effectiveLength = Math.max(baseLength, boatLength);
-  const q = baseQ * (baseLength / effectiveLength);
+  const q = getProcessNoiseVariance();
   const dt2 = dt * dt;
   const dt3 = dt2 * dt;
   const dt4 = dt2 * dt2;
@@ -193,4 +197,77 @@ function applyKalmanFilter(position) {
   };
 }
 
-export { applyKalmanFilter };
+function getKalmanPositionCovariance() {
+  if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
+  const covariance = state.kalman.P;
+  const xx = covariance[0];
+  const xy = (covariance[1] + covariance[4]) / 2;
+  const yy = covariance[5];
+  if (![xx, xy, yy].every(Number.isFinite)) return null;
+  return { xx, xy, yy };
+}
+
+function getKalmanPredictedPositionCovariance(seconds) {
+  if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return getKalmanPositionCovariance();
+  }
+  const q = getProcessNoiseVariance();
+  let remaining = seconds;
+  let P = state.kalman.P.slice();
+  const stepSeconds = 0.5;
+  while (remaining > 0) {
+    const dt = Math.min(stepSeconds, remaining);
+    remaining -= dt;
+    const dt2 = dt * dt;
+    const dt3 = dt2 * dt;
+    const dt4 = dt2 * dt2;
+
+    const F = [
+      1, 0, dt, 0,
+      0, 1, 0, dt,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+    ];
+    const Q = [
+      q * dt4 / 4, 0, q * dt3 / 2, 0,
+      0, q * dt4 / 4, 0, q * dt3 / 2,
+      q * dt3 / 2, 0, q * dt2, 0,
+      0, q * dt3 / 2, 0, q * dt2,
+    ];
+
+    const FP = new Array(16).fill(0);
+    for (let r = 0; r < 4; r += 1) {
+      for (let c = 0; c < 4; c += 1) {
+        FP[r * 4 + c] =
+          F[r * 4 + 0] * P[0 * 4 + c] +
+          F[r * 4 + 1] * P[1 * 4 + c] +
+          F[r * 4 + 2] * P[2 * 4 + c] +
+          F[r * 4 + 3] * P[3 * 4 + c];
+      }
+    }
+    const PPred = new Array(16).fill(0);
+    for (let r = 0; r < 4; r += 1) {
+      for (let c = 0; c < 4; c += 1) {
+        PPred[r * 4 + c] =
+          FP[r * 4 + 0] * F[c * 4 + 0] +
+          FP[r * 4 + 1] * F[c * 4 + 1] +
+          FP[r * 4 + 2] * F[c * 4 + 2] +
+          FP[r * 4 + 3] * F[c * 4 + 3] +
+          Q[r * 4 + c];
+      }
+    }
+    P = PPred;
+  }
+  const xx = P[0];
+  const xy = (P[1] + P[4]) / 2;
+  const yy = P[5];
+  if (![xx, xy, yy].every(Number.isFinite)) return null;
+  return { xx, xy, yy };
+}
+
+export {
+  applyKalmanFilter,
+  getKalmanPositionCovariance,
+  getKalmanPredictedPositionCovariance,
+};

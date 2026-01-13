@@ -1,6 +1,23 @@
 import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "./state.js";
 import { els } from "./dom.js";
 import { toMeters } from "./geo.js";
+import {
+  getKalmanPositionCovariance,
+  getKalmanPredictedPositionCovariance,
+} from "./kalman.js";
+
+const TRACK_PADDING = 16;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 50;
+const viewState = {
+  origin: null,
+  center: null,
+  scale: null,
+  bound: false,
+  pointers: new Map(),
+  panStart: null,
+  pinchStart: null,
+};
 
 function appendTrackPoint(list, point) {
   list.push(point);
@@ -47,15 +64,180 @@ function distanceToSegment(point, pointA, pointB) {
   return { distance: Math.hypot(dx, dy), closest };
 }
 
+function covarianceToAxes(covariance) {
+  if (!covariance) return null;
+  const xx = covariance.xx;
+  const xy = covariance.xy;
+  const yy = covariance.yy;
+  if (![xx, xy, yy].every(Number.isFinite)) return null;
+  const diff = xx - yy;
+  const term = Math.sqrt(Math.max(0, diff * diff + 4 * xy * xy));
+  const lambdaMajor = 0.5 * (xx + yy + term);
+  const lambdaMinor = 0.5 * (xx + yy - term);
+  if (lambdaMajor <= 0 || lambdaMinor <= 0) return null;
+  return {
+    major: Math.sqrt(lambdaMajor),
+    minor: Math.sqrt(lambdaMinor),
+    angle: 0.5 * Math.atan2(2 * xy, diff),
+  };
+}
+
+function axesEndpoints(center, axes) {
+  if (!center || !axes) return null;
+  const cos = Math.cos(axes.angle);
+  const sin = Math.sin(axes.angle);
+  const majorVec = { x: cos * axes.major, y: sin * axes.major };
+  const minorVec = { x: -sin * axes.minor, y: cos * axes.minor };
+  return {
+    majorStart: { x: center.x - majorVec.x, y: center.y - majorVec.y },
+    majorEnd: { x: center.x + majorVec.x, y: center.y + majorVec.y },
+    minorStart: { x: center.x - minorVec.x, y: center.y - minorVec.y },
+    minorEnd: { x: center.x + minorVec.x, y: center.y + minorVec.y },
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getCanvasSize(canvas) {
+  const width = canvas.clientWidth || canvas.width || 300;
+  const height = canvas.clientHeight || canvas.height || 300;
+  return { width, height };
+}
+
+function getViewBounds(width, height, scale, center) {
+  const viewWidth = Math.max(1, width - TRACK_PADDING * 2);
+  const viewHeight = Math.max(1, height - TRACK_PADDING * 2);
+  const viewWidthMeters = viewWidth / scale;
+  const viewHeightMeters = viewHeight / scale;
+  const minX = center.x - viewWidthMeters / 2;
+  const maxY = center.y + viewHeightMeters / 2;
+  return {
+    minX,
+    maxX: minX + viewWidthMeters,
+    minY: maxY - viewHeightMeters,
+    maxY,
+  };
+}
+
+function screenToWorld(canvas, x, y) {
+  if (!viewState.center || !viewState.scale) return null;
+  const { width, height } = getCanvasSize(canvas);
+  const bounds = getViewBounds(width, height, viewState.scale, viewState.center);
+  return {
+    x: bounds.minX + (x - TRACK_PADDING) / viewState.scale,
+    y: bounds.maxY - (y - TRACK_PADDING) / viewState.scale,
+  };
+}
+
+function zoomAt(canvas, nextScale, x, y) {
+  if (!viewState.center || !viewState.scale) return;
+  const before = screenToWorld(canvas, x, y);
+  viewState.scale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
+  const after = screenToWorld(canvas, x, y);
+  if (!before || !after) return;
+  viewState.center.x += before.x - after.x;
+  viewState.center.y += before.y - after.y;
+}
+
+function bindTrackControls() {
+  if (!els.trackCanvas || viewState.bound) return;
+  const canvas = els.trackCanvas;
+  viewState.bound = true;
+
+  canvas.addEventListener(
+    "wheel",
+    (event) => {
+      if (!viewState.scale || !viewState.center) return;
+      event.preventDefault();
+      const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+      zoomAt(canvas, viewState.scale * zoomFactor, event.offsetX, event.offsetY);
+      renderTrack();
+    },
+    { passive: false }
+  );
+
+  if (!("PointerEvent" in window)) return;
+
+  canvas.addEventListener("pointerdown", (event) => {
+    canvas.setPointerCapture(event.pointerId);
+    viewState.pointers.set(event.pointerId, { x: event.offsetX, y: event.offsetY });
+    if (viewState.pointers.size === 1) {
+      viewState.panStart = {
+        x: event.offsetX,
+        y: event.offsetY,
+        center: { ...viewState.center },
+      };
+    }
+    if (viewState.pointers.size === 2) {
+      const [first, second] = Array.from(viewState.pointers.values());
+      viewState.pinchStart = {
+        distance: Math.hypot(second.x - first.x, second.y - first.y),
+        scale: viewState.scale,
+        centerX: (first.x + second.x) / 2,
+        centerY: (first.y + second.y) / 2,
+      };
+      viewState.panStart = null;
+    }
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    const existing = viewState.pointers.get(event.pointerId);
+    if (!existing) return;
+    existing.x = event.offsetX;
+    existing.y = event.offsetY;
+    if (viewState.pointers.size === 2 && viewState.pinchStart) {
+      const [first, second] = Array.from(viewState.pointers.values());
+      const distance = Math.hypot(second.x - first.x, second.y - first.y);
+      if (viewState.pinchStart.distance > 0) {
+        const nextScale = viewState.pinchStart.scale * (distance / viewState.pinchStart.distance);
+        const centerX = (first.x + second.x) / 2;
+        const centerY = (first.y + second.y) / 2;
+        zoomAt(canvas, nextScale, centerX, centerY);
+        renderTrack();
+      }
+      return;
+    }
+    if (viewState.panStart && viewState.center && viewState.scale) {
+      const dx = event.offsetX - viewState.panStart.x;
+      const dy = event.offsetY - viewState.panStart.y;
+      viewState.center.x = viewState.panStart.center.x - dx / viewState.scale;
+      viewState.center.y = viewState.panStart.center.y + dy / viewState.scale;
+      renderTrack();
+    }
+  });
+
+  const endPointer = (event) => {
+    viewState.pointers.delete(event.pointerId);
+    if (viewState.pointers.size < 2) {
+      viewState.pinchStart = null;
+    }
+    if (viewState.pointers.size === 1) {
+      const [remaining] = viewState.pointers.values();
+      viewState.panStart = {
+        x: remaining.x,
+        y: remaining.y,
+        center: { ...viewState.center },
+      };
+    } else {
+      viewState.panStart = null;
+    }
+  };
+
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+}
+
 function renderTrack() {
   if (!els.trackCanvas) return;
+  bindTrackControls();
   const canvas = els.trackCanvas;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
   const dpr = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth || 300;
-  const height = canvas.clientHeight || 300;
+  const { width, height } = getCanvasSize(canvas);
   canvas.width = Math.max(1, Math.round(width * dpr));
   canvas.height = Math.max(1, Math.round(height * dpr));
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -94,11 +276,15 @@ function renderTrack() {
     return;
   }
 
-  const meanLat =
-    basePoints.reduce((sum, p) => sum + p.lat, 0) / basePoints.length;
-  const meanLon =
-    basePoints.reduce((sum, p) => sum + p.lon, 0) / basePoints.length;
-  const origin = { lat: meanLat, lon: meanLon };
+  let origin = viewState.origin;
+  if (!origin) {
+    const meanLat =
+      basePoints.reduce((sum, p) => sum + p.lat, 0) / basePoints.length;
+    const meanLon =
+      basePoints.reduce((sum, p) => sum + p.lon, 0) / basePoints.length;
+    origin = { lat: meanLat, lon: meanLon };
+    viewState.origin = origin;
+  }
 
   const toXY = (point) => toMeters(point, origin);
   const bounds = {
@@ -148,9 +334,24 @@ function renderTrack() {
     addBounds(boat);
   }
 
+  const positionAxes = covarianceToAxes(getKalmanPositionCovariance());
+  if (boat && positionAxes) {
+    const endpoints = axesEndpoints(boat, positionAxes);
+    if (endpoints) {
+      addBounds(endpoints.majorStart);
+      addBounds(endpoints.majorEnd);
+      addBounds(endpoints.minorStart);
+      addBounds(endpoints.minorEnd);
+    }
+  }
+
   const timeToStart = state.start.startTs
     ? Math.max(0, (state.start.startTs - Date.now()) / 1000)
     : null;
+  const startAxes =
+    Number.isFinite(timeToStart) && timeToStart > 0
+      ? covarianceToAxes(getKalmanPredictedPositionCovariance(timeToStart))
+      : null;
   const speed = state.speed;
   const velocity = state.velocity;
   const bowOffsetMeters = state.useKalman ? state.bowOffsetMeters : 0;
@@ -189,6 +390,15 @@ function renderTrack() {
         y: projectedDirectFrom.y + uy * speed * timeToStart,
       };
       addBounds(projectedDirect);
+      if (startAxes) {
+        const endpoints = axesEndpoints(projectedDirect, startAxes);
+        if (endpoints) {
+          addBounds(endpoints.majorStart);
+          addBounds(endpoints.majorEnd);
+          addBounds(endpoints.minorStart);
+          addBounds(endpoints.minorEnd);
+        }
+      }
     }
   }
 
@@ -210,6 +420,15 @@ function renderTrack() {
         y: boat.y + velocity.y * timeToStart,
       };
       addBounds(projectedHeading);
+      if (startAxes) {
+        const endpoints = axesEndpoints(projectedHeading, startAxes);
+        if (endpoints) {
+          addBounds(endpoints.majorStart);
+          addBounds(endpoints.majorEnd);
+          addBounds(endpoints.minorStart);
+          addBounds(endpoints.minorEnd);
+        }
+      }
     }
   }
 
@@ -222,25 +441,44 @@ function renderTrack() {
     return;
   }
 
-  const padding = 16;
-  const spanX = Math.max(1, bounds.maxX - bounds.minX);
-  const spanY = Math.max(1, bounds.maxY - bounds.minY);
-  const scale = Math.min(
-    (width - padding * 2) / spanX,
-    (height - padding * 2) / spanY
-  );
+  if (!viewState.center) {
+    viewState.center = {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2,
+    };
+  }
+  if (!viewState.scale) {
+    const spanX = Math.max(1, bounds.maxX - bounds.minX);
+    const spanY = Math.max(1, bounds.maxY - bounds.minY);
+    const fitScale = Math.min(
+      (width - TRACK_PADDING * 2) / spanX,
+      (height - TRACK_PADDING * 2) / spanY
+    );
+    viewState.scale = clamp(fitScale, MIN_SCALE, MAX_SCALE);
+  }
+  const scale = viewState.scale;
+  const viewBounds = getViewBounds(width, height, scale, viewState.center);
 
   const project = (point) => {
     const xy = toXY(point);
-    const x = padding + (xy.x - bounds.minX) * scale;
-    const y = padding + (bounds.maxY - xy.y) * scale;
+    const x = TRACK_PADDING + (xy.x - viewBounds.minX) * scale;
+    const y = TRACK_PADDING + (viewBounds.maxY - xy.y) * scale;
     return { x, y };
   };
   const projectMeters = (xMeters, yMeters) => {
-    const x = padding + (xMeters - bounds.minX) * scale;
-    const y = padding + (bounds.maxY - yMeters) * scale;
+    const x = TRACK_PADDING + (xMeters - viewBounds.minX) * scale;
+    const y = TRACK_PADDING + (viewBounds.maxY - yMeters) * scale;
     return { x, y };
   };
+  const latestPoint = (filteredPoints.length ? filteredPoints : rawPoints)[
+    (filteredPoints.length ? filteredPoints : rawPoints).length - 1
+  ];
+  let dot = null;
+  if (latestPoint) {
+    dot = project(latestPoint);
+  } else if (boat) {
+    dot = projectMeters(boat.x, boat.y);
+  }
 
   const drawLine = (points, color, lineWidth) => {
     if (!points.length) return;
@@ -301,25 +539,67 @@ function renderTrack() {
     }
     ctx.restore();
   };
+  const drawScreenSegment = (start, end, color, lineWidth) => {
+    if (!start || !end) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.restore();
+  };
+  const drawScreenDot = (center, radius, color) => {
+    if (!center) return;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+  const drawAxesAt = (center, axes, color, majorWidth, minorWidth) => {
+    if (!center || !axes) return;
+    const cos = Math.cos(axes.angle);
+    const sin = Math.sin(axes.angle);
+    const majorX = cos * axes.major * scale;
+    const majorY = -sin * axes.major * scale;
+    const minorX = -sin * axes.minor * scale;
+    const minorY = -cos * axes.minor * scale;
+    drawScreenSegment(
+      { x: center.x - majorX, y: center.y - majorY },
+      { x: center.x + majorX, y: center.y + majorY },
+      color,
+      majorWidth
+    );
+    drawScreenSegment(
+      { x: center.x - minorX, y: center.y - minorY },
+      { x: center.x + minorX, y: center.y + minorY },
+      color,
+      minorWidth
+    );
+  };
 
   const gridSpacing = 10;
-  const gridStartX = Math.floor(bounds.minX / gridSpacing) * gridSpacing;
-  const gridEndX = Math.ceil(bounds.maxX / gridSpacing) * gridSpacing;
-  const gridStartY = Math.floor(bounds.minY / gridSpacing) * gridSpacing;
-  const gridEndY = Math.ceil(bounds.maxY / gridSpacing) * gridSpacing;
+  const gridStartX = Math.floor(viewBounds.minX / gridSpacing) * gridSpacing;
+  const gridEndX = Math.ceil(viewBounds.maxX / gridSpacing) * gridSpacing;
+  const gridStartY = Math.floor(viewBounds.minY / gridSpacing) * gridSpacing;
+  const gridEndY = Math.ceil(viewBounds.maxY / gridSpacing) * gridSpacing;
 
   ctx.strokeStyle = "#e2e2e2";
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = gridStartX; x <= gridEndX; x += gridSpacing) {
-    const p1 = projectMeters(x, bounds.minY);
-    const p2 = projectMeters(x, bounds.maxY);
+    const p1 = projectMeters(x, viewBounds.minY);
+    const p2 = projectMeters(x, viewBounds.maxY);
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
   }
   for (let y = gridStartY; y <= gridEndY; y += gridSpacing) {
-    const p1 = projectMeters(bounds.minX, y);
-    const p2 = projectMeters(bounds.maxX, y);
+    const p1 = projectMeters(viewBounds.minX, y);
+    const p2 = projectMeters(viewBounds.maxX, y);
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
   }
@@ -344,15 +624,22 @@ function renderTrack() {
     drawSquare(projectedHeading, 10, "#000000", "#ffffff");
   }
 
-  const latest = (filteredPoints.length ? filteredPoints : rawPoints)[
-    (filteredPoints.length ? filteredPoints : rawPoints).length - 1
-  ];
-  if (latest) {
-    const { x, y } = project(latest);
-    ctx.fillStyle = "#000000";
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
+  if (positionAxes && dot) {
+    drawAxesAt(dot, positionAxes, "#c00000", 2.5, 2);
+  }
+  if (startAxes && projectedDirect) {
+    const center = projectMeters(projectedDirect.x, projectedDirect.y);
+    drawAxesAt(center, startAxes, "#c00000", 2, 1.5);
+    drawScreenDot(center, 3, "#c00000");
+  }
+  if (startAxes && projectedHeading) {
+    const center = projectMeters(projectedHeading.x, projectedHeading.y);
+    drawAxesAt(center, startAxes, "#c00000", 2, 1.5);
+    drawScreenDot(center, 3, "#c00000");
+  }
+
+  if (dot) {
+    drawScreenDot(dot, 3, "#c00000");
   } else if (boat) {
     drawCircle(boat, 3, "#000000");
   }
