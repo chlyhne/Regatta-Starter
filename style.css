@@ -224,7 +224,7 @@ body {
   background: transparent;
   color: #000000;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   font-size: 1.1rem;
   font-weight: 700;
   line-height: 1;
@@ -573,7 +573,7 @@ input:focus {
 button {
   border: none;
   border-radius: 999px;
-  padding: 14px 20px;
+  padding: 10px 16px;
   background: #000000;
   color: #ffffff;
   font-weight: 700;
@@ -658,7 +658,7 @@ button:active {
   border: none;
   background: transparent;
   color: #000000;
-  padding: 8px 12px;
+  padding: 6px 10px;
   font-weight: 700;
   font-size: 0.9rem;
   letter-spacing: 0.04em;
@@ -675,7 +675,7 @@ button:active {
 
 .settings-view .race-toggle-btn,
 .boat-view .race-toggle-btn {
-  padding: 6px 10px;
+  padding: 5px 8px;
   min-height: 36px;
   font-size: 0.85rem;
 }
@@ -730,7 +730,7 @@ button:active {
   border: none;
   background: transparent;
   color: #000000;
-  padding: 6px 10px;
+  padding: 5px 8px;
   font-weight: 700;
   font-size: 0.85rem;
   letter-spacing: 0.04em;
@@ -838,7 +838,7 @@ button:active {
   background: transparent;
   color: #000000;
   border-radius: 999px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   font-weight: 700;
   cursor: pointer;
   width: 100%;
@@ -905,7 +905,7 @@ button:active {
   color: #000000;
   border: 2px solid #000000;
   border-radius: 999px;
-  padding: 12px 22px;
+  padding: 8px 16px;
   font-weight: 700;
   min-width: 140px;
 }
