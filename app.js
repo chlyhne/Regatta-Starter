@@ -351,8 +351,21 @@ function loadSavedLines() {
   }
 }
 
+function hasStartLine() {
+  return (
+    Number.isFinite(state.line.a.lat) &&
+    Number.isFinite(state.line.a.lon) &&
+    Number.isFinite(state.line.b.lat) &&
+    Number.isFinite(state.line.b.lon)
+  );
+}
+
 function updateLineNameDisplay() {
   if (!els.statusLineName) return;
+  if (!hasStartLine()) {
+    els.statusLineName.textContent = "Line not set";
+    return;
+  }
   els.statusLineName.textContent = state.lineName || "--";
 }
 
@@ -964,11 +977,12 @@ function updateStartDisplay() {
   setRaceTimingControlsEnabled(canAdjustStart);
 
   if (!state.start.startTs) {
+    const missingStartText = "Set start time";
     if (els.statusTime) {
-      els.statusTime.textContent = "--";
+      els.statusTime.textContent = missingStartText;
     }
     if (els.statusStartTime) {
-      els.statusStartTime.textContent = "--";
+      els.statusStartTime.textContent = missingStartText;
     }
     els.raceCountdown.textContent = "--";
     if (els.raceStartClock) {
@@ -1122,7 +1136,7 @@ function handlePosition(position) {
 function handlePositionError(err) {
   if (!els.gpsIcon) return;
   els.gpsIcon.classList.add("bad");
-  els.gpsIcon.classList.remove("ok");
+  els.gpsIcon.classList.remove("ok", "warn");
   els.gpsIcon.title = `GPS error: ${err.message}`;
   if (!state.debugGpsEnabled && err && (err.code === 2 || err.code === 3)) {
     scheduleGpsRetry(handlePosition, handlePositionError);

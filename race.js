@@ -199,7 +199,56 @@ function isFalseStart(signedDistance) {
 }
 
 function updateLineProjection() {
-  if (!hasLine() || !state.position) {
+  if (!hasLine()) {
+    if (els.projDirect) {
+      els.projDirect.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
+    }
+    if (els.distDirect) {
+      els.distDirect.textContent = `Distance to line -- ${formatUnitLabel(
+        getDistanceUnitMeta().label
+      )}`;
+    }
+    if (els.projClosing) {
+      els.projClosing.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
+    }
+    if (els.closingRate) {
+      els.closingRate.textContent = `Closing rate -- ${formatUnitLabel(
+        getSpeedUnitMeta().label
+      )}`;
+    }
+    if (els.raceProjDirect) {
+      els.raceProjDirect.textContent = "--";
+    }
+    if (els.raceProjClosing) {
+      els.raceProjClosing.textContent = "--";
+    }
+    updateRaceValueStyles(false, false);
+    fitRaceText();
+    const missingLineText = "Set start line";
+    if (els.statusDistance) {
+      if (els.statusDistanceValue) {
+        els.statusDistanceValue.textContent = missingLineText;
+      } else {
+        els.statusDistance.textContent = missingLineText;
+      }
+    }
+    if (els.statusLineLength) {
+      if (els.statusLineLengthValue) {
+        els.statusLineLengthValue.textContent = missingLineText;
+      } else {
+        els.statusLineLength.textContent = missingLineText;
+      }
+    }
+    if (els.statusDistanceUnit) {
+      els.statusDistanceUnit.textContent = "";
+    }
+    if (els.statusLineLengthUnit) {
+      els.statusLineLengthUnit.textContent = "";
+    }
+    return;
+  }
+
+  if (!state.position) {
     if (els.projDirect) {
       els.projDirect.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
     }

@@ -7,7 +7,7 @@ import { BUILD_STAMP } from "./build.js";
 function updateGPSDisplay() {
   if (!els.gpsIcon) return;
   if (!state.position) {
-    els.gpsIcon.classList.remove("ok", "bad");
+    els.gpsIcon.classList.remove("ok", "bad", "warn");
     els.gpsIcon.classList.add("bad");
     els.gpsIcon.title = "GPS waiting";
     return;
@@ -15,10 +15,13 @@ function updateGPSDisplay() {
   const accuracy = state.position.coords.accuracy;
   if (accuracy <= 10) {
     els.gpsIcon.classList.add("ok");
-    els.gpsIcon.classList.remove("bad");
+    els.gpsIcon.classList.remove("bad", "warn");
+  } else if (accuracy <= 25) {
+    els.gpsIcon.classList.add("warn");
+    els.gpsIcon.classList.remove("ok", "bad");
   } else {
     els.gpsIcon.classList.add("bad");
-    els.gpsIcon.classList.remove("ok");
+    els.gpsIcon.classList.remove("ok", "warn");
   }
   els.gpsIcon.title = `GPS accuracy ${formatDistanceWithUnit(accuracy)}`;
 }

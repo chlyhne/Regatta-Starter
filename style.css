@@ -335,6 +335,10 @@ body {
   background: #00ff00;
 }
 
+.gps-icon.warn {
+  background: #ffb000;
+}
+
 .gps-icon.bad {
   background: #ff0000;
 }

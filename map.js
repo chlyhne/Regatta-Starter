@@ -18,6 +18,7 @@ const state = {
   lineOverlay: null,
   arrowLine: null,
   arrowHead: null,
+  arrowLabel: null,
   line: {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
@@ -58,6 +59,16 @@ function initMap() {
     center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lon],
     zoom: 14,
   });
+
+  state.map.createPane("arrowPane");
+  state.map.createPane("linePane");
+  state.map.createPane("markPane");
+  state.map.getPane("arrowPane").style.zIndex = "380";
+  state.map.getPane("linePane").style.zIndex = "390";
+  state.map.getPane("markPane").style.zIndex = "400";
+  state.map.getPane("arrowPane").style.pointerEvents = "none";
+  state.map.getPane("linePane").style.pointerEvents = "none";
+  state.map.getPane("markPane").style.pointerEvents = "none";
 
   const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap contributors",
@@ -125,6 +136,7 @@ function updateMapOverlays() {
       fillColor: "#d62020",
       fillOpacity: 1,
       interactive: false,
+      pane: "markPane",
     };
     if (!state.markerA) {
       state.markerA = L.circleMarker(
@@ -148,6 +160,7 @@ function updateMapOverlays() {
       fillColor: "#10a64a",
       fillOpacity: 1,
       interactive: false,
+      pane: "markPane",
     };
     if (!state.markerB) {
       state.markerB = L.circleMarker(
@@ -204,11 +217,17 @@ function updateMapOverlays() {
         fromMeters(left, origin),
         fromMeters(right, origin),
       ];
+      const labelPoint = {
+        x: tip.x + normal.x * (headLength * 0.9),
+        y: tip.y + normal.y * (headLength * 0.9),
+      };
+      const labelLatLng = fromMeters(labelPoint, origin);
       if (!state.arrowLine) {
         state.arrowLine = L.polyline(stemLatLngs, {
           color: "#000000",
           weight: 6,
           opacity: 0.9,
+          pane: "arrowPane",
         }).addTo(state.map);
       } else {
         state.arrowLine.setLatLngs(stemLatLngs);
@@ -219,9 +238,24 @@ function updateMapOverlays() {
           fillColor: "#000000",
           weight: 1,
           fillOpacity: 0.9,
+          pane: "arrowPane",
         }).addTo(state.map);
       } else {
         state.arrowHead.setLatLngs(headLatLngs);
+      }
+      if (!state.arrowLabel) {
+        state.arrowLabel = L.marker([labelLatLng.lat, labelLatLng.lon], {
+          icon: L.divIcon({
+            className: "map-arrow-label",
+            html: "Sail this way",
+            iconSize: [1, 1],
+            iconAnchor: [0, 0],
+          }),
+          pane: "arrowPane",
+          interactive: false,
+        }).addTo(state.map);
+      } else {
+        state.arrowLabel.setLatLng([labelLatLng.lat, labelLatLng.lon]);
       }
     } else {
       if (state.arrowLine) {
@@ -231,6 +265,10 @@ function updateMapOverlays() {
       if (state.arrowHead) {
         state.map.removeLayer(state.arrowHead);
         state.arrowHead = null;
+      }
+      if (state.arrowLabel) {
+        state.map.removeLayer(state.arrowLabel);
+        state.arrowLabel = null;
       }
     }
 
@@ -242,6 +280,7 @@ function updateMapOverlays() {
       state.lineOverlay = L.polyline(latlngs, {
         color: "#0f6bff",
         weight: 4,
+        pane: "linePane",
       }).addTo(state.map);
     } else {
       state.lineOverlay.setLatLngs(latlngs);
@@ -259,23 +298,12 @@ function updateMapOverlays() {
       state.map.removeLayer(state.arrowHead);
       state.arrowHead = null;
     }
+    if (state.arrowLabel) {
+      state.map.removeLayer(state.arrowLabel);
+      state.arrowLabel = null;
+    }
   }
 
-  if (state.arrowLine) {
-    state.arrowLine.bringToBack();
-  }
-  if (state.arrowHead) {
-    state.arrowHead.bringToBack();
-  }
-  if (state.lineOverlay) {
-    state.lineOverlay.bringToFront();
-  }
-  if (state.markerA) {
-    state.markerA.bringToFront();
-  }
-  if (state.markerB) {
-    state.markerB.bringToFront();
-  }
 }
 
 window.addEventListener("resize", () => {
