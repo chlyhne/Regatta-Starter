@@ -22,6 +22,25 @@
             <span>GPS</span>
             <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
           </div>
+          <button id="open-boat" class="icon-btn" type="button" aria-label="Boat">
+            <svg class="icon-boat" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M12 3v11M12 3l6 7h-6"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M3 17h18l-3 4H6l-3-4z"
+                fill="none"
+                stroke="currentColor"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+            </svg>
+          </button>
           <button id="open-settings" class="icon-btn" type="button" aria-label="Settings">
             <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
@@ -516,96 +535,95 @@
     <section id="settings-view" class="settings-view" aria-hidden="true">
       <div class="coords-panel">
         <h2>Settings</h2>
-        <div class="row stack">
-          <div>
-            <div class="hint">Advanced position estimation</div>
-            <div class="race-toggle" role="group" aria-label="Kalman filter">
-              <button id="kalman-on" class="race-toggle-btn" type="button" aria-pressed="true">
-                On
-              </button>
-              <button id="kalman-off" class="race-toggle-btn" type="button" aria-pressed="false">
-                Off
-              </button>
-            </div>
+        <div class="row setting-row">
+          <div class="setting-label">Sound</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Sound">
+            <button id="sound-on" class="race-toggle-btn" type="button" aria-pressed="true">
+              On
+            </button>
+            <button id="sound-off" class="race-toggle-btn" type="button" aria-pressed="false">
+              Off
+            </button>
           </div>
         </div>
-        <div class="row stack">
-          <div>
-            <label id="bow-offset-label" for="bow-offset">Phone to bow</label>
-            <div class="input-with-unit">
-              <input
-                id="bow-offset"
-                type="number"
-                inputmode="decimal"
-                step="0.1"
-                min="0"
-                placeholder="0"
-              />
-              <span id="bow-offset-unit" class="input-unit">[m]</span>
-              <span id="bow-offset-na" class="input-na">N/A</span>
-            </div>
+        <div class="row setting-row">
+          <div class="setting-label">Time format</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Time format">
+            <button id="time-format-24" class="race-toggle-btn" type="button" aria-pressed="true">
+              24 h
+            </button>
+            <button id="time-format-12" class="race-toggle-btn" type="button" aria-pressed="false">
+              12 h
+            </button>
           </div>
         </div>
-        <div class="row stack">
-          <div>
-            <div class="hint">Sound</div>
-            <div class="race-toggle" role="group" aria-label="Sound">
-              <button id="sound-on" class="race-toggle-btn" type="button" aria-pressed="true">
-                On
-              </button>
-              <button id="sound-off" class="race-toggle-btn" type="button" aria-pressed="false">
-                Off
-              </button>
-            </div>
+        <div class="row setting-row">
+          <div class="setting-label">Speed unit</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Speed unit">
+            <button id="speed-unit-kn" class="race-toggle-btn" type="button" aria-pressed="true">
+              kn
+            </button>
+            <button id="speed-unit-ms" class="race-toggle-btn" type="button" aria-pressed="false">
+              m/s
+            </button>
+            <button id="speed-unit-mph" class="race-toggle-btn" type="button" aria-pressed="false">
+              mph
+            </button>
           </div>
         </div>
-        <div class="row stack">
-          <div>
-            <div class="hint">Time format</div>
-            <div class="race-toggle" role="group" aria-label="Time format">
-              <button id="time-format-24" class="race-toggle-btn" type="button" aria-pressed="true">
-                24 h
-              </button>
-              <button id="time-format-12" class="race-toggle-btn" type="button" aria-pressed="false">
-                AM/PM
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="row stack">
-          <div>
-            <div class="hint">Speed unit</div>
-            <div class="race-toggle" role="group" aria-label="Speed unit">
-              <button id="speed-unit-ms" class="race-toggle-btn" type="button" aria-pressed="true">
-                [m/s]
-              </button>
-              <button id="speed-unit-kn" class="race-toggle-btn" type="button" aria-pressed="false">
-                [kn]
-              </button>
-              <button id="speed-unit-mph" class="race-toggle-btn" type="button" aria-pressed="false">
-                [mph]
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="row stack">
-          <div>
-            <div class="hint">Distance unit</div>
-            <div class="race-toggle" role="group" aria-label="Distance unit">
-              <button id="distance-unit-m" class="race-toggle-btn" type="button" aria-pressed="true">
-                [m]
-              </button>
-              <button id="distance-unit-ft" class="race-toggle-btn" type="button" aria-pressed="false">
-                [ft]
-              </button>
-              <button id="distance-unit-yd" class="race-toggle-btn" type="button" aria-pressed="false">
-                [yd]
-              </button>
-            </div>
+        <div class="row setting-row">
+          <div class="setting-label">Distance unit</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Distance unit">
+            <button id="distance-unit-m" class="race-toggle-btn" type="button" aria-pressed="true">
+              m
+            </button>
+            <button id="distance-unit-ft" class="race-toggle-btn" type="button" aria-pressed="false">
+              ft
+            </button>
+            <button id="distance-unit-yd" class="race-toggle-btn" type="button" aria-pressed="false">
+              yd
+            </button>
           </div>
         </div>
         <div class="row stack">
           <button id="close-settings">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="boat-view" class="boat-view" aria-hidden="true">
+      <div class="coords-panel">
+        <h2>Boat</h2>
+        <div class="row setting-row">
+          <label for="boat-length" class="setting-label">Boat length</label>
+          <div class="input-with-unit">
+            <input
+              id="boat-length"
+              type="number"
+              inputmode="decimal"
+              step="0.1"
+              min="0"
+              placeholder="0"
+            />
+            <span id="boat-length-unit" class="input-unit">[m]</span>
+          </div>
+        </div>
+        <div class="row setting-row">
+          <label for="bow-offset" class="setting-label">Phone to bow</label>
+          <div class="input-with-unit">
+            <input
+              id="bow-offset"
+              type="number"
+              inputmode="decimal"
+              step="0.1"
+              min="0"
+              placeholder="0"
+            />
+            <span id="bow-offset-unit" class="input-unit">[m]</span>
+          </div>
+        </div>
+        <div class="row stack">
+          <button id="close-boat">Done</button>
         </div>
       </div>
     </section>

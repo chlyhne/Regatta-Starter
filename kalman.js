@@ -57,7 +57,11 @@ function applyKalmanFilter(position) {
   const dt = clamp(dtRaw, 0.2, 5);
   filter.lastTs = timestamp;
 
-  const q = 0.8;
+  const baseQ = 0.8;
+  const baseLength = 3;
+  const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : 0;
+  const effectiveLength = Math.max(baseLength, boatLength);
+  const q = baseQ * (baseLength / effectiveLength);
   const dt2 = dt * dt;
   const dt3 = dt2 * dt;
   const dt4 = dt2 * dt2;

@@ -17,9 +17,10 @@ const DEFAULT_SETTINGS = {
   useKalman: true,
   soundEnabled: true,
   timeFormat: "24h",
-  speedUnit: "ms",
+  speedUnit: "kn",
   distanceUnit: "m",
   bowOffsetMeters: 0,
+  boatLengthMeters: 0,
   start: {
     mode: "countdown",
     countdownSeconds: 300,
@@ -130,6 +131,7 @@ function normalizeSettings(raw) {
     speedUnit: normalizeSpeedUnit(raw?.speedUnit),
     distanceUnit: normalizeDistanceUnit(raw?.distanceUnit),
     bowOffsetMeters: Math.max(0, Number.parseFloat(raw?.bowOffsetMeters) || 0),
+    boatLengthMeters: Math.max(0, Number.parseFloat(raw?.boatLengthMeters) || 0),
     start: normalizeStart(raw?.start),
   };
 }

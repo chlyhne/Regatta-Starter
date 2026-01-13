@@ -70,6 +70,12 @@ body {
 .settings-mode .race-view,
 .settings-mode .coords-view,
 .settings-mode .location-view,
+.settings-mode .boat-view,
+.boat-mode .shell,
+.boat-mode .race-view,
+.boat-mode .coords-view,
+.boat-mode .location-view,
+.boat-mode .settings-view,
 .track-mode .shell,
 .track-mode .race-view,
 .track-mode .coords-view,
@@ -87,6 +93,10 @@ body {
 }
 
 .settings-mode .settings-view {
+  display: flex;
+}
+
+.boat-mode .boat-view {
   display: flex;
 }
 
@@ -222,6 +232,12 @@ body {
 }
 
 .icon-btn .icon-gear {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.icon-btn .icon-boat {
   width: 20px;
   height: 20px;
   display: block;
@@ -488,10 +504,46 @@ input:focus {
   margin-top: 12px;
 }
 
+.setting-row {
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
+
+.setting-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0;
+  white-space: normal;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.setting-row .race-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.setting-row .input-with-unit {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  max-width: 320px;
+}
+
+.setting-row label.setting-label {
+  display: inline-flex;
+  align-items: center;
+}
+
 .input-with-unit {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.input-with-unit input {
+  min-width: 0;
 }
 
 .input-with-unit input {
@@ -597,6 +649,11 @@ button:active {
   width: 100%;
 }
 
+.race-toggle.horizontal {
+  flex-direction: row;
+  width: auto;
+}
+
 .race-toggle-btn {
   border: none;
   background: transparent;
@@ -611,8 +668,47 @@ button:active {
   min-height: 44px;
 }
 
+.race-toggle.horizontal .race-toggle-btn {
+  width: auto;
+  min-width: 72px;
+}
+
+.settings-view .race-toggle-btn,
+.boat-view .race-toggle-btn {
+  padding: 6px 10px;
+  min-height: 36px;
+  font-size: 0.85rem;
+}
+
+.settings-view .race-toggle.horizontal .race-toggle-btn,
+.boat-view .race-toggle.horizontal .race-toggle-btn {
+  min-width: 56px;
+}
+
 .race-toggle-btn + .race-toggle-btn {
   border-top: 2px solid #000000;
+}
+
+.race-toggle.horizontal .race-toggle-btn + .race-toggle-btn {
+  border-top: none;
+  border-left: 2px solid #000000;
+}
+
+.boat-view .setting-row {
+  flex-wrap: nowrap;
+}
+
+.boat-view .setting-label {
+  white-space: normal;
+}
+
+.boat-view .input-with-unit {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
+.boat-view .input-with-unit input {
+  width: 6ch;
 }
 
 .race-toggle-btn[aria-pressed="true"] {
@@ -770,7 +866,8 @@ button:active {
 
 .coords-view,
 .location-view,
-.settings-view {
+.settings-view,
+.boat-view {
   display: none;
   min-height: 100vh;
   flex-direction: column;
