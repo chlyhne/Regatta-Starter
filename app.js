@@ -111,6 +111,18 @@ function createDebugPosition() {
   };
 }
 
+function hardReload() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("nocache", String(Date.now()));
+  window.location.replace(url.toString());
+}
+
+function clearNoCacheParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("nocache")) return;
+  url.searchParams.delete("nocache");
+  history.replaceState(null, "", url.toString());
+}
 
 function setRaceTimingControlsEnabled(enabled) {
   const disabled = !enabled;
@@ -1541,7 +1553,7 @@ function bindEvents() {
 
   if (els.debugRefresh) {
     els.debugRefresh.addEventListener("click", () => {
-      window.location.reload();
+      hardReload();
     });
   }
 
@@ -1710,6 +1722,7 @@ updateRaceMetricLabels();
 bindEvents();
 initGeolocation();
 registerServiceWorker();
+clearNoCacheParam();
 updateStartDisplay();
 updateGPSDisplay();
 updateCurrentTime();

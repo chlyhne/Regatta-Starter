@@ -49,13 +49,36 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return (
-        cached ||
-        fetch(event.request).catch(() => {
-          return caches.match("./index.html");
-        })
-      );
-    })
+    (async () => {
+      let bypassCache = false;
+      const requestUrl = new URL(event.request.url);
+      if (requestUrl.searchParams.has("nocache")) {
+        bypassCache = true;
+      } else if (event.clientId) {
+        const client = await clients.get(event.clientId);
+        if (client) {
+          const clientUrl = new URL(client.url);
+          bypassCache = clientUrl.searchParams.has("nocache");
+        }
+      }
+
+      if (bypassCache) {
+        try {
+          return await fetch(event.request, { cache: "reload" });
+        } catch {
+          const fallback = await caches.match("./index.html");
+          return fallback || Response.error();
+        }
+      }
+
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      try {
+        return await fetch(event.request);
+      } catch {
+        const fallback = await caches.match("./index.html");
+        return fallback || Response.error();
+      }
+    })()
   );
 });
