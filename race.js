@@ -62,7 +62,7 @@ function getRaceMetricValues(projectedDirect, projectedClosing, speed, closingRa
 
 function formatRaceValue(prefix, value) {
   if (value === "--") return value;
-  return `${prefix}: ${value}`;
+  return `${prefix} ${value}`;
 }
 
 function setRaceValues(directValue, closingValue, closingMiss) {
@@ -71,7 +71,7 @@ function setRaceValues(directValue, closingValue, closingMiss) {
   }
   if (els.raceProjClosing) {
     if (closingMiss) {
-      els.raceProjClosing.innerHTML = '<span class="race-miss">line<br>miss</span>';
+      els.raceProjClosing.textContent = "line miss";
     } else {
       els.raceProjClosing.textContent = formatRaceValue("C", closingValue);
     }

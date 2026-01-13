@@ -857,7 +857,8 @@ button:active {
 
 .race-miss {
   display: inline-block;
-  line-height: 0.5;
+  line-height: 0.9;
+  text-align: center;
   white-space: normal;
 }
 

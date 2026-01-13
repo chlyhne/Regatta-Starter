@@ -14,6 +14,12 @@ function getProcessNoiseVariance() {
   return baseQ * (baseLength / effectiveLength);
 }
 
+function getSpeedScale(speed) {
+  const speedKnots = Number.isFinite(speed) ? speed * 1.943844 : 0;
+  const minKnots = 1;
+  return Math.max(speedKnots, minKnots) / 3;
+}
+
 function initKalmanState(position) {
   const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
   const accuracy = clamp(position.coords.accuracy || 10, 3, 50);
@@ -65,7 +71,10 @@ function applyKalmanFilter(position) {
   const dt = clamp(dtRaw, 0.2, 5);
   filter.lastTs = timestamp;
 
-  const q = getProcessNoiseVariance();
+  const qBase = getProcessNoiseVariance();
+  const speedScale = getSpeedScale(Math.hypot(filter.x[2], filter.x[3]));
+  const qPos = qBase;
+  const qVel = qBase * speedScale;
   const dt2 = dt * dt;
   const dt3 = dt2 * dt;
   const dt4 = dt2 * dt2;
@@ -77,10 +86,10 @@ function applyKalmanFilter(position) {
     0, 0, 0, 1,
   ];
   const Q = [
-    q * dt4 / 4, 0, q * dt3 / 2, 0,
-    0, q * dt4 / 4, 0, q * dt3 / 2,
-    q * dt3 / 2, 0, q * dt2, 0,
-    0, q * dt3 / 2, 0, q * dt2,
+    qPos * dt4 / 4, 0, qVel * dt3 / 2, 0,
+    0, qPos * dt4 / 4, 0, qVel * dt3 / 2,
+    qVel * dt3 / 2, 0, qVel * dt2, 0,
+    0, qVel * dt3 / 2, 0, qVel * dt2,
   ];
 
   const x = filter.x;
@@ -212,7 +221,12 @@ function getKalmanPredictedPositionCovariance(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return getKalmanPositionCovariance();
   }
-  const q = getProcessNoiseVariance();
+  const qBase = getProcessNoiseVariance();
+  const speedScale = getSpeedScale(
+    Math.hypot(state.kalman.x[2], state.kalman.x[3])
+  );
+  const qPos = qBase;
+  const qVel = qBase * speedScale;
   let remaining = seconds;
   let P = state.kalman.P.slice();
   const stepSeconds = 0.5;
@@ -230,10 +244,10 @@ function getKalmanPredictedPositionCovariance(seconds) {
       0, 0, 0, 1,
     ];
     const Q = [
-      q * dt4 / 4, 0, q * dt3 / 2, 0,
-      0, q * dt4 / 4, 0, q * dt3 / 2,
-      q * dt3 / 2, 0, q * dt2, 0,
-      0, q * dt3 / 2, 0, q * dt2,
+      qPos * dt4 / 4, 0, qVel * dt3 / 2, 0,
+      0, qPos * dt4 / 4, 0, qVel * dt3 / 2,
+      qVel * dt3 / 2, 0, qVel * dt2, 0,
+      0, qVel * dt3 / 2, 0, qVel * dt2,
     ];
 
     const FP = new Array(16).fill(0);
