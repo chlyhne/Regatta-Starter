@@ -1,14 +1,15 @@
 import { state } from "./state.js";
 import { toMeters, fromMeters } from "./geo.js";
 import { computeVelocityFromHeading } from "./velocity.js";
+import { KALMAN_TUNING } from "./tuning.js";
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
 function getProcessNoiseVariance() {
-  const baseQ = 0.8;
-  const baseLength = 3;
+  const baseQ = KALMAN_TUNING.processNoise.baseAccelerationVariance;
+  const baseLength = KALMAN_TUNING.processNoise.baseBoatLengthMeters;
   const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : 0;
   const effectiveLength = Math.max(baseLength, boatLength);
   return baseQ * (baseLength / effectiveLength);
@@ -16,13 +17,16 @@ function getProcessNoiseVariance() {
 
 function getSpeedScale(speed) {
   const speedKnots = Number.isFinite(speed) ? speed * 1.943844 : 0;
-  const minKnots = 1;
-  return Math.max(speedKnots, minKnots) / 3;
+  const minKnots = KALMAN_TUNING.processNoise.speedScale.minKnots;
+  const anchorKnots = KALMAN_TUNING.processNoise.speedScale.anchorKnots;
+  return Math.max(speedKnots, minKnots) / anchorKnots;
 }
 
 function initKalmanState(position) {
   const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
-  const accuracy = clamp(position.coords.accuracy || 10, 3, 50);
+  const accuracyDefault = KALMAN_TUNING.measurementNoise.accuracyDefaultMeters;
+  const accuracyClamp = KALMAN_TUNING.measurementNoise.accuracyClampMeters;
+  const accuracy = clamp(position.coords.accuracy || accuracyDefault, accuracyClamp.min, accuracyClamp.max);
   let vx = 0;
   let vy = 0;
   if (Number.isFinite(position.coords.speed) && Number.isFinite(position.coords.heading)) {
@@ -31,6 +35,7 @@ function initKalmanState(position) {
     vy = velocity.y;
   }
   const sigma2 = accuracy ** 2;
+  const velVar = KALMAN_TUNING.init.velocityVariance;
   return {
     origin,
     lastTs: position.timestamp || Date.now(),
@@ -38,8 +43,8 @@ function initKalmanState(position) {
     P: [
       sigma2, 0, 0, 0,
       0, sigma2, 0, 0,
-      0, 0, 25, 0,
-      0, 0, 0, 25,
+      0, 0, velVar, 0,
+      0, 0, 0, velVar,
     ],
   };
 }
@@ -68,7 +73,8 @@ function applyKalmanFilter(position) {
     };
   }
 
-  const dt = clamp(dtRaw, 0.2, 5);
+  const dtClamp = KALMAN_TUNING.timing.dtClampSeconds;
+  const dt = clamp(dtRaw, dtClamp.min, dtClamp.max);
   filter.lastTs = timestamp;
 
   const qBase = getProcessNoiseVariance();
@@ -129,7 +135,9 @@ function applyKalmanFilter(position) {
     filter.origin
   );
   const z = [measurement.x, measurement.y];
-  const accuracy = clamp(position.coords.accuracy || 10, 3, 50);
+  const accuracyDefault = KALMAN_TUNING.measurementNoise.accuracyDefaultMeters;
+  const accuracyClamp = KALMAN_TUNING.measurementNoise.accuracyClampMeters;
+  const accuracy = clamp(position.coords.accuracy || accuracyDefault, accuracyClamp.min, accuracyClamp.max);
   const r = accuracy ** 2;
   const S00 = PPred[0] + r;
   const S01 = PPred[1];
@@ -229,7 +237,7 @@ function getKalmanPredictedPositionCovariance(seconds) {
   const qVel = qBase * speedScale;
   let remaining = seconds;
   let P = state.kalman.P.slice();
-  const stepSeconds = 0.5;
+  const stepSeconds = KALMAN_TUNING.timing.covariancePredictStepSeconds;
   while (remaining > 0) {
     const dt = Math.min(stepSeconds, remaining);
     remaining -= dt;
