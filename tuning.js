@@ -8,8 +8,9 @@
 // - We use a constant-velocity (CV) model with continuous white acceleration noise.
 // - `q` below is the acceleration variance (units ~ (m/s²)²). Larger `q` lets the
 //   velocity estimate change faster (more responsive, more noise).
-// - Boat length scaling: bigger boats typically change speed/heading more slowly,
-//   so we reduce `q` linearly with boat length (capped at the baseline length).
+// - Boat length scaling: for similar displacement boats, typical acceleration scales
+//   roughly as 1/L, so acceleration variance scales as 1/L^2. We reduce `q` with L^2
+//   above an anchor length (capped at the anchor so smaller boats don't increase `q`).
 // - Speed scaling: for very low speeds, GPS headings/velocities are unreliable, so
 //   we keep a minimum responsiveness. Above 1 knot we scale linearly with speed,
 //   anchored so the historical/static tuning corresponds to 3 knots.
@@ -44,4 +45,3 @@ const KALMAN_TUNING = {
 };
 
 export { KALMAN_TUNING };
-

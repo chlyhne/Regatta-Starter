@@ -12,7 +12,8 @@ function getProcessNoiseVariance() {
   const baseLength = KALMAN_TUNING.processNoise.baseBoatLengthMeters;
   const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : 0;
   const effectiveLength = Math.max(baseLength, boatLength);
-  return baseQ * (baseLength / effectiveLength);
+  const ratio = baseLength / effectiveLength;
+  return baseQ * ratio * ratio;
 }
 
 function getSpeedScale(speed) {
