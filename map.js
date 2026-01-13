@@ -80,10 +80,13 @@ function initMap() {
   state.map.getPane("linePane").style.pointerEvents = "none";
   state.map.getPane("markPane").style.pointerEvents = "none";
 
-  const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap contributors",
-    maxZoom: 19,
-  }).addTo(state.map);
+  const tiles = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      attribution: "Tiles &copy; Esri",
+      maxZoom: 19,
+    }
+  ).addTo(state.map);
 
   if (els.mapStatus) {
     const size = state.map.getSize();

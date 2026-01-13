@@ -81,6 +81,9 @@ body {
 }
 
 .map-arrow-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: #ffffff;
   color: #000000;
   border: 2px solid #000000;
@@ -92,6 +95,9 @@ body {
   white-space: nowrap;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  box-sizing: border-box;
+  width: auto !important;
+  height: auto !important;
 }
 
 .map-crosshair {
