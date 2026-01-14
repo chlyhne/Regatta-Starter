@@ -144,6 +144,71 @@ function cross2d(a, b) {
   return a.x * b.y - a.y * b.x;
 }
 
+function formatCompass16(degrees) {
+  if (!Number.isFinite(degrees)) return "--";
+  const labels = [
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+  ];
+  const normalized = ((degrees % 360) + 360) % 360;
+  const index = Math.round(normalized / 22.5) % labels.length;
+  return labels[index];
+}
+
+function computeLineLength() {
+  if (!hasLine()) return null;
+  const origin = {
+    lat: (state.line.a.lat + state.line.b.lat) / 2,
+    lon: (state.line.a.lon + state.line.b.lon) / 2,
+  };
+  const pointA = toMeters(state.line.a, origin);
+  const pointB = toMeters(state.line.b, origin);
+  const lineLen = Math.hypot(pointB.x - pointA.x, pointB.y - pointA.y);
+  return Number.isFinite(lineLen) && lineLen >= 1 ? lineLen : null;
+}
+
+function computeStartDirection() {
+  if (!hasLine()) return null;
+  const origin = {
+    lat: (state.line.a.lat + state.line.b.lat) / 2,
+    lon: (state.line.a.lon + state.line.b.lon) / 2,
+  };
+  const pointA = toMeters(state.line.a, origin);
+  const pointB = toMeters(state.line.b, origin);
+  const lineVec = { x: pointB.x - pointA.x, y: pointB.y - pointA.y };
+  const lineLen = Math.hypot(lineVec.x, lineVec.y);
+  if (lineLen < 1) return null;
+  const normal = { x: -lineVec.y / lineLen, y: lineVec.x / lineLen };
+  const bearingDegrees =
+    ((Math.atan2(normal.x, normal.y) * 180) / Math.PI + 360) % 360;
+  return formatCompass16(bearingDegrees);
+}
+
+function getStartDirectionStatusText() {
+  if (!hasLine()) return "Set start line";
+  const direction = computeStartDirection();
+  if (!direction) return "Line too short";
+  return direction;
+}
+
+function getStartDirectionElement() {
+  return els.statusStartDirection || document.getElementById("status-start-direction");
+}
+
 function distanceToSegment(point, pointA, pointB) {
   const abx = pointB.x - pointA.x;
   const aby = pointB.y - pointA.y;
@@ -263,6 +328,10 @@ function updateLineProjection() {
     if (els.statusLineLengthUnit) {
       els.statusLineLengthUnit.textContent = "";
     }
+    const startDirectionEl = getStartDirectionElement();
+    if (startDirectionEl) {
+      startDirectionEl.textContent = getStartDirectionStatusText();
+    }
     return;
   }
 
@@ -299,11 +368,17 @@ function updateLineProjection() {
       }
     }
     if (els.statusLineLength) {
+      const lineLen = computeLineLength();
+      const lineText = lineLen ? `${formatDistanceValue(lineLen)}` : "Line too short";
       if (els.statusLineLengthValue) {
-        els.statusLineLengthValue.textContent = "--";
+        els.statusLineLengthValue.textContent = lineText;
       } else {
-        els.statusLineLength.textContent = "--";
+        els.statusLineLength.textContent = lineText;
       }
+    }
+    const startDirectionEl = getStartDirectionElement();
+    if (startDirectionEl) {
+      startDirectionEl.textContent = getStartDirectionStatusText();
     }
     updateStatusUnitLabels();
     return;
@@ -313,6 +388,10 @@ function updateLineProjection() {
   if (!metrics) {
     if (els.lineStatus) {
       els.lineStatus.textContent = "Line too short";
+    }
+    const startDirectionEl = getStartDirectionElement();
+    if (startDirectionEl) {
+      startDirectionEl.textContent = "Line too short";
     }
     return;
   }
@@ -406,6 +485,10 @@ function updateLineProjection() {
     }
   }
   updateStatusUnitLabels();
+  const startDirectionEl = getStartDirectionElement();
+  if (startDirectionEl) {
+    startDirectionEl.textContent = getStartDirectionStatusText();
+  }
 
   if (state.start.startTs && timeToStart <= 0 && !state.start.freeze) {
     const nextFalseStart = isFalseStart(signedDistance);

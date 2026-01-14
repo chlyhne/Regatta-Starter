@@ -38,10 +38,11 @@ body {
 
 .map-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-direction: row;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .map-btn {
@@ -49,13 +50,15 @@ body {
   background: #ffffff;
   color: #000000;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 6px 4px;
   font-weight: 600;
-  font-size: 1rem;
-  letter-spacing: 0.04em;
+  font-size: clamp(0.78rem, 2.9vw, 0.95rem);
+  letter-spacing: 0;
   cursor: pointer;
-  min-width: 92px;
+  flex: 1 1 0;
+  min-width: 0;
   text-align: center;
+  white-space: nowrap;
 }
 
 .map-btn.set {

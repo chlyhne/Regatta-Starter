@@ -9,6 +9,7 @@ const els = {
   mapTitle: document.getElementById("map-title"),
   setA: document.getElementById("set-map-a"),
   setB: document.getElementById("set-map-b"),
+  swap: document.getElementById("swap-map"),
   closeMap: document.getElementById("close-map"),
   mapStatus: document.getElementById("map-status"),
 };
@@ -21,6 +22,7 @@ const state = {
   arrowLine: null,
   arrowHead: null,
   arrowLabel: null,
+  arrowLabelHalfDiagonalPx: null,
   line: {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
@@ -30,6 +32,36 @@ const state = {
     b: false,
   },
 };
+
+function getArrowLabelHalfDiagonalPx() {
+  if (Number.isFinite(state.arrowLabelHalfDiagonalPx)) {
+    return state.arrowLabelHalfDiagonalPx;
+  }
+  const probe = document.createElement("div");
+  probe.className = "map-arrow-label";
+  probe.textContent = "Sail this way";
+  probe.style.position = "absolute";
+  probe.style.left = "-9999px";
+  probe.style.top = "-9999px";
+  probe.style.visibility = "hidden";
+  document.body.appendChild(probe);
+  const rect = probe.getBoundingClientRect();
+  probe.remove();
+  const halfDiag = Math.hypot(rect.width / 2, rect.height / 2);
+  state.arrowLabelHalfDiagonalPx = halfDiag;
+  return halfDiag;
+}
+
+function getMetersPerPixel(latlng) {
+  if (!state.map || typeof L === "undefined") return null;
+  const point = state.map.latLngToContainerPoint(latlng);
+  const deltaPx = 50;
+  const point2 = L.point(point.x + deltaPx, point.y);
+  const latlng2 = state.map.containerPointToLatLng(point2);
+  const meters = state.map.distance(latlng, latlng2);
+  if (!Number.isFinite(meters) || meters <= 0) return null;
+  return meters / deltaPx;
+}
 
 function loadSettings() {
   const settings = loadSettingsFromStorage();
@@ -69,6 +101,7 @@ function initMap() {
     center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lon],
     zoom: 14,
   });
+  state.map.on("zoomend", () => updateMapOverlays());
 
   state.map.createPane("arrowPane");
   state.map.createPane("linePane");
@@ -234,7 +267,19 @@ function updateMapOverlays() {
         x: tip.x + normal.x * (headLength * 0.9),
         y: tip.y + normal.y * (headLength * 0.9),
       };
-      const labelLatLng = fromMeters(labelPoint, origin);
+      const midLatLng = fromMeters(mid, origin);
+      const metersPerPixel = getMetersPerPixel(L.latLng(midLatLng.lat, midLatLng.lon));
+      const halfDiagPx = getArrowLabelHalfDiagonalPx();
+      const marginPx = 8;
+      const extraMeters =
+        Number.isFinite(metersPerPixel) && Number.isFinite(halfDiagPx)
+          ? metersPerPixel * (halfDiagPx + marginPx)
+          : 6;
+      const safeLabelPoint = {
+        x: labelPoint.x + normal.x * extraMeters,
+        y: labelPoint.y + normal.y * extraMeters,
+      };
+      const labelLatLng = fromMeters(safeLabelPoint, origin);
       if (!state.arrowLine) {
         state.arrowLine = L.polyline(stemLatLngs, {
           color: "#000000",
@@ -367,6 +412,25 @@ function bindEvents() {
   };
   els.closeMap.addEventListener("touchend", close, { passive: false });
   els.closeMap.addEventListener("pointerup", close);
+
+  if (els.swap) {
+    els.swap.addEventListener("click", () => {
+      const nextA = { ...state.line.b };
+      const nextB = { ...state.line.a };
+      state.line.a = nextA;
+      state.line.b = nextB;
+      const nextSetA = state.sessionSet.b;
+      const nextSetB = state.sessionSet.a;
+      state.sessionSet.a = nextSetA;
+      state.sessionSet.b = nextSetB;
+      saveSettings();
+      updateSetButtons();
+      updateMapOverlays();
+      if (els.mapStatus) {
+        els.mapStatus.textContent = "Marks swapped.";
+      }
+    });
+  }
 }
 
 loadSettings();

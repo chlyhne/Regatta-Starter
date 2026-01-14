@@ -1324,6 +1324,18 @@ function bindEvents() {
     });
   }
 
+  if (els.swapCoords) {
+    els.swapCoords.addEventListener("click", () => {
+      swapStartLineMarks();
+    });
+  }
+
+  if (els.swapLocation) {
+    els.swapLocation.addEventListener("click", () => {
+      swapStartLineMarks();
+    });
+  }
+
   els.openCoords.addEventListener("click", () => {
     setView("coords");
   });
@@ -1400,6 +1412,12 @@ function bindEvents() {
     };
     state.savedLines.unshift(entry);
     saveSavedLines();
+    state.lineName = entry.name || null;
+    state.lineSourceId = entry.id;
+    state.selectedLineId = entry.id;
+    saveSettings();
+    updateLineNameDisplay();
+    updateLineProjection();
   });
 
   if (els.loadLine) {

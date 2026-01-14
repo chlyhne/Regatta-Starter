@@ -77,6 +77,8 @@
           <span id="status-line-length-value">--</span>
           <span id="status-line-length-unit" class="value-unit">[m]</span>
         </div>
+        <div class="hint">Start direction</div>
+        <div id="status-start-direction" class="value">--</div>
         <div class="hint">Start time</div>
         <div id="status-start-time" class="value">--</div>
         <div class="hint">Time until start</div>
@@ -522,6 +524,7 @@
         </div>
 
         <div class="row stack">
+          <button id="swap-coords" class="ghost" type="button">Swap marks</button>
           <button id="close-coords">Done</button>
         </div>
       </div>
@@ -533,6 +536,7 @@
         <div class="row stack">
           <button id="use-a" class="ghost">Set port mark (GPS)</button>
           <button id="use-b" class="ghost">Set starboard mark (GPS)</button>
+          <button id="swap-location" class="ghost" type="button">Swap marks</button>
         </div>
         <div class="row stack">
           <button id="close-location">Done</button>
