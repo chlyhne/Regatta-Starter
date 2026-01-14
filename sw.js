@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v73";
+const CACHE_NAME = "racetimer-v74";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,6 +24,7 @@ const ASSETS = [
   "./map.js",
   "./docs/kalman.md",
   "./manifest.json",
+  "./boat.svg",
   "./icon.svg",
   "./vendor/leaflet.css",
   "./vendor/leaflet.js",

@@ -18,6 +18,74 @@ const viewState = {
   panStart: null,
   pinchStart: null,
 };
+const BOAT_SVG_PATH = "./boat.svg";
+const boatSvg = {
+  image: null,
+  width: 0,
+  height: 0,
+  loading: false,
+  ready: false,
+};
+
+function parseSvgLength(value) {
+  if (!value) return Number.NaN;
+  const parsed = Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function loadBoatSvg() {
+  if (boatSvg.loading || boatSvg.ready) return;
+  boatSvg.loading = true;
+  fetch(BOAT_SVG_PATH)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error("Failed to load boat svg");
+      }
+      return response.text();
+    })
+    .then((text) => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, "image/svg+xml");
+      const svg = doc.querySelector("svg");
+      if (!svg) {
+        throw new Error("Invalid boat svg");
+      }
+      const viewBox = svg.getAttribute("viewBox");
+      let width = Number.NaN;
+      let height = Number.NaN;
+      if (viewBox) {
+        const parts = viewBox.split(/[\s,]+/).map(Number);
+        if (parts.length >= 4) {
+          width = parts[2];
+          height = parts[3];
+        }
+      }
+      if (!Number.isFinite(width) || !Number.isFinite(height)) {
+        width = parseSvgLength(svg.getAttribute("width"));
+        height = parseSvgLength(svg.getAttribute("height"));
+      }
+      boatSvg.width = Number.isFinite(width) && width > 0 ? width : 1;
+      boatSvg.height = Number.isFinite(height) && height > 0 ? height : 1;
+
+      const blob = new Blob([text], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        boatSvg.image = img;
+        boatSvg.ready = true;
+        boatSvg.loading = false;
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => {
+        boatSvg.loading = false;
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    })
+    .catch(() => {
+      boatSvg.loading = false;
+    });
+}
 
 function appendTrackPoint(list, point) {
   list.push(point);
@@ -235,6 +303,8 @@ function renderTrack() {
   const canvas = els.trackCanvas;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+
+  loadBoatSvg();
 
   const dpr = window.devicePixelRatio || 1;
   const { width, height } = getCanvasSize(canvas);
@@ -638,12 +708,7 @@ function renderTrack() {
     drawSquare(projectedHeading, 10, "#000000", "#ffffff");
   }
 
-  const drawBoatWedge = () => {
-    if (!boat) return;
-    const lengthMeters = Number.isFinite(state.boatLengthMeters)
-      ? state.boatLengthMeters
-      : 0;
-    if (!Number.isFinite(lengthMeters) || lengthMeters <= 0) return;
+  const drawBoatWedge = (lengthMeters) => {
     const speedMetersPerSecond = Math.hypot(state.velocity.x, state.velocity.y);
     const ux = speedMetersPerSecond > 1e-6 ? state.velocity.x / speedMetersPerSecond : 0;
     const uy = speedMetersPerSecond > 1e-6 ? state.velocity.y / speedMetersPerSecond : 1;
@@ -682,7 +747,37 @@ function renderTrack() {
     ctx.restore();
   };
 
-  drawBoatWedge();
+  const drawBoatSvg = () => {
+    if (!boat) return;
+    const lengthMeters = Number.isFinite(state.boatLengthMeters)
+      ? state.boatLengthMeters
+      : 0;
+    if (!Number.isFinite(lengthMeters) || lengthMeters <= 0) return;
+    if (!boatSvg.ready || !boatSvg.image) {
+      drawBoatWedge(lengthMeters);
+      return;
+    }
+
+    const lengthPx = lengthMeters * scale;
+    if (!Number.isFinite(lengthPx) || lengthPx <= 0) return;
+    const aspect = boatSvg.width > 0 && boatSvg.height > 0
+      ? boatSvg.width / boatSvg.height
+      : 0.3;
+    const widthPx = lengthPx * aspect;
+    const bowScreen = projectMeters(boat.x, boat.y);
+    const speedMetersPerSecond = Math.hypot(state.velocity.x, state.velocity.y);
+    const angle = speedMetersPerSecond > 1e-6
+      ? Math.atan2(state.velocity.x, state.velocity.y)
+      : 0;
+
+    ctx.save();
+    ctx.translate(bowScreen.x, bowScreen.y);
+    ctx.rotate(angle);
+    ctx.drawImage(boatSvg.image, -widthPx / 2, 0, widthPx, lengthPx);
+    ctx.restore();
+  };
+
+  drawBoatSvg();
 
   if (positionAxes && dot) {
     drawAxesAt(dot, positionAxes, "#c00000", 2.5, 2);
