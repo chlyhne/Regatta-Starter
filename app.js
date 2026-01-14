@@ -509,6 +509,20 @@ function trimTrailingZeros(value) {
   return value.replace(/\.?0+$/, "");
 }
 
+function swapStartLineMarks() {
+  const nextA = { ...state.line.b };
+  const nextB = { ...state.line.a };
+  state.line.a = nextA;
+  state.line.b = nextB;
+  state.lineName = null;
+  state.lineSourceId = null;
+  saveSettings();
+  updateLineNameDisplay();
+  updateInputs();
+  updateLineStatus();
+  updateLineProjection();
+}
+
 function formatCoordinateValue(value, digits) {
   const fixed = value.toFixed(digits);
   const trimmed = trimTrailingZeros(fixed);
@@ -1304,6 +1318,12 @@ function bindEvents() {
     window.location.href = `map.html${getNoCacheQuery()}`;
   });
 
+  if (els.swapMarks) {
+    els.swapMarks.addEventListener("click", () => {
+      swapStartLineMarks();
+    });
+  }
+
   els.openCoords.addEventListener("click", () => {
     setView("coords");
   });
@@ -1524,9 +1544,16 @@ function bindEvents() {
   }
 
   if (els.closeTrack) {
-    els.closeTrack.addEventListener("click", () => {
+    const closeTrack = (event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       setView("setup");
-    });
+    };
+    els.closeTrack.addEventListener("click", closeTrack);
+    els.closeTrack.addEventListener("touchend", closeTrack, { passive: false });
+    els.closeTrack.addEventListener("pointerup", closeTrack);
   }
 
   if (els.bowOffset) {

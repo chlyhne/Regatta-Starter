@@ -357,6 +357,16 @@ function bindEvents() {
   els.closeMap.addEventListener("click", () => {
     window.location.href = `index.html${getNoCacheQuery()}#setup`;
   });
+
+  const close = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    window.location.href = `index.html${getNoCacheQuery()}#setup`;
+  };
+  els.closeMap.addEventListener("touchend", close, { passive: false });
+  els.closeMap.addEventListener("pointerup", close);
 }
 
 loadSettings();

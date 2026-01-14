@@ -143,6 +143,7 @@ const els = {
   closeTrack: document.getElementById("close-track"),
   trackCanvas: document.getElementById("track-canvas"),
   debugRefresh: document.getElementById("debug-refresh"),
+  swapMarks: document.getElementById("swap-marks"),
 };
 
 export { els };

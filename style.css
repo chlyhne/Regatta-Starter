@@ -965,6 +965,7 @@ button:active {
   bottom: 16px;
   transform: translateX(-50%);
   z-index: 2;
+  touch-action: manipulation;
   background: #ffffff;
   color: #000000;
   border: 2px solid #000000;
