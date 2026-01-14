@@ -57,8 +57,11 @@ import {
   splitDurationSeconds,
   formatTimeRemainingHMS,
 } from "./format.js";
+import { KALMAN_TUNING } from "./tuning.js";
 
 const NO_CACHE_KEY = "racetimer-nocache";
+const SPEED_HISTORY_WINDOW_MS =
+  KALMAN_TUNING.processNoise.speedScale.recentMaxSpeedWindowSeconds * 1000;
 
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
@@ -1073,12 +1076,23 @@ function resetPositionState() {
   state.lastPosition = null;
   state.velocity = { x: 0, y: 0 };
   state.speed = 0;
+  state.speedHistory = [];
   state.kalman = null;
   state.gpsTrackRaw = [];
   state.gpsTrackFiltered = [];
   state.lastGpsFixAt = null;
   updateGPSDisplay();
   updateLineProjection();
+}
+
+function recordSpeedSample(speed, timestamp) {
+  if (!Number.isFinite(speed)) return;
+  const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
+  state.speedHistory.push({ ts, speed });
+  const cutoff = ts - SPEED_HISTORY_WINDOW_MS;
+  while (state.speedHistory.length && state.speedHistory[0].ts < cutoff) {
+    state.speedHistory.shift();
+  }
 }
 
 function setDebugGpsEnabled(enabled) {
@@ -1145,6 +1159,7 @@ function handlePosition(position) {
       state.velocity = { x: computed.x, y: computed.y };
     }
   }
+  recordSpeedSample(state.speed, position.timestamp || Date.now());
 
   state.lastPosition = activePosition;
   updateGPSDisplay();

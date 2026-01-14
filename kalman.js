@@ -16,8 +16,23 @@ function getProcessNoiseVariance() {
   return baseQ * ratio * ratio;
 }
 
+function getRecentMaxSpeed() {
+  if (!Array.isArray(state.speedHistory) || !state.speedHistory.length) {
+    return null;
+  }
+  let maxSpeed = 0;
+  state.speedHistory.forEach((sample) => {
+    if (Number.isFinite(sample.speed)) {
+      maxSpeed = Math.max(maxSpeed, sample.speed);
+    }
+  });
+  return maxSpeed > 0 ? maxSpeed : null;
+}
+
 function getSpeedScale(speed) {
-  const speedKnots = Number.isFinite(speed) ? speed * 1.943844 : 0;
+  const recentMaxSpeed = getRecentMaxSpeed();
+  const speedSource = Number.isFinite(recentMaxSpeed) ? recentMaxSpeed : speed;
+  const speedKnots = Number.isFinite(speedSource) ? speedSource * 1.943844 : 0;
   const minKnots = KALMAN_TUNING.processNoise.speedScale.minKnots;
   const anchorKnots = KALMAN_TUNING.processNoise.speedScale.anchorKnots;
   return Math.max(speedKnots, minKnots) / anchorKnots;

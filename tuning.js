@@ -13,7 +13,10 @@
 //   above an anchor length (capped at the anchor so smaller boats don't increase `q`).
 // - Speed scaling: for very low speeds, GPS headings/velocities are unreliable, so
 //   we keep a minimum responsiveness. Above 1 knot we scale linearly with speed,
-//   anchored so the historical/static tuning corresponds to 3 knots.
+//   anchored so the historical/static tuning corresponds to 3 knots. We use the
+//   recent max speed (instead of current speed) as a proxy for potential acceleration.
+//
+// Full math + physical arguments: docs/kalman.md
 
 const KALMAN_TUNING = {
   processNoise: {
@@ -22,6 +25,7 @@ const KALMAN_TUNING = {
     speedScale: {
       minKnots: 1,
       anchorKnots: 3,
+      recentMaxSpeedWindowSeconds: 300,
     },
   },
   measurementNoise: {

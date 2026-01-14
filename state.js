@@ -61,6 +61,7 @@ const state = {
   lastPosition: null,
   velocity: { x: 0, y: 0 },
   speed: 0,
+  speedHistory: [],
   latestDistance: null,
   latestSignedDistance: null,
   raceMetric: "distance",

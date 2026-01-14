@@ -2,6 +2,15 @@
 
 Static web app for race start timing and line setup.
 
+## Kalman filter (GPS smoothing)
+
+RaceTimer uses a small Kalman filter to smooth GPS position and estimate a steady velocity
+vector for the start-line calculations. Measurement noise is taken from reported GPS accuracy,
+and the process noise is gain-scheduled using boat-length scaling arguments and recent-max
+speed behavior.
+
+Details: `docs/kalman.md`
+
 ## Run locally
 
 Open `index.html` in a browser, or serve the folder with any static server.
