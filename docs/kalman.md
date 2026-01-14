@@ -208,7 +208,30 @@ The code implements these explicitly (no external matrix library) because:
 - the matrices are tiny (4×4, 2×2)
 - we want the app to remain a static PWA with minimal dependencies
 
-## 6) Gain scheduling: how we choose Q in a physically meaningful way
+## 6) Predict-only updates at 5 Hz (between fixes)
+
+GPS does not arrive at a fixed rate. The app still needs a stable, smooth estimate for
+race view, debug view, and GPS marking. To get that, we run the **predict step** on a
+fixed timer (about 5 Hz) whenever a filter state exists.
+
+What that means in practice:
+
+- Every ~200 ms we advance the state with the motion model using **elapsed time**.
+- There is **no measurement update** in these ticks, so `R` is unchanged.
+- When a real GPS fix arrives, we run a normal measurement update at the current time.
+  If the fix timestamp is older than the current filter time, we treat it as arriving
+  “now” to keep the filter time monotonic.
+- Large time gaps are capped (the max dt clamp still applies) so a single pause does not
+  explode the covariance.
+
+This gives the same filter behavior as a classic predict-update loop, but with a smoother
+output cadence that does not depend on GPS jitter.
+
+Relevant code:
+- `predictKalmanState()` in `kalman.js` (predict-only step)
+- the 5 Hz loop in `app.js` that keeps the estimate moving
+
+## 7) Gain scheduling: how we choose Q in a physically meaningful way
 
 The main “feel” of the filter comes from the relationship between `Q` and `R`.
 `R` comes from GPS accuracy. That leaves `Q` (via `q`) as the lever we tune.
@@ -218,7 +241,7 @@ RaceTimer schedules `q` in two steps:
 1) **Boat length scaling** (physical scaling argument for displacement boats)  
 2) **Speed scaling** (practical behavior near the start line)
 
-### 6.1 Boat length scaling (displacement keelboats)
+### 7.1 Boat length scaling (displacement keelboats)
 
 For similar displacement boats, a useful scaling approximation is:
 
@@ -254,7 +277,7 @@ This is implemented in `kalman.js#getProcessNoiseVariance()` using:
 Interpretation:
 - Longer boat ⇒ smaller `q` ⇒ filter changes velocity estimate more slowly ⇒ steadier output.
 
-### 6.2 Speed scaling using recent max speed (not instantaneous speed)
+### 7.2 Speed scaling using recent max speed (not instantaneous speed)
 
 If we made `q` depend on instantaneous speed, you get a bad corner case:
 
@@ -281,7 +304,40 @@ So:
 
 This makes the filter responsive if the boat has recently moved fast, even if it is currently slow.
 
-## 7) Covariance and plotting: why you can see rotated axes
+## 8) Marking the start line with GPS (no bow offset)
+
+When you press “Set port mark (GPS)” or “Set starboard mark (GPS)”, the app stores the
+**latest Kalman position estimate for the phone**. We deliberately do **not** apply the
+bow offset here:
+
+- the user lines up the **phone** with the physical mark
+- the most honest reference is therefore the phone position itself
+- the mark is captured immediately from the current estimate (no averaging, no future fixes)
+
+Because the Kalman estimate updates at 5 Hz between fixes, the “latest” position is a
+smooth, up-to-date estimate even if GPS delivers at a slower rate.
+
+## 9) Bow offset: how it is applied in race projections
+
+The Kalman filter estimates the phone position and velocity. The boat bow is then
+constructed by shifting the phone position **forward along the velocity vector** by the
+user’s bow offset.
+
+Race view uses two projections, and the bow offset is handled differently in each:
+
+1) **At current heading**  
+   We already have the bow position (phone + forward offset). That bow point is projected
+   along the **current velocity vector** to the start time.
+
+2) **Towards line (direct to the line)**  
+   Here we assume you will steer straight toward the closest point on the line. We therefore:
+   - back out the **phone position** from the bow
+   - compute the perpendicular direction to the line
+   - re-apply the bow offset **along that direction**, not along the current velocity
+
+This keeps the geometry consistent for each assumption.
+
+## 10) Covariance and plotting: why you can see rotated axes
 
 Even with isotropic `R`, the full covariance `P` is not diagonal because:
 - the CV model creates correlation between position and velocity (`cov(p, v)`)
@@ -293,10 +349,9 @@ but the debug view computes ellipse axes robustly (eigen decomposition) because:
 - it keeps the visualization correct if we ever introduce anisotropic `R` or additional sensors
 - it avoids “false confidence” from assuming `Pxy = 0` always
 
-## 8) Where to look in the repo
+## 11) Where to look in the repo
 
 - Core filter: `kalman.js`
 - Tuning constants: `tuning.js`
 - Speed history used for scheduling: `state.speedHistory` maintained in `app.js`
 - Debug covariance visualization: `track.js`
-

@@ -13,7 +13,7 @@ import {
 } from "./state.js";
 import { unlockAudio, playBeep, handleCountdownBeeps, resetBeepState } from "./audio.js";
 import { applyForwardOffset } from "./geo.js";
-import { applyKalmanFilter } from "./kalman.js";
+import { applyKalmanFilter, predictKalmanState } from "./kalman.js";
 import { recordTrackPoints, renderTrack } from "./track.js";
 import { fitRaceText } from "./race-fit.js";
 import { updateGPSDisplay, updateDebugControls } from "./gps-ui.js";
@@ -62,6 +62,10 @@ import { KALMAN_TUNING } from "./tuning.js";
 const NO_CACHE_KEY = "racetimer-nocache";
 const SPEED_HISTORY_WINDOW_MS =
   KALMAN_TUNING.processNoise.speedScale.recentMaxSpeedWindowSeconds * 1000;
+const KALMAN_PREDICT_HZ = 5;
+const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
+let kalmanPredictTimer = null;
+let lastKalmanPredictionTs = 0;
 
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
@@ -318,6 +322,25 @@ function setDistanceUnit(unit) {
   updateGPSDisplay();
 }
 
+function updateStartModeToggle() {
+  const isCountdown = state.start.mode === "countdown";
+  if (els.startModeAbsolute) {
+    els.startModeAbsolute.setAttribute("aria-pressed", isCountdown ? "false" : "true");
+  }
+  if (els.startModeCountdown) {
+    els.startModeCountdown.setAttribute("aria-pressed", isCountdown ? "true" : "false");
+  }
+  if (els.startModeAbsolutePanel) {
+    els.startModeAbsolutePanel.hidden = isCountdown;
+  }
+  if (els.startModeCountdownPanel) {
+    els.startModeCountdownPanel.hidden = !isCountdown;
+  }
+  if (els.setStart) {
+    els.setStart.textContent = isCountdown ? "Begin" : "Set";
+  }
+}
+
 function loadSettings() {
   const settings = loadSettingsFromStorage();
   state.line = settings.line;
@@ -470,6 +493,7 @@ function updateInputs() {
   syncCountdownPicker();
   syncBowOffsetInput();
   syncBoatLengthInput();
+  updateStartModeToggle();
   updateSoundToggle();
   updateTimeFormatToggle();
   updateSpeedUnitToggle();
@@ -1087,12 +1111,15 @@ function updateCurrentTime() {
 
 function resetPositionState() {
   state.position = null;
+  state.kalmanPosition = null;
   state.lastPosition = null;
   state.velocity = { x: 0, y: 0 };
   state.speed = 0;
   state.speedHistory = [];
   state.kalman = null;
+  lastKalmanPredictionTs = 0;
   state.gpsTrackRaw = [];
+  state.gpsTrackPhone = [];
   state.gpsTrackFiltered = [];
   state.lastGpsFixAt = null;
   updateGPSDisplay();
@@ -1144,38 +1171,63 @@ function setGpsMode(mode, options = {}) {
   startRealGps(handlePosition, handlePositionError, gpsOptions);
 }
 
+function applyKalmanEstimate(result, options = {}) {
+  if (!result) return;
+  const rawPosition = options.rawPosition || null;
+  const recordTrack = options.recordTrack !== false;
+  const bowPosition = applyForwardOffset(
+    result.position,
+    result.velocity,
+    state.bowOffsetMeters
+  );
+  state.kalmanPosition = result.position;
+  state.position = bowPosition;
+  state.velocity = result.velocity;
+  state.speed = result.speed;
+  if (recordTrack) {
+    recordTrackPoints(rawPosition, result.position, bowPosition);
+  }
+  updateGPSDisplay();
+  updateLineProjection();
+}
+
+function startKalmanPredictionLoop() {
+  if (kalmanPredictTimer) return;
+  kalmanPredictTimer = setInterval(() => {
+    if (!state.kalman) return;
+    const prediction = predictKalmanState(Date.now());
+    if (!prediction) return;
+    const ts = prediction.position?.timestamp || Date.now();
+    if (ts === lastKalmanPredictionTs) return;
+    lastKalmanPredictionTs = ts;
+    applyKalmanEstimate(prediction);
+  }, KALMAN_PREDICT_INTERVAL_MS);
+}
+
 function handlePosition(position) {
   const filtered = applyKalmanFilter(position);
   state.lastGpsFixAt = position.timestamp || Date.now();
   clearGpsRetryTimer();
-  let activePosition = position;
   if (filtered) {
-    filtered.position = applyForwardOffset(
-      filtered.position,
-      filtered.velocity,
-      state.bowOffsetMeters
-    );
-    activePosition = filtered.position;
+    applyKalmanEstimate(filtered, { rawPosition: position });
+    recordSpeedSample(filtered.speed, position.timestamp || Date.now());
+    state.lastPosition = state.position;
+    return;
   }
-  state.position = activePosition;
-  recordTrackPoints(position, filtered ? filtered.position : null);
-  if (filtered) {
-    state.speed = filtered.speed;
-    state.velocity = filtered.velocity;
+  const coords = position.coords;
+  if (Number.isFinite(coords.speed) && Number.isFinite(coords.heading)) {
+    state.speed = coords.speed;
+    state.velocity = computeVelocityFromHeading(coords.speed, coords.heading);
   } else {
-    const coords = position.coords;
-    if (Number.isFinite(coords.speed) && Number.isFinite(coords.heading)) {
-      state.speed = coords.speed;
-      state.velocity = computeVelocityFromHeading(coords.speed, coords.heading);
-    } else {
-      const computed = computeVelocityFromPositions(position, state.lastPosition);
-      state.speed = computed.speed;
-      state.velocity = { x: computed.x, y: computed.y };
-    }
+    const computed = computeVelocityFromPositions(position, state.lastPosition);
+    state.speed = computed.speed;
+    state.velocity = { x: computed.x, y: computed.y };
   }
+  state.position = position;
+  state.kalmanPosition = null;
+  recordTrackPoints(position, null, null);
   recordSpeedSample(state.speed, position.timestamp || Date.now());
-
-  state.lastPosition = activePosition;
+  state.lastPosition = state.position;
   updateGPSDisplay();
   updateLineProjection();
 }
@@ -1284,9 +1336,14 @@ function bindEvents() {
 
   els.useA.addEventListener("click", () => {
     requestHighPrecisionPosition(handlePosition, handlePositionError, (position) => {
+      const sourcePosition = state.kalmanPosition;
+      if (!sourcePosition) {
+        window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
+        return;
+      }
       state.line.a = {
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
+        lat: sourcePosition.coords.latitude,
+        lon: sourcePosition.coords.longitude,
       };
       state.lineName = null;
       state.lineSourceId = null;
@@ -1300,9 +1357,14 @@ function bindEvents() {
 
   els.useB.addEventListener("click", () => {
     requestHighPrecisionPosition(handlePosition, handlePositionError, (position) => {
+      const sourcePosition = state.kalmanPosition;
+      if (!sourcePosition) {
+        window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
+        return;
+      }
       state.line.b = {
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
+        lat: sourcePosition.coords.latitude,
+        lon: sourcePosition.coords.longitude,
       };
       state.lineName = null;
       state.lineSourceId = null;
@@ -1494,33 +1556,47 @@ function bindEvents() {
     });
   }
 
-  els.setCountdown.addEventListener("click", () => {
-    unlockAudio();
-    state.start.mode = "countdown";
-    state.start.countdownSeconds = getCountdownSecondsFromPicker();
-    saveSettings();
-    setStart({ goToRace: false });
-    if (state.start.startTs) {
-      const startDate = new Date(state.start.startTs);
-      const absoluteValue = formatTimeInput(startDate);
-      state.start.absoluteTime = absoluteValue;
-      if (els.absoluteTime) {
-        els.absoluteTime.value = absoluteValue;
-      }
+  if (els.startModeAbsolute) {
+    els.startModeAbsolute.addEventListener("click", () => {
+      state.start.mode = "absolute";
       saveSettings();
-    }
-    updateStartDisplay();
-    updateLineProjection();
-  });
+      updateStartModeToggle();
+    });
+  }
 
-  els.setAbsolute.addEventListener("click", () => {
-    unlockAudio();
-    state.start.mode = "absolute";
-    saveSettings();
-    setStart({ goToRace: false });
-    updateStartDisplay();
-    updateLineProjection();
-  });
+  if (els.startModeCountdown) {
+    els.startModeCountdown.addEventListener("click", () => {
+      state.start.mode = "countdown";
+      saveSettings();
+      updateStartModeToggle();
+    });
+  }
+
+  if (els.setStart) {
+    els.setStart.addEventListener("click", () => {
+      unlockAudio();
+      if (state.start.mode === "countdown") {
+        state.start.countdownSeconds = getCountdownSecondsFromPicker();
+        saveSettings();
+        setStart({ goToRace: false });
+        if (state.start.startTs) {
+          const startDate = new Date(state.start.startTs);
+          const absoluteValue = formatTimeInput(startDate);
+          state.start.absoluteTime = absoluteValue;
+          if (els.absoluteTime) {
+            els.absoluteTime.value = absoluteValue;
+          }
+          saveSettings();
+        }
+      } else {
+        state.start.mode = "absolute";
+        saveSettings();
+        setStart({ goToRace: false });
+      }
+      updateStartDisplay();
+      updateLineProjection();
+    });
+  }
 
   els.goRace.addEventListener("click", () => {
     unlockAudio();
@@ -1948,6 +2024,7 @@ updateLineStatus();
 updateRaceMetricLabels();
 bindEvents();
 initGeolocation();
+startKalmanPredictionLoop();
 registerServiceWorker();
 clearNoCacheParam();
 updateStartDisplay();

@@ -12,6 +12,7 @@ function initAudio() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
   state.audio.ctx = new AudioContext();
+  state.audio.unlocked = false;
   if (state.audio.ctx.state === "suspended") {
     state.audio.ctx.resume().catch(() => {});
   }
@@ -39,6 +40,7 @@ export function unlockAudio() {
 function ensureAudio() {
   if (!state.audio.ctx || state.audio.ctx.state === "closed") {
     state.audio.ctx = null;
+    state.audio.unlocked = false;
     initAudio();
   }
   if (state.audio.ctx && state.audio.ctx.state === "suspended") {
@@ -49,6 +51,9 @@ function ensureAudio() {
 export function playBeep(durationMs = BEEP_DURATION_MS, frequency = BEEP_FREQUENCY) {
   if (!state.soundEnabled) return;
   ensureAudio();
+  if (!state.audio.unlocked) {
+    unlockAudio();
+  }
   if (!state.audio.ctx) return;
   const ctx = state.audio.ctx;
   const osc = ctx.createOscillator();

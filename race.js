@@ -362,10 +362,13 @@ function updateLineProjection() {
     fitRaceText();
     if (els.statusDistance) {
       if (els.statusDistanceValue) {
-        els.statusDistanceValue.textContent = "--";
+        els.statusDistanceValue.textContent = "No GPS";
       } else {
-        els.statusDistance.textContent = "--";
+        els.statusDistance.textContent = "No GPS";
       }
+    }
+    if (els.statusDistanceUnit) {
+      els.statusDistanceUnit.textContent = "";
     }
     if (els.statusLineLength) {
       const lineLen = computeLineLength();

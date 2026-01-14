@@ -7,6 +7,12 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function clampDtSeconds(dtRaw) {
+  if (!Number.isFinite(dtRaw) || dtRaw <= 0) return 0;
+  const dtClamp = KALMAN_TUNING.timing.dtClampSeconds;
+  return Math.min(dtRaw, dtClamp.max);
+}
+
 function getProcessNoiseVariance() {
   const baseQ = KALMAN_TUNING.processNoise.baseAccelerationVariance;
   const baseLength = KALMAN_TUNING.processNoise.baseBoatLengthMeters;
@@ -55,6 +61,7 @@ function initKalmanState(position) {
   return {
     origin,
     lastTs: position.timestamp || Date.now(),
+    accuracy,
     x: [0, 0, vx, vy],
     P: [
       sigma2, 0, 0, 0,
@@ -65,36 +72,14 @@ function initKalmanState(position) {
   };
 }
 
-function applyKalmanFilter(position) {
-  if (!position) return null;
-  if (!state.kalman) {
-    state.kalman = initKalmanState(position);
+function buildPrediction(filter, dt) {
+  const x = filter.x;
+  const P = filter.P;
+  if (!Number.isFinite(dt) || dt <= 0) {
+    return { xPred: x.slice(), PPred: P.slice() };
   }
-  const filter = state.kalman;
-  const timestamp = position.timestamp || Date.now();
-  const dtRaw = (timestamp - filter.lastTs) / 1000;
-  if (!Number.isFinite(dtRaw) || dtRaw <= 0) {
-    const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
-    return {
-      position: {
-        coords: {
-          latitude: coords.lat,
-          longitude: coords.lon,
-          accuracy: position.coords.accuracy,
-        },
-        timestamp,
-      },
-      velocity: { x: filter.x[2], y: filter.x[3] },
-      speed: Math.hypot(filter.x[2], filter.x[3]),
-    };
-  }
-
-  const dtClamp = KALMAN_TUNING.timing.dtClampSeconds;
-  const dt = clamp(dtRaw, dtClamp.min, dtClamp.max);
-  filter.lastTs = timestamp;
-
   const qBase = getProcessNoiseVariance();
-  const speedScale = getSpeedScale(Math.hypot(filter.x[2], filter.x[3]));
+  const speedScale = getSpeedScale(Math.hypot(x[2], x[3]));
   const qPos = qBase;
   const qVel = qBase * speedScale;
   const dt2 = dt * dt;
@@ -113,9 +98,6 @@ function applyKalmanFilter(position) {
     qVel * dt3 / 2, 0, qVel * dt2, 0,
     0, qVel * dt3 / 2, 0, qVel * dt2,
   ];
-
-  const x = filter.x;
-  const P = filter.P;
 
   const xPred = [
     x[0] + x[2] * dt,
@@ -145,6 +127,39 @@ function applyKalmanFilter(position) {
         Q[r * 4 + c];
     }
   }
+  return { xPred, PPred };
+}
+
+function formatKalmanOutput(filter, timestamp) {
+  const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
+  return {
+    position: {
+      coords: {
+        latitude: coords.lat,
+        longitude: coords.lon,
+        accuracy: filter.accuracy,
+      },
+      timestamp,
+    },
+    velocity: { x: filter.x[2], y: filter.x[3] },
+    speed: Math.hypot(filter.x[2], filter.x[3]),
+  };
+}
+
+function applyKalmanFilter(position) {
+  if (!position) return null;
+  if (!state.kalman) {
+    state.kalman = initKalmanState(position);
+  }
+  const filter = state.kalman;
+  const measurementTs = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+  const timestamp = Math.max(Date.now(), measurementTs, filter.lastTs);
+  const dtRaw = (timestamp - filter.lastTs) / 1000;
+  const dt = clampDtSeconds(dtRaw);
+  filter.lastTs = timestamp;
+  const predicted = buildPrediction(filter, dt);
+  const xPred = predicted.xPred;
+  const PPred = predicted.PPred;
 
   const measurement = toMeters(
     { lat: position.coords.latitude, lon: position.coords.longitude },
@@ -154,6 +169,7 @@ function applyKalmanFilter(position) {
   const accuracyDefault = KALMAN_TUNING.measurementNoise.accuracyDefaultMeters;
   const accuracyClamp = KALMAN_TUNING.measurementNoise.accuracyClampMeters;
   const accuracy = clamp(position.coords.accuracy || accuracyDefault, accuracyClamp.min, accuracyClamp.max);
+  filter.accuracy = accuracy;
   const r = accuracy ** 2;
   const S00 = PPred[0] + r;
   const S01 = PPred[1];
@@ -214,20 +230,26 @@ function applyKalmanFilter(position) {
     filter.x = xPred;
     filter.P = PPred;
   }
+  return formatKalmanOutput(filter, timestamp);
+}
 
-  const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
-  return {
-    position: {
-      coords: {
-        latitude: coords.lat,
-        longitude: coords.lon,
-        accuracy: position.coords.accuracy,
-      },
-      timestamp,
-    },
-    velocity: { x: filter.x[2], y: filter.x[3] },
-    speed: Math.hypot(filter.x[2], filter.x[3]),
-  };
+function predictKalmanState(targetTimestamp) {
+  if (!state.kalman) return null;
+  const filter = state.kalman;
+  const timestamp = Math.max(
+    Number.isFinite(targetTimestamp) ? targetTimestamp : Date.now(),
+    filter.lastTs
+  );
+  const dtRaw = (timestamp - filter.lastTs) / 1000;
+  const dt = clampDtSeconds(dtRaw);
+  if (dt <= 0) {
+    return formatKalmanOutput(filter, timestamp);
+  }
+  const predicted = buildPrediction(filter, dt);
+  filter.x = predicted.xPred;
+  filter.P = predicted.PPred;
+  filter.lastTs = timestamp;
+  return formatKalmanOutput(filter, timestamp);
 }
 
 function getKalmanPositionCovariance() {
@@ -306,6 +328,7 @@ function getKalmanPredictedPositionCovariance(seconds) {
 
 export {
   applyKalmanFilter,
+  predictKalmanState,
   getKalmanPositionCovariance,
   getKalmanPredictedPositionCovariance,
 };

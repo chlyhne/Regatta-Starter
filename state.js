@@ -58,6 +58,7 @@ const state = {
     freeze: null,
   },
   position: null,
+  kalmanPosition: null,
   lastPosition: null,
   velocity: { x: 0, y: 0 },
   speed: 0,
@@ -69,6 +70,7 @@ const state = {
   selectedLineId: null,
   wakeLock: null,
   gpsTrackRaw: [],
+  gpsTrackPhone: [],
   gpsTrackFiltered: [],
   kalman: null,
   audio: {

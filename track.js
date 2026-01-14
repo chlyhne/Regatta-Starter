@@ -248,9 +248,13 @@ function renderTrack() {
   ctx.fillRect(0, 0, width, height);
 
   const rawPoints = state.gpsTrackRaw;
-  const filteredPoints = state.gpsTrackFiltered;
+  const phonePoints = state.gpsTrackPhone || [];
+  const bowPoints = state.gpsTrackFiltered;
   const hasLineData = hasLine();
-  let basePoints = rawPoints.length ? rawPoints : filteredPoints;
+  let basePoints = bowPoints.length ? bowPoints : phonePoints;
+  if (!basePoints.length) {
+    basePoints = rawPoints;
+  }
   if (!basePoints.length && state.position) {
     basePoints = [
       {
@@ -300,7 +304,8 @@ function renderTrack() {
     bounds.maxY = Math.max(bounds.maxY, xy.y);
   };
   rawPoints.forEach((point) => addBounds(toXY(point)));
-  filteredPoints.forEach((point) => addBounds(toXY(point)));
+  phonePoints.forEach((point) => addBounds(toXY(point)));
+  bowPoints.forEach((point) => addBounds(toXY(point)));
 
   let line = null;
   if (hasLineData) {
@@ -323,8 +328,11 @@ function renderTrack() {
       },
       origin
     );
-  } else if (filteredPoints.length) {
-    const last = filteredPoints[filteredPoints.length - 1];
+  } else if (bowPoints.length) {
+    const last = bowPoints[bowPoints.length - 1];
+    boat = toXY(last);
+  } else if (phonePoints.length) {
+    const last = phonePoints[phonePoints.length - 1];
     boat = toXY(last);
   } else if (rawPoints.length) {
     const last = rawPoints[rawPoints.length - 1];
@@ -470,9 +478,14 @@ function renderTrack() {
     const y = TRACK_PADDING + (viewBounds.maxY - yMeters) * scale;
     return { x, y };
   };
-  const latestPoint = (filteredPoints.length ? filteredPoints : rawPoints)[
-    (filteredPoints.length ? filteredPoints : rawPoints).length - 1
-  ];
+  let latestPoint = null;
+  if (bowPoints.length) {
+    latestPoint = bowPoints[bowPoints.length - 1];
+  } else if (phonePoints.length) {
+    latestPoint = phonePoints[phonePoints.length - 1];
+  } else if (rawPoints.length) {
+    latestPoint = rawPoints[rawPoints.length - 1];
+  }
   let dot = null;
   if (latestPoint) {
     dot = project(latestPoint);
@@ -606,7 +619,8 @@ function renderTrack() {
   ctx.stroke();
 
   drawLine(rawPoints, "#9a9a9a", 2);
-  drawLine(filteredPoints, "#000000", 2.5);
+  drawLine(phonePoints, "#000000", 2.5);
+  drawLine(bowPoints, "#c00000", 2.5);
 
   if (line) {
     drawSegment(line.pointA, line.pointB, "#000000", 3);
@@ -623,6 +637,52 @@ function renderTrack() {
     drawSegment(projectedHeadingFrom, projectedHeading, "#666666", 1.5, [6, 4]);
     drawSquare(projectedHeading, 10, "#000000", "#ffffff");
   }
+
+  const drawBoatWedge = () => {
+    if (!boat) return;
+    const lengthMeters = Number.isFinite(state.boatLengthMeters)
+      ? state.boatLengthMeters
+      : 0;
+    if (!Number.isFinite(lengthMeters) || lengthMeters <= 0) return;
+    const speedMetersPerSecond = Math.hypot(state.velocity.x, state.velocity.y);
+    const ux = speedMetersPerSecond > 1e-6 ? state.velocity.x / speedMetersPerSecond : 0;
+    const uy = speedMetersPerSecond > 1e-6 ? state.velocity.y / speedMetersPerSecond : 1;
+
+    const stern = {
+      x: boat.x - ux * lengthMeters,
+      y: boat.y - uy * lengthMeters,
+    };
+    const beamMeters = Math.max(0.5, lengthMeters * 0.32);
+    const px = -uy;
+    const py = ux;
+    const left = {
+      x: stern.x + (px * beamMeters) / 2,
+      y: stern.y + (py * beamMeters) / 2,
+    };
+    const right = {
+      x: stern.x - (px * beamMeters) / 2,
+      y: stern.y - (py * beamMeters) / 2,
+    };
+
+    const bowScreen = projectMeters(boat.x, boat.y);
+    const leftScreen = projectMeters(left.x, left.y);
+    const rightScreen = projectMeters(right.x, right.y);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(bowScreen.x, bowScreen.y);
+    ctx.lineTo(leftScreen.x, leftScreen.y);
+    ctx.lineTo(rightScreen.x, rightScreen.y);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0, 112, 255, 0.22)";
+    ctx.strokeStyle = "#0070ff";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  drawBoatWedge();
 
   if (positionAxes && dot) {
     drawAxesAt(dot, positionAxes, "#c00000", 2.5, 2);
@@ -645,20 +705,29 @@ function renderTrack() {
   }
 }
 
-function recordTrackPoints(rawPosition, filteredPosition) {
-  if (!rawPosition) return;
+function recordTrackPoints(rawPosition, phonePosition, bowPosition) {
   const cutoff = Date.now() - TRACK_WINDOW_MS;
-  appendTrackPoint(state.gpsTrackRaw, {
-    lat: rawPosition.coords.latitude,
-    lon: rawPosition.coords.longitude,
-    ts: rawPosition.timestamp || Date.now(),
-  });
-  pruneTrackPoints(state.gpsTrackRaw, cutoff);
-  if (filteredPosition) {
+  if (rawPosition) {
+    appendTrackPoint(state.gpsTrackRaw, {
+      lat: rawPosition.coords.latitude,
+      lon: rawPosition.coords.longitude,
+      ts: rawPosition.timestamp || Date.now(),
+    });
+    pruneTrackPoints(state.gpsTrackRaw, cutoff);
+  }
+  if (phonePosition) {
+    appendTrackPoint(state.gpsTrackPhone, {
+      lat: phonePosition.coords.latitude,
+      lon: phonePosition.coords.longitude,
+      ts: phonePosition.timestamp || Date.now(),
+    });
+    pruneTrackPoints(state.gpsTrackPhone, cutoff);
+  }
+  if (bowPosition) {
     appendTrackPoint(state.gpsTrackFiltered, {
-      lat: filteredPosition.coords.latitude,
-      lon: filteredPosition.coords.longitude,
-      ts: filteredPosition.timestamp || Date.now(),
+      lat: bowPosition.coords.latitude,
+      lon: bowPosition.coords.longitude,
+      ts: bowPosition.timestamp || Date.now(),
     });
     pruneTrackPoints(state.gpsTrackFiltered, cutoff);
   }
