@@ -49,8 +49,18 @@ body {
   display: none;
 }
 
+.race-mode #setup-view.shell,
+.coords-mode #setup-view.shell,
+.location-mode #setup-view.shell,
+.settings-mode #setup-view.shell,
+.boat-mode #setup-view.shell,
+.info-mode #setup-view.shell,
+.track-mode #setup-view.shell {
+  display: none;
+}
+
 .race-mode .race-view {
-  display: flex;
+  display: block;
 }
 
 .race-mode.race-success .race-view {
@@ -211,6 +221,20 @@ body {
   pointer-events: none;
 }
 
+#setup-view.shell {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 100vh;
+}
+
+#setup-view.shell > * {
+  padding: 20px;
+}
+
 .shell {
   max-width: 920px;
   margin: 0 auto;
@@ -226,6 +250,12 @@ body {
   border-radius: 20px;
   padding: 22px;
   border: 2px solid #000000;
+}
+
+#setup-view .hero {
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .setup-head {
@@ -423,6 +453,20 @@ h1 {
   border-radius: 18px;
   padding: 18px;
   border: 2px solid #000000;
+}
+
+#setup-view .panel {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+#setup-view.shell > * {
+  border-bottom: 2px solid #000000;
+}
+
+#setup-view.shell > *:last-child {
+  border-bottom: none;
 }
 
 .card .value {
@@ -656,12 +700,11 @@ button:active {
 
 .race-view {
   display: none;
-  flex-direction: column;
   height: 100vh;
   height: 100svh;
   overflow: hidden;
-  padding: 18px;
-  gap: 18px;
+  padding: 0;
+  gap: 0;
   background: #ffffff;
   color: #000000;
 }
@@ -670,11 +713,60 @@ button:active {
   background: #ffffff;
 }
 
-.race-head {
+.race-quad-grid {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  height: 100%;
+  width: 100%;
+}
+
+.race-quad-grid::before,
+.race-quad-grid::after {
+  content: "";
+  position: absolute;
+  background: #000000;
+  z-index: 0;
+}
+
+.race-quad-grid::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.race-quad-grid::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-1px);
+}
+
+.race-quad-grid > * {
+  position: relative;
+  z-index: 1;
+}
+
+.race-quad {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.race-quad-time {
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.race-quad-controls {
+  align-items: flex-end;
+  justify-content: flex-end;
 }
 
 .race-controls {
@@ -682,7 +774,8 @@ button:active {
   grid-template-columns: 1.2fr 0.7fr 1.3fr;
   align-items: stretch;
   gap: 10px;
-  width: clamp(240px, 50vw, 340px);
+  width: min(100%, 420px);
+  margin-left: auto;
 }
 
 .race-toggle {
@@ -884,13 +977,14 @@ button:active {
 }
 
 .race-block {
-  border: 3px solid #000000;
-  border-radius: 20px;
-  padding: 20px;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   min-width: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .race-label {
@@ -1118,18 +1212,8 @@ button:active {
 }
 
 @media (orientation: landscape) {
-  .race-view {
-    padding: 12px;
-    gap: 12px;
-  }
-
-  .race-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .race-block {
-    padding: 16px;
+  .race-quad {
+    padding: 18px;
   }
 
   .race-value {
@@ -1139,38 +1223,38 @@ button:active {
 }
 
 @media (orientation: portrait) {
-  .race-view {
+  .race-quad-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(3, minmax(0, 1fr)) auto;
+  }
+
+  .race-quad-grid::before {
+    display: none;
+  }
+
+  .race-quad-grid::after {
+    display: none;
+  }
+
+  .race-quad {
     padding: 14px;
-    gap: 12px;
   }
 
-  .race-head {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
+  .race-quad-grid > .race-quad:not(:last-child) {
+    border-bottom: 2px solid #000000;
   }
 
-  .race-head > div:first-child {
-    order: 1;
-  }
-
-  .race-head .race-controls {
-    order: 0;
+  .race-controls {
     width: 100%;
   }
 
   #race-countdown {
-    text-align: center;
+    text-align: left;
   }
 
-  .race-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .race-block {
-    padding: 16px;
+  .race-quad-time,
+  .race-quad-controls {
+    justify-content: flex-start;
   }
 }
 
@@ -1188,7 +1272,11 @@ button:active {
     font-size: 1.6rem;
   }
 
-  .race-view {
+  .race-quad {
+    padding: 12px;
+  }
+
+  #setup-view.shell > * {
     padding: 16px;
   }
 

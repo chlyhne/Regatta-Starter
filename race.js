@@ -59,10 +59,44 @@ function formatRaceTimeLabel(deltaSeconds) {
   return "H";
 }
 
+const DIRECT_SUFFIX = "DIRECT";
+const CLOSING_SUFFIX = "CURRENT HEADING";
+
 function getRaceMetricLabel() {
-  return state.raceMetric === "time"
-    ? "Time to Line at Start"
-    : "Distance to Line at Start";
+  return "TO LINE AT START";
+}
+
+function stripUnitLabel(label) {
+  if (!label) return "";
+  return label.replace(/\[|\]/g, "");
+}
+
+function buildRaceMetricLabel(prefix, suffix) {
+  const base = prefix ? `${prefix} ${getRaceMetricLabel()}` : getRaceMetricLabel();
+  return suffix ? `${base} - ${suffix}` : base;
+}
+
+function getDistanceLabelFallback() {
+  return formatDistanceUnitWord(getDistanceUnitMeta().label);
+}
+
+function getTimeLabelFallback() {
+  return "M:SS";
+}
+
+function formatDistanceUnitWord(unit) {
+  const normalized = String(unit || "").toLowerCase();
+  if (normalized === "m") return "METERS";
+  if (normalized === "km") return "KILOMETERS";
+  if (normalized === "ft") return "FEET";
+  if (normalized === "yd") return "YARDS";
+  if (!normalized) return "";
+  return normalized.toUpperCase();
+}
+
+function getDistanceLabelFromUnit(unitLabel) {
+  const unit = stripUnitLabel(unitLabel);
+  return formatDistanceUnitWord(unit);
 }
 
 function getRaceMetricValues(projectedDirect, projectedClosing, speed, closingRate) {
@@ -129,28 +163,37 @@ function updateStatusUnitLabels() {
 }
 
 function updateRaceHintUnits(unitDirect, unitClosing) {
-  const showUnit = state.raceMetric === "distance";
-  if (els.raceHintUnitDirect) {
-    const fallback = formatUnitLabel(getDistanceUnitMeta().label);
-    els.raceHintUnitDirect.textContent = unitDirect || fallback;
-    els.raceHintUnitDirect.style.display = showUnit ? "" : "none";
+  if (state.raceMetric !== "distance") return;
+  const fallback = getDistanceLabelFallback();
+  const directLabel = buildRaceMetricLabel(
+    getDistanceLabelFromUnit(unitDirect) || fallback,
+    DIRECT_SUFFIX
+  );
+  const closingLabel = buildRaceMetricLabel(
+    getDistanceLabelFromUnit(unitClosing) || fallback,
+    CLOSING_SUFFIX
+  );
+  if (els.raceMetricLabelDirect) {
+    els.raceMetricLabelDirect.textContent = directLabel;
   }
-  if (els.raceHintUnitClosing) {
-    const fallback = formatUnitLabel(getDistanceUnitMeta().label);
-    els.raceHintUnitClosing.textContent = unitClosing || fallback;
-    els.raceHintUnitClosing.style.display = showUnit ? "" : "none";
+  if (els.raceMetricLabelClosing) {
+    els.raceMetricLabelClosing.textContent = closingLabel;
   }
 }
 
 function updateRaceMetricLabels() {
-  const label = getRaceMetricLabel();
-  if (els.raceMetricLabelDirect) {
-    els.raceMetricLabelDirect.textContent = label;
+  if (state.raceMetric === "time") {
+    const directLabel = buildRaceMetricLabel(getTimeLabelFallback(), DIRECT_SUFFIX);
+    const closingLabel = buildRaceMetricLabel(getTimeLabelFallback(), CLOSING_SUFFIX);
+    if (els.raceMetricLabelDirect) {
+      els.raceMetricLabelDirect.textContent = directLabel;
+    }
+    if (els.raceMetricLabelClosing) {
+      els.raceMetricLabelClosing.textContent = closingLabel;
+    }
+  } else {
+    updateRaceHintUnits();
   }
-  if (els.raceMetricLabelClosing) {
-    els.raceMetricLabelClosing.textContent = label;
-  }
-  updateRaceHintUnits();
   fitRaceText();
   if (els.raceMetricDistance) {
     els.raceMetricDistance.setAttribute(
@@ -168,17 +211,19 @@ function updateRaceMetricLabels() {
 
 function updateRaceTimeFormatLabels(directSeconds, closingSeconds) {
   if (state.raceMetric !== "time") return;
-  const directFormat = formatRaceTimeLabel(directSeconds);
+  const directFormat = formatRaceTimeLabel(directSeconds) || getTimeLabelFallback();
   const closingFormat = formatRaceTimeLabel(closingSeconds) || directFormat;
   if (els.raceMetricLabelDirect) {
-    els.raceMetricLabelDirect.textContent = directFormat
-      ? `Time to Line at Start ${directFormat}`
-      : "Time to Line at Start";
+    els.raceMetricLabelDirect.textContent = buildRaceMetricLabel(
+      directFormat,
+      DIRECT_SUFFIX
+    );
   }
   if (els.raceMetricLabelClosing) {
-    els.raceMetricLabelClosing.textContent = closingFormat
-      ? `Time to Line at Start ${closingFormat}`
-      : "Time to Line at Start";
+    els.raceMetricLabelClosing.textContent = buildRaceMetricLabel(
+      closingFormat,
+      CLOSING_SUFFIX
+    );
   }
 }
 

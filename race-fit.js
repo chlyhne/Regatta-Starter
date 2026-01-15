@@ -2,6 +2,12 @@ import { els } from "./dom.js";
 
 function fitRaceValues() {
   const values = [els.raceProjDirect, els.raceProjClosing].filter(Boolean);
+  if (els.raceCountdown) {
+    const text = (els.raceCountdown.textContent || "").trim();
+    if (text === "--" || /\d/.test(text)) {
+      values.push(els.raceCountdown);
+    }
+  }
   if (!values.length) return;
   if (values.some((element) => element.clientWidth === 0 || element.clientHeight === 0)) {
     return;
@@ -66,7 +72,7 @@ function fitRaceValues() {
 function fitRaceText() {
   if (!document.body.classList.contains("race-mode")) return;
   fitRaceValues();
-  const targets = document.querySelectorAll(".race-block .race-label, .race-block .race-hint");
+  const targets = document.querySelectorAll(".race-view .race-label, .race-view .race-hint");
   targets.forEach((element) => {
     if (!element || element.clientWidth === 0) return;
     const minSize = 10;
