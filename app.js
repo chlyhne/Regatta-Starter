@@ -242,6 +242,21 @@ function setCountdownPickerLive(active) {
   countdownPickerLive = Boolean(active);
 }
 
+function cancelActiveCountdown() {
+  if (state.start.mode !== "countdown") return;
+  if (!state.start.startTs) return;
+  const remaining = Math.max(0, Math.round((state.start.startTs - Date.now()) / 1000));
+  state.start.countdownSeconds = remaining;
+  state.start.startTs = null;
+  state.start.freeze = null;
+  state.start.crossedEarly = false;
+  setCountdownPickerLive(false);
+  resetBeepState();
+  saveSettings();
+  updateStartDisplay();
+  updateLineProjection();
+}
+
 function getCountdownSecondsFromPicker() {
   if (!els.countdownHours || !els.countdownMinutes || !els.countdownSeconds) {
     return state.start.countdownSeconds;
@@ -1573,10 +1588,10 @@ function bindEvents() {
   if (countdownInputs.length) {
     countdownInputs.forEach((input) => {
       input.addEventListener("focus", () => {
-        setCountdownPickerLive(false);
+        cancelActiveCountdown();
       });
       input.addEventListener("pointerdown", () => {
-        setCountdownPickerLive(false);
+        cancelActiveCountdown();
       });
       input.addEventListener("change", () => {
         setCountdownPickerLive(false);
@@ -1596,7 +1611,7 @@ function bindEvents() {
   if (els.startModeAbsolute) {
     els.startModeAbsolute.addEventListener("click", () => {
       state.start.mode = "absolute";
-      setCountdownPickerLive(false);
+      cancelActiveCountdown();
       saveSettings();
       updateStartModeToggle();
     });
@@ -1631,7 +1646,7 @@ function bindEvents() {
       } else {
         state.start.mode = "absolute";
         saveSettings();
-        setCountdownPickerLive(false);
+        cancelActiveCountdown();
         setStart({ goToRace: false });
       }
       updateStartDisplay();
