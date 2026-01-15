@@ -20,7 +20,7 @@
 
 const KALMAN_TUNING = {
   processNoise: {
-    baseAccelerationVariance: 0.8,
+    baseAccelerationVariance: 3.2,
     baseBoatLengthMeters: 3,
     speedScale: {
       minKnots: 1,
