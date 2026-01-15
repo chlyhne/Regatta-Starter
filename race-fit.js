@@ -3,10 +3,7 @@ import { els } from "./dom.js";
 function fitRaceValues() {
   const values = [els.raceProjDirect, els.raceProjClosing].filter(Boolean);
   if (els.raceCountdown) {
-    const text = (els.raceCountdown.textContent || "").trim();
-    if (text === "--" || /\d/.test(text)) {
-      values.push(els.raceCountdown);
-    }
+    values.push(els.raceCountdown);
   }
   if (!values.length) return;
   if (values.some((element) => element.clientWidth === 0 || element.clientHeight === 0)) {
