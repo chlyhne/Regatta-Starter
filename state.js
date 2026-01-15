@@ -58,6 +58,7 @@ const state = {
     freeze: null,
   },
   position: null,
+  bowPosition: null,
   kalmanPosition: null,
   lastPosition: null,
   velocity: { x: 0, y: 0 },

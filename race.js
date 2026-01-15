@@ -338,36 +338,45 @@ function headingIntersectsSegment(point, velocity, pointA, pointB) {
   return t >= 0 && u >= 0 && u <= 1;
 }
 
-function computeLineMetrics(position) {
-  if (!hasLine() || !position) return null;
+// Precompute the line geometry once per update (meters in a local origin).
+function getLineGeometry() {
+  if (!hasLine()) return null;
   const origin = {
     lat: (state.line.a.lat + state.line.b.lat) / 2,
     lon: (state.line.a.lon + state.line.b.lon) / 2,
   };
-
   const pointA = toMeters(state.line.a, origin);
   const pointB = toMeters(state.line.b, origin);
-  const boat = toMeters(
-    { lat: position.coords.latitude, lon: position.coords.longitude },
-    origin
-  );
-
   const lineVec = { x: pointB.x - pointA.x, y: pointB.y - pointA.y };
   const lineLen = Math.hypot(lineVec.x, lineVec.y);
   if (lineLen < 1) return null;
-
   const normal = { x: -lineVec.y / lineLen, y: lineVec.x / lineLen };
-  const signedDistance = (boat.x - pointA.x) * normal.x + (boat.y - pointA.y) * normal.y;
-  const segment = distanceToSegment(boat, pointA, pointB);
-  return {
-    normal,
-    signedDistance,
-    lineLen,
-    boat,
-    pointA,
-    pointB,
-    segmentDistance: segment.distance,
-  };
+  return { origin, pointA, pointB, lineLen, normal };
+}
+
+// Convert a GPS position to local meters using the provided origin.
+function toMetersFromPosition(position, origin) {
+  if (!position) return null;
+  return toMeters(
+    { lat: position.coords.latitude, lon: position.coords.longitude },
+    origin
+  );
+}
+
+// Normalize a vector and keep its length if needed for quick checks.
+function normalizeVector(vec) {
+  if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y)) return null;
+  const len = Math.hypot(vec.x, vec.y);
+  if (len <= 0) return null;
+  return { x: vec.x / len, y: vec.y / len, len };
+}
+
+// Offset a point along a unit vector by a distance (meters).
+function offsetPoint(point, unit, distance) {
+  if (!point || !unit || !Number.isFinite(distance) || distance === 0) {
+    return point;
+  }
+  return { x: point.x + unit.x * distance, y: point.y + unit.y * distance };
 }
 
 function isFalseStart(signedDistance) {
@@ -482,8 +491,8 @@ function updateLineProjection() {
     return;
   }
 
-  const metrics = computeLineMetrics(state.position);
-  if (!metrics) {
+  const geometry = getLineGeometry();
+  if (!geometry) {
     if (els.lineStatus) {
       els.lineStatus.textContent = "Line too short";
     }
@@ -493,47 +502,60 @@ function updateLineProjection() {
     }
     return;
   }
+  const phoneMeters = toMetersFromPosition(state.position, geometry.origin);
+  if (!phoneMeters) {
+    return;
+  }
   if (els.lineStatus) {
     els.lineStatus.textContent = "";
   }
 
-  const { normal, signedDistance, lineLen, boat, pointA, pointB, segmentDistance } =
-    metrics;
+  const { normal, lineLen, pointA, pointB } = geometry;
+  const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
+  // Phone position is the base estimate. We only add bow offset where it matters:
+  // - "current heading" distance uses bow offset along the heading vector.
+  // - "direct to line" distance uses bow offset along the perpendicular to the line.
+  const velocityUnit = normalizeVector(state.velocity);
+  const bowHeading = velocityUnit
+    ? offsetPoint(phoneMeters, velocityUnit, bowOffsetMeters)
+    : phoneMeters;
+  const bowSegment = distanceToSegment(bowHeading, pointA, pointB);
+  const signedDistance =
+    (bowHeading.x - pointA.x) * normal.x + (bowHeading.y - pointA.y) * normal.y;
   const distanceSign = Math.sign(signedDistance) || 1;
   const distanceToLine = Math.abs(signedDistance);
-  const distanceToSegmentActual = segmentDistance;
-  const bowOffsetMeters = state.useKalman ? state.bowOffsetMeters : 0;
-  let phone = boat;
-  if (bowOffsetMeters > 0) {
-    const speed = Math.hypot(state.velocity.x, state.velocity.y);
-    if (Number.isFinite(speed) && speed > 0) {
-      phone = {
-        x: boat.x - (state.velocity.x / speed) * bowOffsetMeters,
-        y: boat.y - (state.velocity.y / speed) * bowOffsetMeters,
-      };
-    }
-  }
-  const phoneSegment = distanceToSegment(phone, pointA, pointB);
-  let directBow = phone;
-  if (bowOffsetMeters > 0 && phoneSegment.distance > 0) {
-    const ux = (phoneSegment.closest.x - phone.x) / phoneSegment.distance;
-    const uy = (phoneSegment.closest.y - phone.y) / phoneSegment.distance;
-    directBow = {
-      x: phone.x + ux * bowOffsetMeters,
-      y: phone.y + uy * bowOffsetMeters,
-    };
-  }
-  const directSegment = distanceToSegment(directBow, pointA, pointB);
+  const distanceToSegmentActual = bowSegment.distance;
+
+  const phoneSegment = distanceToSegment(phoneMeters, pointA, pointB);
+  const toLineUnit =
+    phoneSegment.distance > 0
+      ? {
+          x: (phoneSegment.closest.x - phoneMeters.x) / phoneSegment.distance,
+          y: (phoneSegment.closest.y - phoneMeters.y) / phoneSegment.distance,
+        }
+      : null;
+  const bowDirect = toLineUnit
+    ? offsetPoint(phoneMeters, toLineUnit, bowOffsetMeters)
+    : phoneMeters;
+  const directSegment = distanceToSegment(bowDirect, pointA, pointB);
   const directDistanceToSegment = directSegment.distance;
+
   state.latestDistance = distanceToSegmentActual;
   state.latestSignedDistance = signedDistance;
 
+  // Time remaining drives the projection forward to the start.
   const timeToStart = state.start.startTs
     ? Math.max(0, (state.start.startTs - Date.now()) / 1000)
     : 0;
 
   const speed = state.speed;
-  const headingHitsLine = headingIntersectsSegment(boat, state.velocity, pointA, pointB);
+  // "Current heading" uses bowHeading and the line normal to compute closing rate.
+  const headingHitsLine = headingIntersectsSegment(
+    bowHeading,
+    state.velocity,
+    pointA,
+    pointB
+  );
   const closingRate = headingHitsLine
     ? -(state.velocity.x * normal.x + state.velocity.y * normal.y) * distanceSign
     : Number.NaN;
@@ -601,7 +623,7 @@ function updateLineProjection() {
   if (timeToStart <= 0) {
     const freeze = state.start.freeze || {};
     if (!freeze.countdown) {
-      freeze.countdown = state.start.crossedEarly ? "False Start" : "Good Start";
+      freeze.countdown = state.start.crossedEarly ? "False\nStart" : "Good\nStart";
     }
     if (!freeze.race) {
       freeze.race = {

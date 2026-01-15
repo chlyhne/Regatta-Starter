@@ -3,6 +3,9 @@ import { toMeters, fromMeters } from "./geo.js";
 import { computeVelocityFromHeading } from "./velocity.js";
 import { KALMAN_TUNING } from "./tuning.js";
 
+// State vector layout: [x, y, vx, vy] in meters and meters/second, relative to a local origin.
+// We keep the math explicit (no linear algebra helpers) for readability and debugging.
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -14,6 +17,7 @@ function clampDtSeconds(dtRaw) {
 }
 
 function getProcessNoiseVariance() {
+  // Scale acceleration variance by boat length (longer boats respond more slowly).
   const baseQ = KALMAN_TUNING.processNoise.baseAccelerationVariance;
   const baseLength = KALMAN_TUNING.processNoise.baseBoatLengthMeters;
   const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : 0;
@@ -36,6 +40,7 @@ function getRecentMaxSpeed() {
 }
 
 function getSpeedScale(speed) {
+  // Use recent max speed as a proxy for "how quickly this boat can change speed".
   const recentMaxSpeed = getRecentMaxSpeed();
   const speedSource = Number.isFinite(recentMaxSpeed) ? recentMaxSpeed : speed;
   const speedKnots = Number.isFinite(speedSource) ? speedSource * 1.943844 : 0;
@@ -45,6 +50,7 @@ function getSpeedScale(speed) {
 }
 
 function initKalmanState(position) {
+  // Initialize the filter at the current GPS fix, using accuracy as the position variance.
   const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
   const accuracyDefault = KALMAN_TUNING.measurementNoise.accuracyDefaultMeters;
   const accuracyClamp = KALMAN_TUNING.measurementNoise.accuracyClampMeters;
@@ -73,6 +79,7 @@ function initKalmanState(position) {
 }
 
 function buildPrediction(filter, dt) {
+  // Constant-velocity model with tuned acceleration process noise.
   const x = filter.x;
   const P = filter.P;
   if (!Number.isFinite(dt) || dt <= 0) {
@@ -131,6 +138,7 @@ function buildPrediction(filter, dt) {
 }
 
 function formatKalmanOutput(filter, timestamp) {
+  // Convert back to lat/lon for UI, while keeping velocity in meters/second.
   const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
   return {
     position: {
@@ -147,6 +155,7 @@ function formatKalmanOutput(filter, timestamp) {
 }
 
 function applyKalmanFilter(position) {
+  // Measurement update with GPS accuracy feeding the R matrix (diagonal, same in x/y).
   if (!position) return null;
   if (!state.kalman) {
     state.kalman = initKalmanState(position);
@@ -234,6 +243,7 @@ function applyKalmanFilter(position) {
 }
 
 function predictKalmanState(targetTimestamp) {
+  // Pure prediction step used between GPS fixes (keeps UI motion smooth).
   if (!state.kalman) return null;
   const filter = state.kalman;
   const timestamp = Math.max(
@@ -253,6 +263,7 @@ function predictKalmanState(targetTimestamp) {
 }
 
 function getKalmanPositionCovariance() {
+  // Return the 2x2 position covariance for debug visualization.
   if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
   const covariance = state.kalman.P;
   const xx = covariance[0];
@@ -263,6 +274,7 @@ function getKalmanPositionCovariance() {
 }
 
 function getKalmanPredictedPositionCovariance(seconds) {
+  // Integrate the covariance forward for the time-to-start projection.
   if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return getKalmanPositionCovariance();

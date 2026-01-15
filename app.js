@@ -1087,13 +1087,14 @@ function updateStartDisplay() {
       state.audio.startBeeped = true;
     }
     setGpsMode("setup");
+    const outcomeText = state.start.crossedEarly ? "False\nStart" : "Good\nStart";
     if (!state.start.freeze) {
       state.start.freeze = {
-        countdown: state.start.crossedEarly ? "False Start" : "Good Start",
+        countdown: outcomeText,
       };
     }
     if (!state.start.freeze.countdown) {
-      state.start.freeze.countdown = state.start.crossedEarly ? "False Start" : "Good Start";
+      state.start.freeze.countdown = outcomeText;
     }
     els.raceCountdown.textContent = state.start.freeze.countdown;
     if (state.start.crossedEarly) {
@@ -1116,6 +1117,7 @@ function updateCurrentTime() {
 
 function resetPositionState() {
   state.position = null;
+  state.bowPosition = null;
   state.kalmanPosition = null;
   state.lastPosition = null;
   state.velocity = { x: 0, y: 0 };
@@ -1180,13 +1182,15 @@ function applyKalmanEstimate(result, options = {}) {
   if (!result) return;
   const rawPosition = options.rawPosition || null;
   const recordTrack = options.recordTrack !== false;
+  // Keep phone position/velocity as the canonical state; compute bow separately.
   const bowPosition = applyForwardOffset(
     result.position,
     result.velocity,
     state.bowOffsetMeters
   );
   state.kalmanPosition = result.position;
-  state.position = bowPosition;
+  state.position = result.position;
+  state.bowPosition = bowPosition;
   state.velocity = result.velocity;
   state.speed = result.speed;
   if (recordTrack) {
@@ -1229,8 +1233,14 @@ function handlePosition(position) {
     state.velocity = { x: computed.x, y: computed.y };
   }
   state.position = position;
+  state.bowPosition = applyForwardOffset(
+    position,
+    state.velocity,
+    state.bowOffsetMeters
+  );
+  // Raw fallback: track phone and bow separately, consistent with Kalman path.
   state.kalmanPosition = null;
-  recordTrackPoints(position, null, null);
+  recordTrackPoints(position, position, state.bowPosition);
   recordSpeedSample(state.speed, position.timestamp || Date.now());
   state.lastPosition = state.position;
   updateGPSDisplay();

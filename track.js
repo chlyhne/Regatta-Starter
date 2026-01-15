@@ -132,6 +132,20 @@ function distanceToSegment(point, pointA, pointB) {
   return { distance: Math.hypot(dx, dy), closest };
 }
 
+function normalizeVector(vec) {
+  if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y)) return null;
+  const len = Math.hypot(vec.x, vec.y);
+  if (len <= 0) return null;
+  return { x: vec.x / len, y: vec.y / len, len };
+}
+
+function offsetPoint(point, unit, distance) {
+  if (!point || !unit || !Number.isFinite(distance) || distance === 0) {
+    return point;
+  }
+  return { x: point.x + unit.x * distance, y: point.y + unit.y * distance };
+}
+
 function covarianceToAxes(covariance) {
   if (!covariance) return null;
   const xx = covariance.xx;
@@ -389,32 +403,42 @@ function renderTrack() {
     }
   }
 
-  let boat = null;
-  if (state.position) {
-    boat = toMeters(
-      {
-        lat: state.position.coords.latitude,
-        lon: state.position.coords.longitude,
-      },
-      origin
-    );
-  } else if (bowPoints.length) {
-    const last = bowPoints[bowPoints.length - 1];
-    boat = toXY(last);
-  } else if (phonePoints.length) {
-    const last = phonePoints[phonePoints.length - 1];
-    boat = toXY(last);
-  } else if (rawPoints.length) {
-    const last = rawPoints[rawPoints.length - 1];
-    boat = toXY(last);
-  }
-  if (boat) {
-    addBounds(boat);
-  }
+  // Prefer the latest state positions; fall back to the most recent tracks.
+  // Phone position drives covariance; bow position is used for the boat icon.
+  const phonePosition = state.position
+    ? toMeters(
+        {
+          lat: state.position.coords.latitude,
+          lon: state.position.coords.longitude,
+        },
+        origin
+      )
+    : null;
+  const bowPosition = state.bowPosition
+    ? toMeters(
+        {
+          lat: state.bowPosition.coords.latitude,
+          lon: state.bowPosition.coords.longitude,
+        },
+        origin
+      )
+    : null;
 
+  let boat = bowPosition || phonePosition || null;
+  if (!boat && bowPoints.length) {
+    boat = toXY(bowPoints[bowPoints.length - 1]);
+  } else if (!boat && phonePoints.length) {
+    boat = toXY(phonePoints[phonePoints.length - 1]);
+  } else if (!boat && rawPoints.length) {
+    boat = toXY(rawPoints[rawPoints.length - 1]);
+  }
+  if (boat) addBounds(boat);
+  if (phonePosition) addBounds(phonePosition);
+
+  // Covariance is for the phone estimate, not the bow.
   const positionAxes = covarianceToAxes(getKalmanPositionCovariance());
-  if (boat && positionAxes) {
-    const endpoints = axesEndpoints(boat, positionAxes);
+  if (phonePosition && positionAxes) {
+    const endpoints = axesEndpoints(phonePosition, positionAxes);
     if (endpoints) {
       addBounds(endpoints.majorStart);
       addBounds(endpoints.majorEnd);
@@ -432,40 +456,35 @@ function renderTrack() {
       : null;
   const speed = state.speed;
   const velocity = state.velocity;
-  const bowOffsetMeters = state.useKalman ? state.bowOffsetMeters : 0;
+  const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
+  // Mirror the race view logic: phone is base, bow is offset along heading or to line.
+  const phoneForProjection = phonePosition || boat;
+  const velocityUnit = normalizeVector(velocity);
+  const bowHeading =
+    phoneForProjection && velocityUnit
+      ? offsetPoint(phoneForProjection, velocityUnit, bowOffsetMeters)
+      : phoneForProjection;
 
   let projectedDirect = null;
   let projectedDirectFrom = null;
   if (
     line &&
-    boat &&
+    phoneForProjection &&
     Number.isFinite(speed) &&
     speed > 0 &&
     Number.isFinite(timeToStart) &&
     timeToStart > 0
   ) {
-    const velSpeed = Math.hypot(velocity.x, velocity.y);
-    let phone = boat;
-    if (bowOffsetMeters > 0 && velSpeed > 0) {
-      phone = {
-        x: boat.x - (velocity.x / velSpeed) * bowOffsetMeters,
-        y: boat.y - (velocity.y / velSpeed) * bowOffsetMeters,
-      };
-    }
-    const phoneSegment = distanceToSegment(phone, line.pointA, line.pointB);
+    const phoneSegment = distanceToSegment(phoneForProjection, line.pointA, line.pointB);
     if (phoneSegment.distance > 0) {
-      const ux = (phoneSegment.closest.x - phone.x) / phoneSegment.distance;
-      const uy = (phoneSegment.closest.y - phone.y) / phoneSegment.distance;
-      projectedDirectFrom = phone;
-      if (bowOffsetMeters > 0) {
-        projectedDirectFrom = {
-          x: phone.x + ux * bowOffsetMeters,
-          y: phone.y + uy * bowOffsetMeters,
-        };
-      }
+      const toLineUnit = {
+        x: (phoneSegment.closest.x - phoneForProjection.x) / phoneSegment.distance,
+        y: (phoneSegment.closest.y - phoneForProjection.y) / phoneSegment.distance,
+      };
+      projectedDirectFrom = offsetPoint(phoneForProjection, toLineUnit, bowOffsetMeters);
       projectedDirect = {
-        x: projectedDirectFrom.x + ux * speed * timeToStart,
-        y: projectedDirectFrom.y + uy * speed * timeToStart,
+        x: projectedDirectFrom.x + toLineUnit.x * speed * timeToStart,
+        y: projectedDirectFrom.y + toLineUnit.y * speed * timeToStart,
       };
       addBounds(projectedDirect);
       if (startAxes) {
@@ -484,7 +503,7 @@ function renderTrack() {
   let projectedHeadingFrom = null;
   if (
     line &&
-    boat &&
+    bowHeading &&
     Number.isFinite(timeToStart) &&
     timeToStart > 0 &&
     Number.isFinite(velocity.x) &&
@@ -492,10 +511,10 @@ function renderTrack() {
   ) {
     const velSpeed = Math.hypot(velocity.x, velocity.y);
     if (velSpeed > 0) {
-      projectedHeadingFrom = boat;
+      projectedHeadingFrom = bowHeading;
       projectedHeading = {
-        x: boat.x + velocity.x * timeToStart,
-        y: boat.y + velocity.y * timeToStart,
+        x: bowHeading.x + velocity.x * timeToStart,
+        y: bowHeading.y + velocity.y * timeToStart,
       };
       addBounds(projectedHeading);
       if (startAxes) {
@@ -779,8 +798,9 @@ function renderTrack() {
 
   drawBoatSvg();
 
-  if (positionAxes && dot) {
-    drawAxesAt(dot, positionAxes, "#c00000", 2.5, 2);
+  const covarianceCenter = phonePosition || dot;
+  if (positionAxes && covarianceCenter) {
+    drawAxesAt(covarianceCenter, positionAxes, "#c00000", 2.5, 2);
   }
   if (startAxes && projectedDirect) {
     const center = projectMeters(projectedDirect.x, projectedDirect.y);
