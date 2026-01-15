@@ -52,28 +52,30 @@ function getRaceMetricValues(projectedDirect, projectedClosing, speed, closingRa
       closing: isClosing
         ? formatRaceTimeDelta(computeTimeDeltaFromRate(projectedClosing, closingRate))
         : "--",
+      unitDirect: null,
+      unitClosing: null,
     };
   }
+  const direct = formatRaceDelta(projectedDirect);
+  const closing = isClosing ? formatRaceDelta(projectedClosing) : null;
+  const fallbackUnit = direct.unitLabel;
   return {
-    direct: formatRaceDelta(projectedDirect),
-    closing: isClosing ? formatRaceDelta(projectedClosing) : "--",
+    direct: direct.text,
+    closing: closing ? closing.text : "--",
+    unitDirect: direct.unitLabel,
+    unitClosing: closing ? closing.unitLabel : fallbackUnit,
   };
-}
-
-function formatRaceValue(prefix, value) {
-  if (value === "--") return value;
-  return `${prefix} ${value}`;
 }
 
 function setRaceValues(directValue, closingValue, closingMiss) {
   if (els.raceProjDirect) {
-    els.raceProjDirect.textContent = formatRaceValue("D", directValue);
+    els.raceProjDirect.textContent = directValue;
   }
   if (els.raceProjClosing) {
     if (closingMiss) {
       els.raceProjClosing.textContent = "line miss";
     } else {
-      els.raceProjClosing.textContent = formatRaceValue("C", closingValue);
+      els.raceProjClosing.textContent = closingValue;
     }
   }
 }
@@ -97,15 +99,16 @@ function updateStatusUnitLabels() {
   }
 }
 
-function updateRaceHintUnits() {
+function updateRaceHintUnits(unitDirect, unitClosing) {
   const showUnit = state.raceMetric === "distance";
-  const unit = formatUnitLabel(getDistanceUnitMeta().label);
   if (els.raceHintUnitDirect) {
-    els.raceHintUnitDirect.textContent = unit;
+    const fallback = formatUnitLabel(getDistanceUnitMeta().label);
+    els.raceHintUnitDirect.textContent = unitDirect || fallback;
     els.raceHintUnitDirect.style.display = showUnit ? "" : "none";
   }
   if (els.raceHintUnitClosing) {
-    els.raceHintUnitClosing.textContent = unit;
+    const fallback = formatUnitLabel(getDistanceUnitMeta().label);
+    els.raceHintUnitClosing.textContent = unitClosing || fallback;
     els.raceHintUnitClosing.style.display = showUnit ? "" : "none";
   }
 }
@@ -305,6 +308,7 @@ function updateLineProjection() {
     if (els.raceProjClosing) {
       els.raceProjClosing.textContent = "--";
     }
+    updateRaceHintUnits();
     updateRaceValueStyles(false, false);
     fitRaceText();
     const missingLineText = "Set start line";
@@ -358,6 +362,7 @@ function updateLineProjection() {
     if (els.raceProjClosing) {
       els.raceProjClosing.textContent = "--";
     }
+    updateRaceHintUnits();
     updateRaceValueStyles(false, false);
     fitRaceText();
     if (els.statusDistance) {
@@ -469,6 +474,7 @@ function updateLineProjection() {
     closingRate
   );
   setRaceValues(raceValues.direct, raceValues.closing, !isClosing);
+  updateRaceHintUnits(raceValues.unitDirect, raceValues.unitClosing);
   updateRaceValueStyles(overshootDirect, overshootClosing);
   fitRaceText();
   if (els.statusDistance) {
@@ -525,6 +531,7 @@ function updateLineProjection() {
       const frozenClosing =
         Number.isFinite(freeze.race.closingRate) && freeze.race.closingRate > 0;
       setRaceValues(frozenValues.direct, frozenValues.closing, !frozenClosing);
+      updateRaceHintUnits(frozenValues.unitDirect, frozenValues.unitClosing);
       const frozenOvershootDirect =
         Number.isFinite(freeze.race.projectedDirect) && freeze.race.projectedDirect < 0;
       const frozenOvershootClosing =

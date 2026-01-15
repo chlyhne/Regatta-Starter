@@ -155,20 +155,39 @@ function formatRaceSign(value) {
   return value < 0 ? "+" : "-";
 }
 
-function formatRaceDelta(value) {
+function trimTrailingZeros(value) {
+  if (!value.includes(".")) return value;
+  return value.replace(/\.?0+$/, "");
+}
+
+function formatSignificant(value, digits = 3) {
   if (!Number.isFinite(value)) {
     return "--";
   }
-  const limitMeters = 250;
-  const limitDisplay = Math.round(limitMeters * getDistanceUnitMeta().factor);
-  if (value < -limitMeters) {
-    return `< -${limitDisplay}`;
+  if (value === 0) {
+    return "0";
   }
-  if (value > limitMeters) {
-    return `> ${limitDisplay}`;
+  const abs = Math.abs(value);
+  const magnitude = Math.floor(Math.log10(abs));
+  const decimals = Math.max(0, digits - magnitude - 1);
+  const rounded = abs.toFixed(decimals);
+  return trimTrailingZeros(rounded);
+}
+
+function formatRaceDelta(value) {
+  if (!Number.isFinite(value)) {
+    return { text: "--", unitLabel: formatUnitLabel("m") };
   }
-  const abs = formatDistanceValue(value);
-  return value < 0 ? `+${abs}` : `-${abs}`;
+  const absMeters = Math.abs(value);
+  const useKm = absMeters >= 1000;
+  const unitLabel = formatUnitLabel(useKm ? "km" : "m");
+  const displayValue = useKm ? absMeters / 1000 : absMeters;
+  const absText = formatSignificant(displayValue, 3);
+  if (absText === "0") {
+    return { text: "0", unitLabel };
+  }
+  const sign = value < 0 ? "+" : "-";
+  return { text: `${sign}${absText}`, unitLabel };
 }
 
 function formatRaceTimeDelta(deltaSeconds) {
