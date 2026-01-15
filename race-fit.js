@@ -2,9 +2,6 @@ import { els } from "./dom.js";
 
 function fitRaceValues() {
   const values = [els.raceProjDirect, els.raceProjClosing].filter(Boolean);
-  if (window.matchMedia("(orientation: portrait)").matches && els.raceCountdown) {
-    values.push(els.raceCountdown);
-  }
   if (!values.length) return;
   if (values.some((element) => element.clientWidth === 0 || element.clientHeight === 0)) {
     return;
