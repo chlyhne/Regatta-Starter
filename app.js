@@ -68,6 +68,7 @@ const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
 let countdownPickerLive = false;
+let countdownPaused = false;
 
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
@@ -240,19 +241,38 @@ function syncCountdownPicker(secondsOverride) {
 
 function setCountdownPickerLive(active) {
   countdownPickerLive = Boolean(active);
+  if (countdownPickerLive) {
+    countdownPaused = false;
+  }
 }
 
-function cancelActiveCountdown() {
-  if (state.start.mode !== "countdown") return;
-  if (!state.start.startTs) return;
-  const remaining = Math.max(0, Math.round((state.start.startTs - Date.now()) / 1000));
-  state.start.countdownSeconds = remaining;
+function cancelActiveCountdown(options = {}) {
+  const { force = false, clearAbsolute = false } = options;
+  if (!force && state.start.mode !== "countdown") return;
+  const hasStart = Boolean(state.start.startTs);
+  if (!hasStart && !clearAbsolute) return;
+  const remaining = hasStart ? Math.max(0, Math.round((state.start.startTs - Date.now()) / 1000)) : null;
+  if (hasStart) {
+    state.start.countdownSeconds = remaining;
+  }
   state.start.startTs = null;
+  if (clearAbsolute) {
+    state.start.absoluteTime = "";
+  }
   state.start.freeze = null;
   state.start.crossedEarly = false;
   setCountdownPickerLive(false);
+  if (hasStart) {
+    countdownPaused = true;
+  }
   resetBeepState();
   saveSettings();
+  if (clearAbsolute && els.absoluteTime) {
+    els.absoluteTime.value = "";
+  }
+  if (Number.isFinite(remaining)) {
+    syncCountdownPicker(remaining);
+  }
   updateStartDisplay();
   updateLineProjection();
 }
@@ -1025,6 +1045,7 @@ function setStart(options = {}) {
   state.start.startTs = computeStartTimestamp();
   state.start.crossedEarly = false;
   state.start.freeze = null;
+  countdownPaused = false;
   resetBeepState();
   saveSettings();
   if (options.goToRace) {
@@ -1066,13 +1087,21 @@ function updateStartDisplay() {
   if (!state.start.startTs) {
     setCountdownPickerLive(false);
     const missingStartText = "Set start time";
+    const showPausedCountdown = state.start.mode === "countdown" && countdownPaused;
+    const pausedSeconds = showPausedCountdown
+      ? Math.max(0, Number(state.start.countdownSeconds) || 0)
+      : null;
     if (els.statusTime) {
-      els.statusTime.textContent = missingStartText;
+      els.statusTime.textContent = showPausedCountdown
+        ? formatTimeRemainingHMSFull(pausedSeconds)
+        : missingStartText;
     }
     if (els.statusStartTime) {
       els.statusStartTime.textContent = missingStartText;
     }
-    els.raceCountdown.textContent = "--";
+    els.raceCountdown.textContent = showPausedCountdown
+      ? formatTimeRemainingHMS(pausedSeconds)
+      : "--";
     if (els.raceStartClock) {
       els.raceStartClock.textContent = "Start not set";
     }
@@ -1588,10 +1617,10 @@ function bindEvents() {
   if (countdownInputs.length) {
     countdownInputs.forEach((input) => {
       input.addEventListener("focus", () => {
-        cancelActiveCountdown();
+        cancelActiveCountdown({ force: true, clearAbsolute: true });
       });
       input.addEventListener("pointerdown", () => {
-        cancelActiveCountdown();
+        cancelActiveCountdown({ force: true, clearAbsolute: true });
       });
       input.addEventListener("change", () => {
         setCountdownPickerLive(false);
@@ -1620,9 +1649,18 @@ function bindEvents() {
   if (els.startModeCountdown) {
     els.startModeCountdown.addEventListener("click", () => {
       state.start.mode = "countdown";
-      setCountdownPickerLive(false);
+      const hasActiveStart = Boolean(state.start.startTs) && state.start.startTs > Date.now();
+      if (hasActiveStart) {
+        const remaining = Math.max(0, Math.round((state.start.startTs - Date.now()) / 1000));
+        state.start.countdownSeconds = remaining;
+        setCountdownPickerLive(true);
+        syncCountdownPicker(remaining);
+      } else {
+        setCountdownPickerLive(false);
+      }
       saveSettings();
       updateStartModeToggle();
+      updateStartDisplay();
     });
   }
 
