@@ -35,7 +35,28 @@ function computeTimeDeltaFromRate(projectedDistance, rate) {
   if (!Number.isFinite(projectedDistance) || !Number.isFinite(rate) || rate <= 0) {
     return Number.NaN;
   }
-  return projectedDistance / rate;
+  const seconds = projectedDistance / rate;
+  if (!Number.isFinite(seconds)) return Number.NaN;
+  const limit = 24 * 60 * 60;
+  if (Math.abs(seconds) > limit) {
+    return Math.sign(seconds) * limit;
+  }
+  return seconds;
+}
+
+function formatRaceTimeLabel(deltaSeconds) {
+  if (!Number.isFinite(deltaSeconds)) return null;
+  const total = Math.round(Math.abs(deltaSeconds));
+  if (total < 600) {
+    return "M:SS";
+  }
+  if (total < 3600) {
+    return "M";
+  }
+  if (total < 36000) {
+    return "H:MM";
+  }
+  return "H";
 }
 
 function getRaceMetricLabel() {
@@ -47,13 +68,19 @@ function getRaceMetricLabel() {
 function getRaceMetricValues(projectedDirect, projectedClosing, speed, closingRate) {
   const isClosing = Number.isFinite(closingRate) && closingRate > 0;
   if (state.raceMetric === "time") {
+    const directSeconds = computeTimeDeltaFromRate(projectedDirect, speed);
+    const closingSeconds = isClosing
+      ? computeTimeDeltaFromRate(projectedClosing, closingRate)
+      : Number.NaN;
     return {
-      direct: formatRaceTimeDelta(computeTimeDeltaFromRate(projectedDirect, speed)),
+      direct: formatRaceTimeDelta(directSeconds),
       closing: isClosing
-        ? formatRaceTimeDelta(computeTimeDeltaFromRate(projectedClosing, closingRate))
+        ? formatRaceTimeDelta(closingSeconds)
         : "--",
       unitDirect: null,
       unitClosing: null,
+      timeDirect: directSeconds,
+      timeClosing: closingSeconds,
     };
   }
   const direct = formatRaceDelta(projectedDirect);
@@ -64,6 +91,8 @@ function getRaceMetricValues(projectedDirect, projectedClosing, speed, closingRa
     closing: closing ? closing.text : "--",
     unitDirect: direct.unitLabel,
     unitClosing: closing ? closing.unitLabel : fallbackUnit,
+    timeDirect: null,
+    timeClosing: null,
   };
 }
 
@@ -134,6 +163,22 @@ function updateRaceMetricLabels() {
       "aria-pressed",
       state.raceMetric === "time" ? "true" : "false"
     );
+  }
+}
+
+function updateRaceTimeFormatLabels(directSeconds, closingSeconds) {
+  if (state.raceMetric !== "time") return;
+  const directFormat = formatRaceTimeLabel(directSeconds);
+  const closingFormat = formatRaceTimeLabel(closingSeconds) || directFormat;
+  if (els.raceMetricLabelDirect) {
+    els.raceMetricLabelDirect.textContent = directFormat
+      ? `Time to Line at Start ${directFormat}`
+      : "Time to Line at Start";
+  }
+  if (els.raceMetricLabelClosing) {
+    els.raceMetricLabelClosing.textContent = closingFormat
+      ? `Time to Line at Start ${closingFormat}`
+      : "Time to Line at Start";
   }
 }
 
@@ -475,6 +520,7 @@ function updateLineProjection() {
   );
   setRaceValues(raceValues.direct, raceValues.closing, !isClosing);
   updateRaceHintUnits(raceValues.unitDirect, raceValues.unitClosing);
+  updateRaceTimeFormatLabels(raceValues.timeDirect, raceValues.timeClosing);
   updateRaceValueStyles(overshootDirect, overshootClosing);
   fitRaceText();
   if (els.statusDistance) {
@@ -532,6 +578,7 @@ function updateLineProjection() {
         Number.isFinite(freeze.race.closingRate) && freeze.race.closingRate > 0;
       setRaceValues(frozenValues.direct, frozenValues.closing, !frozenClosing);
       updateRaceHintUnits(frozenValues.unitDirect, frozenValues.unitClosing);
+      updateRaceTimeFormatLabels(frozenValues.timeDirect, frozenValues.timeClosing);
       const frozenOvershootDirect =
         Number.isFinite(freeze.race.projectedDirect) && freeze.race.projectedDirect < 0;
       const frozenOvershootClosing =

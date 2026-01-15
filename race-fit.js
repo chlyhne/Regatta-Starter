@@ -10,46 +10,60 @@ function fitRaceValues() {
     return;
   }
 
+  const samples = new Map();
   values.forEach((element) => {
+    const sample = element.dataset.fitSample;
+    const text = (element.textContent || "").trim();
+    const useSample = sample && (text === "--" || /^[+-]?\d/.test(text));
+    if (useSample) {
+      samples.set(element, element.textContent);
+      element.textContent = sample;
+    }
     element.style.fontSize = "";
   });
 
-  const baseSize = Math.max(
-    ...values.map((element) => parseFloat(window.getComputedStyle(element).fontSize) || 16)
-  );
-  const maxSize = Math.max(
-    baseSize,
-    Math.min(240, Math.max(...values.map((element) => element.clientHeight || 0)))
-  );
-  const minSize = Math.min(14, maxSize);
-  const precision = 0.5;
-  let low = Math.round(minSize / precision);
-  let high = Math.round(maxSize / precision);
-  let best = low;
-
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const size = mid * precision;
-    values.forEach((element) => {
-      element.style.fontSize = `${size}px`;
-    });
-    const fits = values.every(
-      (element) =>
-        element.scrollWidth <= element.clientWidth &&
-        element.scrollHeight <= element.clientHeight
+  try {
+    const baseSize = Math.max(
+      ...values.map((element) => parseFloat(window.getComputedStyle(element).fontSize) || 16)
     );
-    if (fits) {
-      best = mid;
-      low = mid + 1;
-    } else {
-      high = mid - 1;
-    }
-  }
+    const maxSize = Math.max(
+      baseSize,
+      Math.min(240, Math.max(...values.map((element) => element.clientHeight || 0)))
+    );
+    const minSize = Math.min(14, maxSize);
+    const precision = 0.5;
+    let low = Math.round(minSize / precision);
+    let high = Math.round(maxSize / precision);
+    let best = low;
 
-  const finalSize = best * precision;
-  values.forEach((element) => {
-    element.style.fontSize = `${finalSize}px`;
-  });
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const size = mid * precision;
+      values.forEach((element) => {
+        element.style.fontSize = `${size}px`;
+      });
+      const fits = values.every(
+        (element) =>
+          element.scrollWidth <= element.clientWidth &&
+          element.scrollHeight <= element.clientHeight
+      );
+      if (fits) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    const finalSize = best * precision;
+    values.forEach((element) => {
+      element.style.fontSize = `${finalSize}px`;
+    });
+  } finally {
+    samples.forEach((text, element) => {
+      element.textContent = text;
+    });
+  }
 }
 
 function fitRaceText() {

@@ -179,10 +179,11 @@ function formatRaceDelta(value) {
     return { text: "--", unitLabel: formatUnitLabel("m") };
   }
   const absMeters = Math.abs(value);
-  const useKm = absMeters >= 1000;
+  const roundedMeters = Math.round(absMeters);
+  const useKm = roundedMeters >= 1000;
   const unitLabel = formatUnitLabel(useKm ? "km" : "m");
-  const displayValue = useKm ? absMeters / 1000 : absMeters;
-  const absText = formatSignificant(displayValue, 3);
+  const displayValue = useKm ? roundedMeters / 1000 : roundedMeters;
+  const absText = useKm ? formatSignificant(displayValue, 3) : String(roundedMeters);
   if (absText === "0") {
     return { text: "0", unitLabel };
   }
