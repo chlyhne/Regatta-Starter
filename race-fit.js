@@ -10,6 +10,11 @@ function fitRaceValues() {
     return;
   }
 
+  const hasNoTime = values.some((element) => {
+    const text = (element.textContent || "").trim();
+    return text === "NO TIME";
+  });
+
   const samples = new Map();
   values.forEach((element) => {
     const sample = element.dataset.fitSample;
@@ -29,7 +34,7 @@ function fitRaceValues() {
     const maxSize = Math.max(
       baseSize,
       Math.min(240, Math.max(...values.map((element) => element.clientHeight || 0)))
-    );
+    ) * (hasNoTime ? 0.9 : 1);
     const minSize = Math.min(14, maxSize);
     const precision = 0.5;
     let low = Math.round(minSize / precision);

@@ -68,7 +68,6 @@ const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
 let countdownPickerLive = false;
-let countdownPaused = false;
 
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
@@ -241,9 +240,6 @@ function syncCountdownPicker(secondsOverride) {
 
 function setCountdownPickerLive(active) {
   countdownPickerLive = Boolean(active);
-  if (countdownPickerLive) {
-    countdownPaused = false;
-  }
 }
 
 function cancelActiveCountdown(options = {}) {
@@ -262,9 +258,6 @@ function cancelActiveCountdown(options = {}) {
   state.start.freeze = null;
   state.start.crossedEarly = false;
   setCountdownPickerLive(false);
-  if (hasStart) {
-    countdownPaused = true;
-  }
   resetBeepState();
   saveSettings();
   if (clearAbsolute && els.absoluteTime) {
@@ -452,7 +445,7 @@ function hasStartLine() {
 function updateLineNameDisplay() {
   if (!els.statusLineName) return;
   if (!hasStartLine()) {
-    els.statusLineName.textContent = "Line not set";
+    els.statusLineName.textContent = "NO LINE";
     return;
   }
   els.statusLineName.textContent = state.lineName || "--";
@@ -1045,7 +1038,6 @@ function setStart(options = {}) {
   state.start.startTs = computeStartTimestamp();
   state.start.crossedEarly = false;
   state.start.freeze = null;
-  countdownPaused = false;
   resetBeepState();
   saveSettings();
   if (options.goToRace) {
@@ -1086,22 +1078,13 @@ function updateStartDisplay() {
 
   if (!state.start.startTs) {
     setCountdownPickerLive(false);
-    const missingStartText = "Set start time";
-    const showPausedCountdown = state.start.mode === "countdown" && countdownPaused;
-    const pausedSeconds = showPausedCountdown
-      ? Math.max(0, Number(state.start.countdownSeconds) || 0)
-      : null;
     if (els.statusTime) {
-      els.statusTime.textContent = showPausedCountdown
-        ? formatTimeRemainingHMSFull(pausedSeconds)
-        : missingStartText;
+      els.statusTime.textContent = "NO TIME";
     }
     if (els.statusStartTime) {
-      els.statusStartTime.textContent = missingStartText;
+      els.statusStartTime.textContent = "NO TIME";
     }
-    els.raceCountdown.textContent = showPausedCountdown
-      ? formatTimeRemainingHMS(pausedSeconds)
-      : "--";
+    els.raceCountdown.textContent = "NO TIME";
     if (els.raceStartClock) {
       els.raceStartClock.textContent = "Start not set";
     }

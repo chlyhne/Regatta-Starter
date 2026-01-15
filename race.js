@@ -27,7 +27,7 @@ function hasLine() {
 function updateLineStatus() {
   const valid = hasLine();
   if (els.lineStatus) {
-    els.lineStatus.textContent = valid ? "" : "Line not set";
+    els.lineStatus.textContent = valid ? "" : "NO LINE";
   }
 }
 
@@ -150,6 +150,17 @@ function updateRaceValueStyles(directOver, closingOver) {
   if (els.raceProjClosing) {
     els.raceProjClosing.classList.toggle("race-value-over", Boolean(closingOver));
   }
+}
+
+function setRaceStatusText(text) {
+  if (els.raceProjDirect) {
+    els.raceProjDirect.textContent = text;
+  }
+  if (els.raceProjClosing) {
+    els.raceProjClosing.textContent = text;
+  }
+  updateRaceValueStyles(false, false);
+  fitRaceText();
 }
 
 function updateStatusUnitLabels() {
@@ -292,7 +303,7 @@ function computeStartDirection() {
 }
 
 function getStartDirectionStatusText() {
-  if (!hasLine()) return "Set start line";
+  if (!hasLine()) return "NO LINE";
   const direction = computeStartDirection();
   if (!direction) return "Line too short";
   return direction;
@@ -384,6 +395,7 @@ function isFalseStart(signedDistance) {
 }
 
 function updateLineProjection() {
+  const hasStartTime = Number.isFinite(state.start.startTs);
   if (!hasLine()) {
     if (els.projDirect) {
       els.projDirect.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
@@ -401,16 +413,9 @@ function updateLineProjection() {
         getSpeedUnitMeta().label
       )}`;
     }
-    if (els.raceProjDirect) {
-      els.raceProjDirect.textContent = "--";
-    }
-    if (els.raceProjClosing) {
-      els.raceProjClosing.textContent = "--";
-    }
+    setRaceStatusText("NO LINE");
     updateRaceHintUnits();
-    updateRaceValueStyles(false, false);
-    fitRaceText();
-    const missingLineText = "Set start line";
+    const missingLineText = "NO LINE";
     if (els.statusDistance) {
       if (els.statusDistanceValue) {
         els.statusDistanceValue.textContent = missingLineText;
@@ -455,20 +460,17 @@ function updateLineProjection() {
         getSpeedUnitMeta().label
       )}`;
     }
-    if (els.raceProjDirect) {
-      els.raceProjDirect.textContent = "--";
-    }
-    if (els.raceProjClosing) {
-      els.raceProjClosing.textContent = "--";
+    if (!hasStartTime) {
+      setRaceStatusText("NO TIME");
+    } else {
+      setRaceStatusText("NO GPS");
     }
     updateRaceHintUnits();
-    updateRaceValueStyles(false, false);
-    fitRaceText();
     if (els.statusDistance) {
       if (els.statusDistanceValue) {
-        els.statusDistanceValue.textContent = "No GPS";
+        els.statusDistanceValue.textContent = "NO GPS";
       } else {
-        els.statusDistance.textContent = "No GPS";
+        els.statusDistance.textContent = "NO GPS";
       }
     }
     if (els.statusDistanceUnit) {
@@ -543,31 +545,39 @@ function updateLineProjection() {
   state.latestDistance = distanceToSegmentActual;
   state.latestSignedDistance = signedDistance;
 
-  // Time remaining drives the projection forward to the start.
-  const timeToStart = state.start.startTs
-    ? Math.max(0, (state.start.startTs - Date.now()) / 1000)
-    : 0;
-
   const speed = state.speed;
-  // "Current heading" uses bowHeading and the line normal to compute closing rate.
-  const headingHitsLine = headingIntersectsSegment(
-    bowHeading,
-    state.velocity,
-    pointA,
-    pointB
-  );
-  const closingRate = headingHitsLine
-    ? -(state.velocity.x * normal.x + state.velocity.y * normal.y) * distanceSign
-    : Number.NaN;
-  const sideSign = isFalseStart(signedDistance) ? -1 : 1;
-  const projectedDirect = (directDistanceToSegment - speed * timeToStart) * sideSign;
-  const projectedClosing = Number.isFinite(closingRate)
-    ? (distanceToLine - closingRate * timeToStart) * sideSign
-    : Number.NaN;
-  const isClosing = Number.isFinite(closingRate) && closingRate > 0;
-  const overshootDirect = Number.isFinite(projectedDirect) && projectedDirect < 0;
-  const overshootClosing =
-    isClosing && Number.isFinite(projectedClosing) && projectedClosing < 0;
+  let timeToStart = null;
+  let closingRate = Number.NaN;
+  let projectedDirect = Number.NaN;
+  let projectedClosing = Number.NaN;
+  let isClosing = false;
+  let overshootDirect = false;
+  let overshootClosing = false;
+  if (hasStartTime) {
+    // Time remaining drives the projection forward to the start.
+    timeToStart = Math.max(0, (state.start.startTs - Date.now()) / 1000);
+    // "Current heading" uses bowHeading and the line normal to compute closing rate.
+    const headingHitsLine = headingIntersectsSegment(
+      bowHeading,
+      state.velocity,
+      pointA,
+      pointB
+    );
+    closingRate = headingHitsLine
+      ? -(state.velocity.x * normal.x + state.velocity.y * normal.y) * distanceSign
+      : Number.NaN;
+    const sideSign = isFalseStart(signedDistance) ? -1 : 1;
+    projectedDirect = (directDistanceToSegment - speed * timeToStart) * sideSign;
+    projectedClosing = Number.isFinite(closingRate)
+      ? (distanceToLine - closingRate * timeToStart) * sideSign
+      : Number.NaN;
+    isClosing = Number.isFinite(closingRate) && closingRate > 0;
+    overshootDirect = Number.isFinite(projectedDirect) && projectedDirect < 0;
+    overshootClosing =
+      isClosing && Number.isFinite(projectedClosing) && projectedClosing < 0;
+  } else {
+    setRaceStatusText("NO TIME");
+  }
 
   if (els.projDirect) els.projDirect.textContent = formatOverUnder(projectedDirect);
   if (els.distDirect) {
@@ -579,17 +589,19 @@ function updateLineProjection() {
   if (els.closingRate) {
     els.closingRate.textContent = `Closing rate ${formatRate(closingRate)}`;
   }
-  const raceValues = getRaceMetricValues(
-    projectedDirect,
-    projectedClosing,
-    speed,
-    closingRate
-  );
-  setRaceValues(raceValues.direct, raceValues.closing, !isClosing);
-  updateRaceHintUnits(raceValues.unitDirect, raceValues.unitClosing);
-  updateRaceTimeFormatLabels(raceValues.timeDirect, raceValues.timeClosing);
-  updateRaceValueStyles(overshootDirect, overshootClosing);
-  fitRaceText();
+  if (hasStartTime) {
+    const raceValues = getRaceMetricValues(
+      projectedDirect,
+      projectedClosing,
+      speed,
+      closingRate
+    );
+    setRaceValues(raceValues.direct, raceValues.closing, !isClosing);
+    updateRaceHintUnits(raceValues.unitDirect, raceValues.unitClosing);
+    updateRaceTimeFormatLabels(raceValues.timeDirect, raceValues.timeClosing);
+    updateRaceValueStyles(overshootDirect, overshootClosing);
+    fitRaceText();
+  }
   if (els.statusDistance) {
     if (els.statusDistanceValue) {
       els.statusDistanceValue.textContent = `${formatDistanceValue(
@@ -612,7 +624,7 @@ function updateLineProjection() {
     startDirectionEl.textContent = getStartDirectionStatusText();
   }
 
-  if (state.start.startTs && timeToStart <= 0 && !state.start.freeze) {
+  if (hasStartTime && timeToStart !== null && timeToStart <= 0 && !state.start.freeze) {
     const nextFalseStart = isFalseStart(signedDistance);
     if (state.start.crossedEarly !== nextFalseStart) {
       state.start.crossedEarly = nextFalseStart;
@@ -620,7 +632,7 @@ function updateLineProjection() {
     }
   }
 
-  if (timeToStart <= 0) {
+  if (hasStartTime && timeToStart !== null && timeToStart <= 0) {
     const freeze = state.start.freeze || {};
     if (!freeze.countdown) {
       freeze.countdown = state.start.crossedEarly ? "False\nStart" : "Good\nStart";

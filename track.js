@@ -594,6 +594,18 @@ function renderTrack() {
     });
     ctx.stroke();
   };
+  const drawDots = (points, color, radius) => {
+    if (!points.length) return;
+    ctx.save();
+    ctx.fillStyle = color;
+    points.forEach((point) => {
+      const { x, y } = project(point);
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  };
   const drawSegment = (start, end, color, lineWidth, dash) => {
     if (!start || !end) return;
     ctx.save();
@@ -707,7 +719,7 @@ function renderTrack() {
   }
   ctx.stroke();
 
-  drawLine(rawPoints, "#9a9a9a", 2);
+  drawDots(rawPoints, "#ff00ff", 2.5);
   drawLine(phonePoints, "#000000", 2.5);
   drawLine(bowPoints, "#c00000", 2.5);
 
@@ -731,10 +743,19 @@ function renderTrack() {
     const speedMetersPerSecond = Math.hypot(state.velocity.x, state.velocity.y);
     const ux = speedMetersPerSecond > 1e-6 ? state.velocity.x / speedMetersPerSecond : 0;
     const uy = speedMetersPerSecond > 1e-6 ? state.velocity.y / speedMetersPerSecond : 1;
+    const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
+    const anchor = phonePosition || boat;
+    if (!anchor) return;
+    const bowMeters = phonePosition
+      ? {
+          x: anchor.x + ux * bowOffsetMeters,
+          y: anchor.y + uy * bowOffsetMeters,
+        }
+      : anchor;
 
     const stern = {
-      x: boat.x - ux * lengthMeters,
-      y: boat.y - uy * lengthMeters,
+      x: bowMeters.x - ux * lengthMeters,
+      y: bowMeters.y - uy * lengthMeters,
     };
     const beamMeters = Math.max(0.5, lengthMeters * 0.32);
     const px = -uy;
@@ -748,7 +769,7 @@ function renderTrack() {
       y: stern.y - (py * beamMeters) / 2,
     };
 
-    const bowScreen = projectMeters(boat.x, boat.y);
+    const bowScreen = projectMeters(bowMeters.x, bowMeters.y);
     const leftScreen = projectMeters(left.x, left.y);
     const rightScreen = projectMeters(right.x, right.y);
 
@@ -767,7 +788,8 @@ function renderTrack() {
   };
 
   const drawBoatSvg = () => {
-    if (!boat) return;
+    const anchor = phonePosition || boat;
+    if (!anchor) return;
     const lengthMeters = Number.isFinite(state.boatLengthMeters)
       ? state.boatLengthMeters
       : 0;
@@ -783,16 +805,18 @@ function renderTrack() {
       ? boatSvg.width / boatSvg.height
       : 0.3;
     const widthPx = lengthPx * aspect;
-    const bowScreen = projectMeters(boat.x, boat.y);
     const speedMetersPerSecond = Math.hypot(state.velocity.x, state.velocity.y);
     const angle = speedMetersPerSecond > 1e-6
       ? Math.atan2(state.velocity.x, state.velocity.y)
       : 0;
+    const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
+    const bowOffsetPx = (phonePosition ? bowOffsetMeters : 0) * scale;
+    const anchorScreen = projectMeters(anchor.x, anchor.y);
 
     ctx.save();
-    ctx.translate(bowScreen.x, bowScreen.y);
+    ctx.translate(anchorScreen.x, anchorScreen.y);
     ctx.rotate(angle);
-    ctx.drawImage(boatSvg.image, -widthPx / 2, 0, widthPx, lengthPx);
+    ctx.drawImage(boatSvg.image, -widthPx / 2, -bowOffsetPx, widthPx, lengthPx);
     ctx.restore();
   };
 
