@@ -67,6 +67,7 @@ const KALMAN_PREDICT_HZ = 5;
 const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
+let countdownPickerLive = false;
 
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
@@ -226,12 +227,19 @@ function releaseWakeLock() {
   state.wakeLock = null;
 }
 
-function syncCountdownPicker() {
+function syncCountdownPicker(secondsOverride) {
   if (!els.countdownHours || !els.countdownMinutes || !els.countdownSeconds) return;
-  const { hours, minutes, seconds } = splitDurationSeconds(state.start.countdownSeconds);
+  const totalSeconds = Number.isFinite(secondsOverride)
+    ? secondsOverride
+    : state.start.countdownSeconds;
+  const { hours, minutes, seconds } = splitDurationSeconds(totalSeconds);
   setNumberInputValue(els.countdownHours, hours);
   setNumberInputValue(els.countdownMinutes, minutes);
   setNumberInputValue(els.countdownSeconds, seconds);
+}
+
+function setCountdownPickerLive(active) {
+  countdownPickerLive = Boolean(active);
 }
 
 function getCountdownSecondsFromPicker() {
@@ -1041,6 +1049,7 @@ function updateStartDisplay() {
   setRaceTimingControlsEnabled(canAdjustStart);
 
   if (!state.start.startTs) {
+    setCountdownPickerLive(false);
     const missingStartText = "Set start time";
     if (els.statusTime) {
       els.statusTime.textContent = missingStartText;
@@ -1060,6 +1069,12 @@ function updateStartDisplay() {
   }
   const now = Date.now();
   const delta = Math.max(0, (state.start.startTs - now) / 1000);
+  if (state.start.mode === "countdown" && countdownPickerLive) {
+    syncCountdownPicker(Math.max(0, Math.round(delta)));
+    if (delta <= 0) {
+      countdownPickerLive = false;
+    }
+  }
   if (els.statusTime) {
     els.statusTime.textContent = formatTimeRemainingHMSFull(delta);
   }
@@ -1557,7 +1572,14 @@ function bindEvents() {
 
   if (countdownInputs.length) {
     countdownInputs.forEach((input) => {
+      input.addEventListener("focus", () => {
+        setCountdownPickerLive(false);
+      });
+      input.addEventListener("pointerdown", () => {
+        setCountdownPickerLive(false);
+      });
       input.addEventListener("change", () => {
+        setCountdownPickerLive(false);
         state.start.countdownSeconds = getCountdownSecondsFromPicker();
         saveSettings();
       });
@@ -1574,6 +1596,7 @@ function bindEvents() {
   if (els.startModeAbsolute) {
     els.startModeAbsolute.addEventListener("click", () => {
       state.start.mode = "absolute";
+      setCountdownPickerLive(false);
       saveSettings();
       updateStartModeToggle();
     });
@@ -1582,6 +1605,7 @@ function bindEvents() {
   if (els.startModeCountdown) {
     els.startModeCountdown.addEventListener("click", () => {
       state.start.mode = "countdown";
+      setCountdownPickerLive(false);
       saveSettings();
       updateStartModeToggle();
     });
@@ -1593,6 +1617,7 @@ function bindEvents() {
       if (state.start.mode === "countdown") {
         state.start.countdownSeconds = getCountdownSecondsFromPicker();
         saveSettings();
+        setCountdownPickerLive(true);
         setStart({ goToRace: false });
         if (state.start.startTs) {
           const startDate = new Date(state.start.startTs);
@@ -1606,6 +1631,7 @@ function bindEvents() {
       } else {
         state.start.mode = "absolute";
         saveSettings();
+        setCountdownPickerLive(false);
         setStart({ goToRace: false });
       }
       updateStartDisplay();
