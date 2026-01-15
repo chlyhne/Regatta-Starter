@@ -194,21 +194,22 @@ function formatRaceTimeDelta(deltaSeconds) {
   if (!Number.isFinite(deltaSeconds)) {
     return "--";
   }
-  if (deltaSeconds > 600) {
-    return "> 10:00";
-  }
-  if (deltaSeconds < -600) {
-    return "< 10:00";
-  }
   const total = Math.round(Math.abs(deltaSeconds));
+  if (total === 0) {
+    return "0:00";
+  }
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
-  const value = hours
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
-    : `${minutes}:${String(secs).padStart(2, "0")}`;
-  if (total === 0) {
-    return "0:00";
+  let value = "";
+  if (total < 600) {
+    value = `${minutes}:${String(secs).padStart(2, "0")}`;
+  } else if (total < 3600) {
+    value = String(Math.floor(total / 60));
+  } else if (total < 36000) {
+    value = `${hours}:${String(minutes).padStart(2, "0")}`;
+  } else {
+    value = String(hours);
   }
   const sign = deltaSeconds < 0 ? "+" : "-";
   return `${sign}${value}`;

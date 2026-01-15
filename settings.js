@@ -185,4 +185,4 @@ export function saveSettings(patch) {
   return normalized;
 }
 
-export { STORAGE_KEY, SETTINGS_VERSION, DEFAULT_SETTINGS };
+export { STORAGE_KEY, SETTINGS_VERSION, DEFAULT_SETTINGS, MAX_COUNTDOWN_SECONDS };

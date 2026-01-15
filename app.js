@@ -44,6 +44,7 @@ import {
 import {
   loadSettings as loadSettingsFromStorage,
   saveSettings as saveSettingsToStorage,
+  MAX_COUNTDOWN_SECONDS,
 } from "./settings.js";
 import {
   formatUnitLabel,
@@ -240,7 +241,8 @@ function getCountdownSecondsFromPicker() {
   const hours = Number.parseInt(els.countdownHours.value, 10) || 0;
   const minutes = Number.parseInt(els.countdownMinutes.value, 10) || 0;
   const seconds = Number.parseInt(els.countdownSeconds.value, 10) || 0;
-  return hours * 3600 + minutes * 60 + seconds;
+  const total = hours * 3600 + minutes * 60 + seconds;
+  return Math.min(Math.max(total, 0), MAX_COUNTDOWN_SECONDS);
 }
 
 function updateSoundToggle() {
@@ -977,7 +979,10 @@ function parseLineInputs(options = {}) {
 
 function computeStartTimestamp() {
   if (state.start.mode === "countdown") {
-    const seconds = Number.parseInt(state.start.countdownSeconds, 10) || 0;
+    const seconds = Math.min(
+      Math.max(Number.parseInt(state.start.countdownSeconds, 10) || 0, 0),
+      MAX_COUNTDOWN_SECONDS
+    );
     return Date.now() + seconds * 1000;
   }
   if (!state.start.absoluteTime) return null;
