@@ -102,7 +102,7 @@ function setRaceValues(directValue, closingValue, closingMiss) {
   }
   if (els.raceProjClosing) {
     if (closingMiss) {
-      els.raceProjClosing.textContent = "line miss";
+      els.raceProjClosing.textContent = "miss";
     } else {
       els.raceProjClosing.textContent = closingValue;
     }
