@@ -79,7 +79,7 @@ const state = {
   selectedLineId: null,
   wakeLock: null,
   gpsTrackRaw: [],
-  gpsTrackPhone: [],
+  gpsTrackDevice: [],
   gpsTrackFiltered: [],
   kalman: null,
   audio: {

@@ -510,8 +510,8 @@ function updateLineProjection() {
     }
     return;
   }
-  const phoneMeters = toMetersFromPosition(state.position, geometry.origin);
-  if (!phoneMeters) {
+  const deviceMeters = toMetersFromPosition(state.position, geometry.origin);
+  if (!deviceMeters) {
     return;
   }
   if (els.lineStatus) {
@@ -520,13 +520,13 @@ function updateLineProjection() {
 
   const { normal, lineLen, pointA, pointB } = geometry;
   const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
-  // Phone position is the base estimate. We only add bow offset where it matters:
+  // Device position is the base estimate. We only add bow offset where it matters:
   // - "current heading" distance uses bow offset along the heading vector.
   // - "direct to line" distance uses bow offset along the perpendicular to the line.
   const velocityUnit = normalizeVector(state.velocity);
   const bowHeading = velocityUnit
-    ? offsetPoint(phoneMeters, velocityUnit, bowOffsetMeters)
-    : phoneMeters;
+    ? offsetPoint(deviceMeters, velocityUnit, bowOffsetMeters)
+    : deviceMeters;
   const bowSegment = distanceToSegment(bowHeading, pointA, pointB);
   const signedDistance =
     (bowHeading.x - pointA.x) * normal.x + (bowHeading.y - pointA.y) * normal.y;
@@ -534,17 +534,17 @@ function updateLineProjection() {
   const distanceToLine = Math.abs(signedDistance);
   const distanceToSegmentActual = bowSegment.distance;
 
-  const phoneSegment = distanceToSegment(phoneMeters, pointA, pointB);
+  const deviceSegment = distanceToSegment(deviceMeters, pointA, pointB);
   const toLineUnit =
-    phoneSegment.distance > 0
+    deviceSegment.distance > 0
       ? {
-          x: (phoneSegment.closest.x - phoneMeters.x) / phoneSegment.distance,
-          y: (phoneSegment.closest.y - phoneMeters.y) / phoneSegment.distance,
+          x: (deviceSegment.closest.x - deviceMeters.x) / deviceSegment.distance,
+          y: (deviceSegment.closest.y - deviceMeters.y) / deviceSegment.distance,
         }
       : null;
   const bowDirect = toLineUnit
-    ? offsetPoint(phoneMeters, toLineUnit, bowOffsetMeters)
-    : phoneMeters;
+    ? offsetPoint(deviceMeters, toLineUnit, bowOffsetMeters)
+    : deviceMeters;
   const directSegment = distanceToSegment(bowDirect, pointA, pointB);
   const directDistanceToSegment = directSegment.distance;
 

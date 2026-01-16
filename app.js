@@ -430,7 +430,7 @@ async function setImuEnabled(enabled) {
     return;
   }
   const confirmed = window.confirm(
-    "IMU requires the phone to be fixed firmly to the boat. Enable IMU?"
+    "IMU requires the device to be fixed firmly to the boat. Heading becomes more precise and responsive. Enable IMU?"
   );
   if (!confirmed) return;
   const started = await startImu();
@@ -1561,7 +1561,7 @@ function resetPositionState() {
   state.kalman = null;
   lastKalmanPredictionTs = 0;
   state.gpsTrackRaw = [];
-  state.gpsTrackPhone = [];
+  state.gpsTrackDevice = [];
   state.gpsTrackFiltered = [];
   state.lastGpsFixAt = null;
   updateGPSDisplay();
@@ -1617,7 +1617,7 @@ function applyKalmanEstimate(result, options = {}) {
   if (!result) return;
   const rawPosition = options.rawPosition || null;
   const recordTrack = options.recordTrack !== false;
-  // Keep phone position/velocity as the canonical state; compute bow separately.
+  // Keep device position/velocity as the canonical state; compute bow separately.
   const bowPosition = applyForwardOffset(
     result.position,
     result.velocity,
@@ -1673,7 +1673,7 @@ function handlePosition(position) {
     state.velocity,
     state.bowOffsetMeters
   );
-  // Raw fallback: track phone and bow separately, consistent with Kalman path.
+  // Raw fallback: track device and bow separately, consistent with Kalman path.
   state.kalmanPosition = null;
   recordTrackPoints(position, position, state.bowPosition);
   recordSpeedSample(state.speed, position.timestamp || Date.now());

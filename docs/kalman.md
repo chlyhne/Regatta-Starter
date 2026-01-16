@@ -243,8 +243,8 @@ fixes, while still letting GPS gently correct long-term drift.
 
 ### 7.1 Estimating the down axis continuously
 
-The gyroscope reports rotation rates about the phone's axes, but we need the component of
-rotation about the vertical (down) axis to get yaw. Because the phone can move in waves,
+The gyroscope reports rotation rates about the device's axes, but we need the component of
+rotation about the vertical (down) axis to get yaw. Because the device can move in waves,
 we estimate down on every motion event:
 
 - read `accelerationIncludingGravity`
@@ -267,7 +267,7 @@ increases heading in the race/debug view.
 
 #### Axis mapping sanity check
 
-On iPhone (screen up, flat on a table) the observed mapping is:
+On iOS (screen up, flat on a table) the observed mapping is:
 
 - **alpha** responds to pitch (lift top edge up/down)
 - **beta** responds to roll (lift left edge up/down)
@@ -315,14 +315,14 @@ Different devices report gyro axes differently. To avoid hard-coded per-device m
 RaceTimer uses a simple on-device calibration:
 
 - open **Settings → IMU calibration**
-- place the phone flat, screen up
+- place the device flat, screen up
 - rotate clockwise for a few seconds
 
 The app selects the axis mapping that best aligns the rotation vector with gravity during
 that yaw motion and stores it in settings. IMU assist is blocked until calibration is done.
 
 Calibration also checks for real motion: it requires enough rotation samples and a
-consistently positive yaw rate (clockwise). If you do not rotate the phone, calibration
+consistently positive yaw rate (clockwise). If you do not rotate the device, calibration
 fails with an error and the IMU remains disabled.
 
 ## 8) Gain scheduling: how we choose Q in a physically meaningful way
@@ -401,11 +401,11 @@ This makes the filter responsive if the boat has recently moved fast, even if it
 ## 9) Marking the start line with GPS (no bow offset)
 
 When you press “Set port mark (GPS)” or “Set starboard mark (GPS)”, the app stores the
-**latest Kalman position estimate for the phone**. We deliberately do **not** apply the
+**latest Kalman position estimate for the device**. We deliberately do **not** apply the
 bow offset here:
 
-- the user lines up the **phone** with the physical mark
-- the most honest reference is therefore the phone position itself
+- the user lines up the **device** with the physical mark
+- the most honest reference is therefore the device position itself
 - the mark is captured immediately from the current estimate (no averaging, no future fixes)
 
 Because the Kalman estimate updates at 5 Hz between fixes, the “latest” position is a
@@ -413,19 +413,19 @@ smooth, up-to-date estimate even if GPS delivers at a slower rate.
 
 ## 10) Bow offset: how it is applied in race projections
 
-The Kalman filter estimates the phone position and velocity. The boat bow is then
-constructed by shifting the phone position **forward along the velocity vector** by the
+The Kalman filter estimates the device position and velocity. The boat bow is then
+constructed by shifting the device position **forward along the velocity vector** by the
 user’s bow offset.
 
 Race view uses two projections, and the bow offset is handled differently in each:
 
 1) **At current heading**  
-   We already have the bow position (phone + forward offset). That bow point is projected
+   We already have the bow position (device + forward offset). That bow point is projected
    along the **current velocity vector** to the start time.
 
 2) **Towards line (direct to the line)**  
    Here we assume you will steer straight toward the closest point on the line. We therefore:
-   - back out the **phone position** from the bow
+   - back out the **device position** from the bow
    - compute the perpendicular direction to the line
    - re-apply the bow offset **along that direction**, not along the current velocity
 
@@ -448,7 +448,7 @@ the boat’s direction of travel and makes the filter less willing to “invent�
 In the debug view we draw the **position block of `Q`** so this anisotropy is obvious.
 The overlay is:
 
-- anchored to the **phone position** (the Kalman state is the phone)
+- anchored to the **device position** (the Kalman state is the device)
 - rotated by the **current velocity heading** (changes with GPS or IMU updates)
 - scaled to a fixed display length (currently 10 m) to show orientation only
 

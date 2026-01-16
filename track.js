@@ -340,10 +340,10 @@ function renderTrack() {
   ctx.fillRect(0, 0, width, height);
 
   const rawPoints = state.gpsTrackRaw;
-  const phonePoints = state.gpsTrackPhone || [];
+  const devicePoints = state.gpsTrackDevice || [];
   const bowPoints = state.gpsTrackFiltered;
   const hasLineData = hasLine();
-  let basePoints = bowPoints.length ? bowPoints : phonePoints;
+  let basePoints = bowPoints.length ? bowPoints : devicePoints;
   if (!basePoints.length) {
     basePoints = rawPoints;
   }
@@ -396,7 +396,7 @@ function renderTrack() {
     bounds.maxY = Math.max(bounds.maxY, xy.y);
   };
   rawPoints.forEach((point) => addBounds(toXY(point)));
-  phonePoints.forEach((point) => addBounds(toXY(point)));
+  devicePoints.forEach((point) => addBounds(toXY(point)));
   bowPoints.forEach((point) => addBounds(toXY(point)));
 
   let line = null;
@@ -412,8 +412,8 @@ function renderTrack() {
   }
 
   // Prefer the latest state positions; fall back to the most recent tracks.
-  // Phone position drives covariance; bow position is used for the boat icon.
-  const phonePosition = state.position
+  // Device position drives covariance; bow position is used for the boat icon.
+  const devicePosition = state.position
     ? toMeters(
         {
           lat: state.position.coords.latitude,
@@ -431,23 +431,23 @@ function renderTrack() {
         origin
       )
     : null;
-  const phoneAnchor =
-    phonePosition ||
-    (phonePoints.length ? toXY(phonePoints[phonePoints.length - 1]) : null) ||
+  const deviceAnchor =
+    devicePosition ||
+    (devicePoints.length ? toXY(devicePoints[devicePoints.length - 1]) : null) ||
     (rawPoints.length ? toXY(rawPoints[rawPoints.length - 1]) : null);
 
-  let boat = bowPosition || phonePosition || null;
+  let boat = bowPosition || devicePosition || null;
   if (!boat && bowPoints.length) {
     boat = toXY(bowPoints[bowPoints.length - 1]);
-  } else if (!boat && phonePoints.length) {
-    boat = toXY(phonePoints[phonePoints.length - 1]);
+  } else if (!boat && devicePoints.length) {
+    boat = toXY(devicePoints[devicePoints.length - 1]);
   } else if (!boat && rawPoints.length) {
     boat = toXY(rawPoints[rawPoints.length - 1]);
   }
   if (boat) addBounds(boat);
-  if (phonePosition) addBounds(phonePosition);
+  if (devicePosition) addBounds(devicePosition);
 
-  const processCenter = phoneAnchor;
+  const processCenter = deviceAnchor;
   let processAxes = null;
   if (processCenter) {
     const rawAxes = covarianceToAxes(
@@ -474,31 +474,31 @@ function renderTrack() {
   const speed = state.speed;
   const velocity = state.velocity;
   const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
-  // Mirror the race view logic: phone is base, bow is offset along heading or to line.
-  const phoneForProjection = phonePosition || boat;
+  // Mirror the race view logic: device is base, bow is offset along heading or to line.
+  const deviceForProjection = devicePosition || boat;
   const velocityUnit = normalizeVector(velocity);
   const bowHeading =
-    phoneForProjection && velocityUnit
-      ? offsetPoint(phoneForProjection, velocityUnit, bowOffsetMeters)
-      : phoneForProjection;
+    deviceForProjection && velocityUnit
+      ? offsetPoint(deviceForProjection, velocityUnit, bowOffsetMeters)
+      : deviceForProjection;
 
   let projectedDirect = null;
   let projectedDirectFrom = null;
   if (
     line &&
-    phoneForProjection &&
+    deviceForProjection &&
     Number.isFinite(speed) &&
     speed > 0 &&
     Number.isFinite(timeToStart) &&
     timeToStart > 0
   ) {
-    const phoneSegment = distanceToSegment(phoneForProjection, line.pointA, line.pointB);
-    if (phoneSegment.distance > 0) {
+    const deviceSegment = distanceToSegment(deviceForProjection, line.pointA, line.pointB);
+    if (deviceSegment.distance > 0) {
       const toLineUnit = {
-        x: (phoneSegment.closest.x - phoneForProjection.x) / phoneSegment.distance,
-        y: (phoneSegment.closest.y - phoneForProjection.y) / phoneSegment.distance,
+        x: (deviceSegment.closest.x - deviceForProjection.x) / deviceSegment.distance,
+        y: (deviceSegment.closest.y - deviceForProjection.y) / deviceSegment.distance,
       };
-      projectedDirectFrom = offsetPoint(phoneForProjection, toLineUnit, bowOffsetMeters);
+      projectedDirectFrom = offsetPoint(deviceForProjection, toLineUnit, bowOffsetMeters);
       projectedDirect = {
         x: projectedDirectFrom.x + toLineUnit.x * speed * timeToStart,
         y: projectedDirectFrom.y + toLineUnit.y * speed * timeToStart,
@@ -569,8 +569,8 @@ function renderTrack() {
   let latestPoint = null;
   if (bowPoints.length) {
     latestPoint = bowPoints[bowPoints.length - 1];
-  } else if (phonePoints.length) {
-    latestPoint = phonePoints[phonePoints.length - 1];
+  } else if (devicePoints.length) {
+    latestPoint = devicePoints[devicePoints.length - 1];
   } else if (rawPoints.length) {
     latestPoint = rawPoints[rawPoints.length - 1];
   }
@@ -719,7 +719,7 @@ function renderTrack() {
   ctx.stroke();
 
   drawDots(rawPoints, "#ff00ff", 2.5);
-  drawLine(phonePoints, "#000000", 2.5);
+  drawLine(devicePoints, "#000000", 2.5);
   drawLine(bowPoints, "#c00000", 2.5);
 
   if (line) {
@@ -743,9 +743,9 @@ function renderTrack() {
     const ux = speedMetersPerSecond > 1e-6 ? state.velocity.x / speedMetersPerSecond : 0;
     const uy = speedMetersPerSecond > 1e-6 ? state.velocity.y / speedMetersPerSecond : 1;
     const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
-    const anchor = phonePosition || boat;
+    const anchor = devicePosition || boat;
     if (!anchor) return;
-    const bowMeters = phonePosition
+    const bowMeters = devicePosition
       ? {
           x: anchor.x + ux * bowOffsetMeters,
           y: anchor.y + uy * bowOffsetMeters,
@@ -787,7 +787,7 @@ function renderTrack() {
   };
 
   const drawBoatSvg = () => {
-    const anchor = phonePosition || boat;
+    const anchor = devicePosition || boat;
     if (!anchor) return;
     const lengthMeters = Number.isFinite(state.boatLengthMeters)
       ? state.boatLengthMeters
@@ -809,7 +809,7 @@ function renderTrack() {
       ? Math.atan2(state.velocity.x, state.velocity.y)
       : 0;
     const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
-    const bowOffsetPx = (phonePosition ? bowOffsetMeters : 0) * scale;
+    const bowOffsetPx = (devicePosition ? bowOffsetMeters : 0) * scale;
     const anchorScreen = projectMeters(anchor.x, anchor.y);
 
     ctx.save();
@@ -834,7 +834,7 @@ function renderTrack() {
   }
 }
 
-function recordTrackPoints(rawPosition, phonePosition, bowPosition) {
+function recordTrackPoints(rawPosition, devicePosition, bowPosition) {
   const cutoff = Date.now() - TRACK_WINDOW_MS;
   if (rawPosition) {
     appendTrackPoint(state.gpsTrackRaw, {
@@ -844,13 +844,13 @@ function recordTrackPoints(rawPosition, phonePosition, bowPosition) {
     });
     pruneTrackPoints(state.gpsTrackRaw, cutoff);
   }
-  if (phonePosition) {
-    appendTrackPoint(state.gpsTrackPhone, {
-      lat: phonePosition.coords.latitude,
-      lon: phonePosition.coords.longitude,
-      ts: phonePosition.timestamp || Date.now(),
+  if (devicePosition) {
+    appendTrackPoint(state.gpsTrackDevice, {
+      lat: devicePosition.coords.latitude,
+      lon: devicePosition.coords.longitude,
+      ts: devicePosition.timestamp || Date.now(),
     });
-    pruneTrackPoints(state.gpsTrackPhone, cutoff);
+    pruneTrackPoints(state.gpsTrackDevice, cutoff);
   }
   if (bowPosition) {
     appendTrackPoint(state.gpsTrackFiltered, {
