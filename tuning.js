@@ -66,6 +66,8 @@ const KALMAN_TUNING = {
       durationSeconds: 3,
       minRotationDegPerSec: 8,
       minSamples: 20,
+      minYawMeanDegPerSec: 6,
+      minPositiveFraction: 0.7,
     },
   },
 };

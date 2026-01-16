@@ -1,10 +1,7 @@
 import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "./state.js";
 import { els } from "./dom.js";
 import { toMeters } from "./geo.js";
-import {
-  getKalmanPositionCovariance,
-  getKalmanPredictedPositionCovariance,
-} from "./kalman.js";
+import { getKalmanPositionCovariance } from "./kalman.js";
 
 const TRACK_PADDING = 16;
 const MIN_SCALE = 0.05;
@@ -161,6 +158,15 @@ function covarianceToAxes(covariance) {
     major: Math.sqrt(lambdaMajor),
     minor: Math.sqrt(lambdaMinor),
     angle: 0.5 * Math.atan2(2 * xy, diff),
+  };
+}
+
+function scaleAxes(axes, factor) {
+  if (!axes || !Number.isFinite(factor) || factor <= 0) return axes;
+  return {
+    major: axes.major * factor,
+    minor: axes.minor * factor,
+    angle: axes.angle,
   };
 }
 
@@ -436,7 +442,10 @@ function renderTrack() {
   if (phonePosition) addBounds(phonePosition);
 
   // Covariance is for the phone estimate, not the bow.
-  const positionAxes = covarianceToAxes(getKalmanPositionCovariance());
+  const positionAxes = scaleAxes(
+    covarianceToAxes(getKalmanPositionCovariance()),
+    20
+  );
   if (phonePosition && positionAxes) {
     const endpoints = axesEndpoints(phonePosition, positionAxes);
     if (endpoints) {
@@ -450,10 +459,6 @@ function renderTrack() {
   const timeToStart = state.start.startTs
     ? Math.max(0, (state.start.startTs - Date.now()) / 1000)
     : null;
-  const startAxes =
-    Number.isFinite(timeToStart) && timeToStart > 0
-      ? covarianceToAxes(getKalmanPredictedPositionCovariance(timeToStart))
-      : null;
   const speed = state.speed;
   const velocity = state.velocity;
   const bowOffsetMeters = Math.max(0, Number(state.bowOffsetMeters) || 0);
@@ -487,15 +492,6 @@ function renderTrack() {
         y: projectedDirectFrom.y + toLineUnit.y * speed * timeToStart,
       };
       addBounds(projectedDirect);
-      if (startAxes) {
-        const endpoints = axesEndpoints(projectedDirect, startAxes);
-        if (endpoints) {
-          addBounds(endpoints.majorStart);
-          addBounds(endpoints.majorEnd);
-          addBounds(endpoints.minorStart);
-          addBounds(endpoints.minorEnd);
-        }
-      }
     }
   }
 
@@ -517,15 +513,6 @@ function renderTrack() {
         y: bowHeading.y + velocity.y * timeToStart,
       };
       addBounds(projectedHeading);
-      if (startAxes) {
-        const endpoints = axesEndpoints(projectedHeading, startAxes);
-        if (endpoints) {
-          addBounds(endpoints.majorStart);
-          addBounds(endpoints.majorEnd);
-          addBounds(endpoints.minorStart);
-          addBounds(endpoints.minorEnd);
-        }
-      }
     }
   }
 
@@ -826,17 +813,6 @@ function renderTrack() {
   if (positionAxes && covarianceCenter) {
     drawAxesAt(covarianceCenter, positionAxes, "#c00000", 2.5, 2);
   }
-  if (startAxes && projectedDirect) {
-    const center = projectMeters(projectedDirect.x, projectedDirect.y);
-    drawAxesAt(center, startAxes, "#c00000", 2, 1.5);
-    drawScreenDot(center, 3, "#c00000");
-  }
-  if (startAxes && projectedHeading) {
-    const center = projectMeters(projectedHeading.x, projectedHeading.y);
-    drawAxesAt(center, startAxes, "#c00000", 2, 1.5);
-    drawScreenDot(center, 3, "#c00000");
-  }
-
   if (dot) {
     drawScreenDot(dot, 3, "#c00000");
   } else if (boat) {

@@ -321,6 +321,10 @@ RaceTimer uses a simple on-device calibration:
 The app selects the axis mapping that best aligns the rotation vector with gravity during
 that yaw motion and stores it in settings. IMU assist is blocked until calibration is done.
 
+Calibration also checks for real motion: it requires enough rotation samples and a
+consistently positive yaw rate (clockwise). If you do not rotate the phone, calibration
+fails with an error and the IMU remains disabled.
+
 ## 8) Gain scheduling: how we choose Q in a physically meaningful way
 
 The main “feel” of the filter comes from the relationship between `Q` and `R`.

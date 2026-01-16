@@ -487,6 +487,8 @@ function closeImuCalibrationModal() {
 function computeImuCalibrationMapping(samples) {
   const minRotation = KALMAN_TUNING.imu.calibration.minRotationDegPerSec;
   const minSamples = KALMAN_TUNING.imu.calibration.minSamples;
+  const minYawMean = KALMAN_TUNING.imu.calibration.minYawMeanDegPerSec;
+  const minPositiveFraction = KALMAN_TUNING.imu.calibration.minPositiveFraction;
   const valid = samples.filter((sample) => {
     const rotation = sample.rotation;
     if (!rotation) return false;
@@ -503,9 +505,11 @@ function computeImuCalibrationMapping(samples) {
 
   let best = null;
   let bestScore = -Infinity;
+  let bestStats = null;
   IMU_MAPPING_CANDIDATES.forEach((candidate) => {
     let sum = 0;
     let count = 0;
+    let positive = 0;
     valid.forEach((sample) => {
       const g = sample.gravity;
       const gMag = Math.hypot(g.x, g.y, g.z);
@@ -516,6 +520,9 @@ function computeImuCalibrationMapping(samples) {
       const yawRate = -dot;
       if (!Number.isFinite(yawRate)) return;
       sum += yawRate;
+      if (yawRate > 0) {
+        positive += 1;
+      }
       count += 1;
     });
     if (!count) return;
@@ -523,10 +530,21 @@ function computeImuCalibrationMapping(samples) {
     if (score > bestScore) {
       bestScore = score;
       best = candidate;
+      bestStats = {
+        meanYaw: score,
+        positiveFraction: positive / count,
+      };
     }
   });
 
-  if (!best || !Number.isFinite(bestScore) || bestScore <= 0) {
+  if (
+    !best ||
+    !Number.isFinite(bestScore) ||
+    bestScore <= 0 ||
+    !bestStats ||
+    bestStats.meanYaw < minYawMean ||
+    bestStats.positiveFraction < minPositiveFraction
+  ) {
     return null;
   }
   return {
