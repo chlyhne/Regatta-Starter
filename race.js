@@ -194,10 +194,10 @@ function updateRaceHintUnits(unitDirect, unitClosing) {
 
 function updateRaceMetricLabels() {
   if (els.raceMetricDistance) {
-    els.raceMetricDistance.textContent = getDistanceUnitMeta().label;
+    els.raceMetricDistance.textContent = "dist";
   }
   if (els.raceMetricTime) {
-    els.raceMetricTime.textContent = "s";
+    els.raceMetricTime.textContent = "time";
   }
   if (state.raceMetric === "time") {
     const directLabel = buildRaceMetricLabel(getTimeLabelFallback(), DIRECT_SUFFIX);
