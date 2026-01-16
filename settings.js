@@ -1,5 +1,5 @@
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 1;
+const SETTINGS_VERSION = 2;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 
 const DEFAULT_SETTINGS = {
@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
   distanceUnit: "m",
   bowOffsetMeters: 0,
   boatLengthMeters: 0,
+  imuCalibration: null,
   start: {
     mode: "countdown",
     countdownSeconds: 300,
@@ -80,6 +81,26 @@ function normalizeDistanceUnit(unit) {
   return "m";
 }
 
+function normalizeImuCalibration(calibration) {
+  if (!calibration || typeof calibration !== "object") return null;
+  const axes = Array.isArray(calibration.axes) ? calibration.axes.slice(0, 3) : null;
+  const signs = Array.isArray(calibration.signs) ? calibration.signs.slice(0, 3) : null;
+  const validAxes = ["alpha", "beta", "gamma"];
+  if (!axes || axes.length !== 3 || !axes.every((axis) => validAxes.includes(axis))) {
+    return null;
+  }
+  if (!signs || signs.length !== 3) return null;
+  const normalizedSigns = signs.map((sign) => (sign === -1 ? -1 : 1));
+  const calibratedAt = Number.isFinite(calibration.calibratedAt)
+    ? calibration.calibratedAt
+    : null;
+  return {
+    axes,
+    signs: normalizedSigns,
+    calibratedAt,
+  };
+}
+
 function normalizeTimeString(value) {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
@@ -132,6 +153,7 @@ function normalizeSettings(raw) {
     distanceUnit: normalizeDistanceUnit(raw?.distanceUnit),
     bowOffsetMeters: Math.max(0, Number.parseFloat(raw?.bowOffsetMeters) || 0),
     boatLengthMeters: Math.max(0, Number.parseFloat(raw?.boatLengthMeters) || 0),
+    imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
     start: normalizeStart(raw?.start),
   };
 }
@@ -165,11 +187,23 @@ function safeParse(raw) {
   }
 }
 
+function migrateSettings(raw) {
+  if (!raw || typeof raw !== "object") return raw;
+  const version = Number.isFinite(raw.version) ? raw.version : 0;
+  if (version >= SETTINGS_VERSION) return raw;
+  const migrated = { ...raw };
+  if (version < 2) {
+    migrated.imuCalibration = null;
+    migrated.version = 2;
+  }
+  return migrated;
+}
+
 export function loadSettings() {
   if (typeof localStorage === "undefined") {
     return { ...DEFAULT_SETTINGS };
   }
-  const parsed = safeParse(localStorage.getItem(STORAGE_KEY));
+  const parsed = migrateSettings(safeParse(localStorage.getItem(STORAGE_KEY)));
   if (!parsed) return { ...DEFAULT_SETTINGS };
   return normalizeSettings(mergeSettings(DEFAULT_SETTINGS, parsed));
 }

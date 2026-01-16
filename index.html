@@ -605,6 +605,11 @@
             </button>
           </div>
         </div>
+        <div class="row setting-row">
+          <div class="setting-label">IMU calibration</div>
+          <button id="open-imu-calibration" type="button">Calibrate IMU</button>
+        </div>
+        <div id="imu-calibration-status" class="setting-note">IMU: not calibrated</div>
         <div class="row stack">
           <button id="close-settings">Done</button>
         </div>
@@ -683,6 +688,19 @@
     <section id="track-view" class="track-view" aria-hidden="true">
       <canvas id="track-canvas" width="300" height="300" aria-label="GPS debug view"></canvas>
       <button id="close-track" class="track-close">Done</button>
+    </section>
+
+    <section id="imu-calibration-modal" class="modal" aria-hidden="true">
+      <div class="modal-panel">
+        <h2>IMU Calibration</h2>
+        <p class="info-text">Place the phone flat, screen up.</p>
+        <p class="info-text">Tap Start and rotate clockwise for 3 seconds.</p>
+        <div id="imu-calibration-progress" class="hint">Ready.</div>
+        <div class="modal-actions">
+          <button id="start-imu-calibration">Start</button>
+          <button id="close-imu-calibration" class="ghost">Close</button>
+        </div>
+      </div>
     </section>
 
     <section id="load-line-modal" class="modal" aria-hidden="true">

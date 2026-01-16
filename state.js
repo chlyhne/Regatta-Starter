@@ -44,6 +44,7 @@ const state = {
   soundEnabled: true,
   debugGpsEnabled: DEBUG_GPS_DEFAULT,
   useKalman: true,
+  imuCalibration: null,
   imuEnabled: false,
   imu: {
     gravity: null,

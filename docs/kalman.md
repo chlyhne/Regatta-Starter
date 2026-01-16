@@ -265,6 +265,31 @@ onto the estimated gravity direction:
 This gives an estimated rotation rate about down. The sign is chosen so a right turn
 increases heading in the race/debug view.
 
+#### Axis mapping sanity check
+
+On iPhone (screen up, flat on a table) the observed mapping is:
+
+- **alpha** responds to pitch (lift top edge up/down)
+- **beta** responds to roll (lift left edge up/down)
+- **gamma** responds to yaw (rotate flat on the table)
+
+We map these to the internal rotation vector as:
+
+- `omegaX = alpha`
+- `omegaY = beta`
+- `omegaZ = gamma`
+
+The gravity projection then extracts the yaw component robustly even when the device is
+not perfectly level.
+
+To confirm this on-device, the Debug panel shows:
+
+- `IMU rot`: alpha/beta/gamma in deg/s
+- `IMU yaw`: computed yaw rate and the current gravity vector
+
+These readouts make it clear if pitch/roll are leaking into yaw and whether axis mapping
+needs to be revisited.
+
 ### 7.3 Updating the filter with IMU yaw
 
 When we have a yaw rate:
@@ -283,6 +308,18 @@ velocity. If IMU is enabled, GPS nudges the IMU heading with a tunable weight
 (`headingImuWeight`). If IMU is disabled, GPS heading is used directly.
 
 Relevant tuning: `KALMAN_TUNING.imu.*` in `tuning.js`.
+
+### 7.5 Calibration workflow (per device)
+
+Different devices report gyro axes differently. To avoid hard-coded per-device mappings,
+RaceTimer uses a simple on-device calibration:
+
+- open **Settings → IMU calibration**
+- place the phone flat, screen up
+- rotate clockwise for a few seconds
+
+The app selects the axis mapping that best aligns the rotation vector with gravity during
+that yaw motion and stores it in settings. IMU assist is blocked until calibration is done.
 
 ## 8) Gain scheduling: how we choose Q in a physically meaningful way
 

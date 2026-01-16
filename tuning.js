@@ -62,6 +62,11 @@ const KALMAN_TUNING = {
       minAlpha: 0.04,
       maxAlpha: 0.3,
     },
+    calibration: {
+      durationSeconds: 3,
+      minRotationDegPerSec: 8,
+      minSamples: 20,
+    },
   },
 };
 
