@@ -35,6 +35,21 @@ function updateDebugControls() {
       state.debugGpsEnabled ? "true" : "false"
     );
   }
+  const imuLabel = state.imuEnabled ? "IMU: on" : "IMU: off";
+  if (els.debugImuToggle) {
+    els.debugImuToggle.textContent = imuLabel;
+    els.debugImuToggle.setAttribute(
+      "aria-pressed",
+      state.imuEnabled ? "true" : "false"
+    );
+  }
+  if (els.raceImuToggle) {
+    els.raceImuToggle.textContent = imuLabel;
+    els.raceImuToggle.setAttribute(
+      "aria-pressed",
+      state.imuEnabled ? "true" : "false"
+    );
+  }
   if (els.debugGpsStatus) {
     let status = "GPS: --";
     if (state.debugGpsEnabled) {

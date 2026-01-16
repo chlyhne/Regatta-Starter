@@ -46,6 +46,23 @@ const KALMAN_TUNING = {
     // from early measurements.
     velocityVariance: 25,
   },
+  imu: {
+    // IMU heading fusion: IMU dominates, GPS nudges toward its heading when moving fast enough.
+    headingImuWeight: 0.9,
+    gpsHeadingMinSpeed: 0.8,
+    // Process noise anisotropy: sideways acceleration variance as a fraction of forward.
+    lateralVarianceRatio: 0.1,
+    dtClampSeconds: {
+      min: 0.005,
+      max: 0.25,
+    },
+    gravityLowPass: {
+      baseAlpha: 0.12,
+      baseBoatLengthMeters: 3,
+      minAlpha: 0.04,
+      maxAlpha: 0.3,
+    },
+  },
 };
 
 export { KALMAN_TUNING };

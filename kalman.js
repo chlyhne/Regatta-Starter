@@ -16,6 +16,102 @@ function clampDtSeconds(dtRaw) {
   return Math.min(dtRaw, dtClamp.max);
 }
 
+function normalizeAngleRad(angle) {
+  if (!Number.isFinite(angle)) return 0;
+  let wrapped = angle % (Math.PI * 2);
+  if (wrapped <= -Math.PI) wrapped += Math.PI * 2;
+  if (wrapped > Math.PI) wrapped -= Math.PI * 2;
+  return wrapped;
+}
+
+function getVelocityHeadingRad(vx, vy) {
+  if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+  const speed = Math.hypot(vx, vy);
+  if (!Number.isFinite(speed) || speed < 1e-6) return null;
+  return Math.atan2(vx, vy);
+}
+
+function rotateVelocityCovariance(P, cos, sin) {
+  if (!Array.isArray(P) || P.length < 16) return;
+  const p00 = P[0];
+  const p01 = P[1];
+  const p02 = P[2];
+  const p03 = P[3];
+  const p10 = P[4];
+  const p11 = P[5];
+  const p12 = P[6];
+  const p13 = P[7];
+  const p20 = P[8];
+  const p21 = P[9];
+  const p22 = P[10];
+  const p23 = P[11];
+  const p30 = P[12];
+  const p31 = P[13];
+  const p32 = P[14];
+  const p33 = P[15];
+
+  const p02n = p02 * cos + p03 * sin;
+  const p03n = -p02 * sin + p03 * cos;
+  const p12n = p12 * cos + p13 * sin;
+  const p13n = -p12 * sin + p13 * cos;
+
+  const p20n = cos * p20 - sin * p30;
+  const p21n = cos * p21 - sin * p31;
+  const p30n = sin * p20 + cos * p30;
+  const p31n = sin * p21 + cos * p31;
+
+  const b00 = cos * p22 - sin * p32;
+  const b01 = cos * p23 - sin * p33;
+  const b10 = sin * p22 + cos * p32;
+  const b11 = sin * p23 + cos * p33;
+
+  const p22n = b00 * cos + b01 * sin;
+  const p23n = -b00 * sin + b01 * cos;
+  const p32n = b10 * cos + b11 * sin;
+  const p33n = -b10 * sin + b11 * cos;
+
+  P[0] = p00;
+  P[1] = p01;
+  P[2] = p02n;
+  P[3] = p03n;
+  P[4] = p10;
+  P[5] = p11;
+  P[6] = p12n;
+  P[7] = p13n;
+  P[8] = p20n;
+  P[9] = p21n;
+  P[10] = p22n;
+  P[11] = p23n;
+  P[12] = p30n;
+  P[13] = p31n;
+  P[14] = p32n;
+  P[15] = p33n;
+}
+
+function rotateVelocityState(filter, deltaRad) {
+  if (!filter || !Array.isArray(filter.x) || filter.x.length < 4) return;
+  if (!Number.isFinite(deltaRad) || deltaRad === 0) return;
+  const cos = Math.cos(deltaRad);
+  const sin = Math.sin(deltaRad);
+  const vx = filter.x[2];
+  const vy = filter.x[3];
+  filter.x[2] = cos * vx - sin * vy;
+  filter.x[3] = sin * vx + cos * vy;
+  rotateVelocityCovariance(filter.P, cos, sin);
+}
+
+function buildDirectionalCovariance(qForward, qLateral, headingRad) {
+  const heading = Number.isFinite(headingRad) ? headingRad : 0;
+  const fx = Math.sin(heading);
+  const fy = Math.cos(heading);
+  const lx = Math.cos(heading);
+  const ly = -Math.sin(heading);
+  const xx = qForward * fx * fx + qLateral * lx * lx;
+  const xy = qForward * fx * fy + qLateral * lx * ly;
+  const yy = qForward * fy * fy + qLateral * ly * ly;
+  return { xx, xy, yy };
+}
+
 function getProcessNoiseVariance() {
   // Scale acceleration variance by boat length (longer boats respond more slowly).
   const baseQ = KALMAN_TUNING.processNoise.baseAccelerationVariance;
@@ -64,10 +160,12 @@ function initKalmanState(position) {
   }
   const sigma2 = accuracy ** 2;
   const velVar = KALMAN_TUNING.init.velocityVariance;
+  const headingRad = getVelocityHeadingRad(vx, vy) ?? 0;
   return {
     origin,
     lastTs: position.timestamp || Date.now(),
     accuracy,
+    headingRad,
     x: [0, 0, vx, vy],
     P: [
       sigma2, 0, 0, 0,
@@ -87,8 +185,15 @@ function buildPrediction(filter, dt) {
   }
   const qBase = getProcessNoiseVariance();
   const speedScale = getSpeedScale(Math.hypot(x[2], x[3]));
-  const qPos = qBase;
-  const qVel = qBase * speedScale;
+  const lateralRatio = KALMAN_TUNING.imu.lateralVarianceRatio;
+  const qPosForward = qBase;
+  const qPosLateral = qBase * lateralRatio;
+  const qVelForward = qBase * speedScale;
+  const qVelLateral = qVelForward * lateralRatio;
+  const headingRad =
+    Number.isFinite(filter.headingRad) ? filter.headingRad : getVelocityHeadingRad(x[2], x[3]) ?? 0;
+  const posCov = buildDirectionalCovariance(qPosForward, qPosLateral, headingRad);
+  const velCov = buildDirectionalCovariance(qVelForward, qVelLateral, headingRad);
   const dt2 = dt * dt;
   const dt3 = dt2 * dt;
   const dt4 = dt2 * dt2;
@@ -99,11 +204,21 @@ function buildPrediction(filter, dt) {
     0, 0, 1, 0,
     0, 0, 0, 1,
   ];
+  const qPos00 = posCov.xx * dt4 / 4;
+  const qPos01 = posCov.xy * dt4 / 4;
+  const qPos11 = posCov.yy * dt4 / 4;
+  const qVel00 = velCov.xx * dt3 / 2;
+  const qVel01 = velCov.xy * dt3 / 2;
+  const qVel11 = velCov.yy * dt3 / 2;
+  const qVelV00 = velCov.xx * dt2;
+  const qVelV01 = velCov.xy * dt2;
+  const qVelV11 = velCov.yy * dt2;
+
   const Q = [
-    qPos * dt4 / 4, 0, qVel * dt3 / 2, 0,
-    0, qPos * dt4 / 4, 0, qVel * dt3 / 2,
-    qVel * dt3 / 2, 0, qVel * dt2, 0,
-    0, qVel * dt3 / 2, 0, qVel * dt2,
+    qPos00, qPos01, qVel00, qVel01,
+    qPos01, qPos11, qVel01, qVel11,
+    qVel00, qVel01, qVelV00, qVelV01,
+    qVel01, qVel11, qVelV01, qVelV11,
   ];
 
   const xPred = [
@@ -239,6 +354,25 @@ function applyKalmanFilter(position) {
     filter.x = xPred;
     filter.P = PPred;
   }
+  const speed = Math.hypot(filter.x[2], filter.x[3]);
+  const minSpeed = KALMAN_TUNING.imu.gpsHeadingMinSpeed;
+  if (Number.isFinite(speed) && speed >= minSpeed) {
+    const gpsHeading = getVelocityHeadingRad(filter.x[2], filter.x[3]);
+    if (Number.isFinite(gpsHeading)) {
+      if (!Number.isFinite(filter.headingRad) || !state.imuEnabled) {
+        filter.headingRad = gpsHeading;
+      } else {
+        const imuWeight = KALMAN_TUNING.imu.headingImuWeight;
+        const gpsBlend = Math.max(0, Math.min(1, 1 - imuWeight));
+        if (gpsBlend > 0) {
+          const delta = normalizeAngleRad(gpsHeading - filter.headingRad);
+          const applyDelta = delta * gpsBlend;
+          filter.headingRad = normalizeAngleRad(filter.headingRad + applyDelta);
+          rotateVelocityState(filter, applyDelta);
+        }
+      }
+    }
+  }
   return formatKalmanOutput(filter, timestamp);
 }
 
@@ -262,6 +396,19 @@ function predictKalmanState(targetTimestamp) {
   return formatKalmanOutput(filter, timestamp);
 }
 
+function applyImuYawRate(yawRateRad, dtSeconds) {
+  if (!state.imuEnabled || !state.kalman) return;
+  if (!Number.isFinite(yawRateRad) || !Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
+  const filter = state.kalman;
+  if (!Number.isFinite(filter.headingRad)) {
+    filter.headingRad = getVelocityHeadingRad(filter.x[2], filter.x[3]) ?? 0;
+  }
+  const delta = yawRateRad * dtSeconds;
+  if (!Number.isFinite(delta) || delta === 0) return;
+  filter.headingRad = normalizeAngleRad(filter.headingRad + delta);
+  rotateVelocityState(filter, delta);
+}
+
 function getKalmanPositionCovariance() {
   // Return the 2x2 position covariance for debug visualization.
   if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
@@ -283,8 +430,17 @@ function getKalmanPredictedPositionCovariance(seconds) {
   const speedScale = getSpeedScale(
     Math.hypot(state.kalman.x[2], state.kalman.x[3])
   );
-  const qPos = qBase;
-  const qVel = qBase * speedScale;
+  const lateralRatio = KALMAN_TUNING.imu.lateralVarianceRatio;
+  const qPosForward = qBase;
+  const qPosLateral = qBase * lateralRatio;
+  const qVelForward = qBase * speedScale;
+  const qVelLateral = qVelForward * lateralRatio;
+  const headingRad =
+    Number.isFinite(state.kalman.headingRad)
+      ? state.kalman.headingRad
+      : getVelocityHeadingRad(state.kalman.x[2], state.kalman.x[3]) ?? 0;
+  const posCov = buildDirectionalCovariance(qPosForward, qPosLateral, headingRad);
+  const velCov = buildDirectionalCovariance(qVelForward, qVelLateral, headingRad);
   let remaining = seconds;
   let P = state.kalman.P.slice();
   const stepSeconds = KALMAN_TUNING.timing.covariancePredictStepSeconds;
@@ -301,11 +457,21 @@ function getKalmanPredictedPositionCovariance(seconds) {
       0, 0, 1, 0,
       0, 0, 0, 1,
     ];
+    const qPos00 = posCov.xx * dt4 / 4;
+    const qPos01 = posCov.xy * dt4 / 4;
+    const qPos11 = posCov.yy * dt4 / 4;
+    const qVel00 = velCov.xx * dt3 / 2;
+    const qVel01 = velCov.xy * dt3 / 2;
+    const qVel11 = velCov.yy * dt3 / 2;
+    const qVelV00 = velCov.xx * dt2;
+    const qVelV01 = velCov.xy * dt2;
+    const qVelV11 = velCov.yy * dt2;
+
     const Q = [
-      qPos * dt4 / 4, 0, qVel * dt3 / 2, 0,
-      0, qPos * dt4 / 4, 0, qVel * dt3 / 2,
-      qVel * dt3 / 2, 0, qVel * dt2, 0,
-      0, qVel * dt3 / 2, 0, qVel * dt2,
+      qPos00, qPos01, qVel00, qVel01,
+      qPos01, qPos11, qVel01, qVel11,
+      qVel00, qVel01, qVelV00, qVelV01,
+      qVel01, qVel11, qVelV01, qVelV11,
     ];
 
     const FP = new Array(16).fill(0);
@@ -340,6 +506,7 @@ function getKalmanPredictedPositionCovariance(seconds) {
 
 export {
   applyKalmanFilter,
+  applyImuYawRate,
   predictKalmanState,
   getKalmanPositionCovariance,
   getKalmanPredictedPositionCovariance,

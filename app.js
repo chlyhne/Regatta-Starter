@@ -12,8 +12,8 @@ import {
   START_BEEP_FREQUENCY,
 } from "./state.js";
 import { unlockAudio, playBeep, handleCountdownBeeps, resetBeepState } from "./audio.js";
-import { applyForwardOffset } from "./geo.js";
-import { applyKalmanFilter, predictKalmanState } from "./kalman.js";
+import { applyForwardOffset, toRadians } from "./geo.js";
+import { applyKalmanFilter, applyImuYawRate, predictKalmanState } from "./kalman.js";
 import { recordTrackPoints, renderTrack } from "./track.js";
 import { fitRaceText } from "./race-fit.js";
 import { updateGPSDisplay, updateDebugControls } from "./gps-ui.js";
@@ -68,6 +68,7 @@ const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
 let countdownPickerLive = false;
+let imuListening = false;
 
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
@@ -209,6 +210,127 @@ function setRaceTimingControlsEnabled(enabled) {
   if (els.racePlus) els.racePlus.disabled = disabled;
   if (els.raceMinus) els.raceMinus.disabled = disabled;
   if (els.syncRace) els.syncRace.disabled = disabled;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getImuGravityAlpha() {
+  const config = KALMAN_TUNING.imu.gravityLowPass;
+  const baseLength = config.baseBoatLengthMeters;
+  const boatLength = Number.isFinite(state.boatLengthMeters) ? state.boatLengthMeters : baseLength;
+  const effectiveLength = Math.max(baseLength, boatLength);
+  const scale = Math.sqrt(baseLength / effectiveLength);
+  return clamp(config.baseAlpha * scale, config.minAlpha, config.maxAlpha);
+}
+
+function resetImuState() {
+  state.imu.gravity = null;
+  state.imu.lastTimestamp = null;
+}
+
+function handleDeviceMotion(event) {
+  if (!state.imuEnabled) return;
+  const accel = event.accelerationIncludingGravity;
+  if (!accel) return;
+  const next = {
+    x: Number(accel.x) || 0,
+    y: Number(accel.y) || 0,
+    z: Number(accel.z) || 0,
+  };
+  if (!state.imu.gravity) {
+    state.imu.gravity = { ...next };
+  } else {
+    const alpha = getImuGravityAlpha();
+    state.imu.gravity.x += alpha * (next.x - state.imu.gravity.x);
+    state.imu.gravity.y += alpha * (next.y - state.imu.gravity.y);
+    state.imu.gravity.z += alpha * (next.z - state.imu.gravity.z);
+  }
+
+  const rotation = event.rotationRate;
+  if (!rotation) return;
+  const omegaX = toRadians(Number(rotation.beta) || 0);
+  const omegaY = toRadians(Number(rotation.gamma) || 0);
+  const omegaZ = toRadians(Number(rotation.alpha) || 0);
+  const g = state.imu.gravity;
+  const gMag = Math.hypot(g.x, g.y, g.z);
+  if (!Number.isFinite(gMag) || gMag <= 0) return;
+  const gx = g.x / gMag;
+  const gy = g.y / gMag;
+  const gz = g.z / gMag;
+  const yawRate = omegaX * gx + omegaY * gy + omegaZ * gz;
+
+  const timestamp = Number.isFinite(event.timeStamp) ? event.timeStamp : Date.now();
+  if (!Number.isFinite(state.imu.lastTimestamp)) {
+    state.imu.lastTimestamp = timestamp;
+    return;
+  }
+  const dtRaw = (timestamp - state.imu.lastTimestamp) / 1000;
+  state.imu.lastTimestamp = timestamp;
+  const dtClamp = KALMAN_TUNING.imu.dtClampSeconds;
+  const dt = clamp(dtRaw, dtClamp.min, dtClamp.max);
+  if (dt <= 0) return;
+  applyImuYawRate(yawRate, dt);
+}
+
+async function requestImuPermission() {
+  if (typeof DeviceMotionEvent === "undefined") return false;
+  if (typeof DeviceMotionEvent.requestPermission !== "function") return true;
+  try {
+    const result = await DeviceMotionEvent.requestPermission();
+    return result === "granted";
+  } catch (err) {
+    return false;
+  }
+}
+
+function stopImu() {
+  if (imuListening) {
+    window.removeEventListener("devicemotion", handleDeviceMotion);
+    imuListening = false;
+  }
+  state.imuEnabled = false;
+  resetImuState();
+}
+
+async function startImu() {
+  if (imuListening) return true;
+  if (typeof DeviceMotionEvent === "undefined") return false;
+  const granted = await requestImuPermission();
+  if (!granted) return false;
+  window.addEventListener("devicemotion", handleDeviceMotion, { passive: true });
+  imuListening = true;
+  state.imuEnabled = true;
+  resetImuState();
+  if (state.kalman) {
+    const vx = state.kalman.x[2];
+    const vy = state.kalman.x[3];
+    const heading = Math.atan2(vx, vy);
+    if (Number.isFinite(heading)) {
+      state.kalman.headingRad = heading;
+    }
+  }
+  return true;
+}
+
+async function setImuEnabled(enabled) {
+  const next = Boolean(enabled);
+  if (next === state.imuEnabled) return;
+  if (!next) {
+    stopImu();
+    updateDebugControls();
+    return;
+  }
+  const confirmed = window.confirm(
+    "IMU requires the phone to be fixed firmly to the boat. Enable IMU?"
+  );
+  if (!confirmed) return;
+  const started = await startImu();
+  if (!started) {
+    window.alert("IMU permission was not granted on this device.");
+  }
+  updateDebugControls();
 }
 
 async function requestWakeLock() {
@@ -1846,9 +1968,21 @@ function bindEvents() {
     });
   }
 
+  if (els.raceImuToggle) {
+    els.raceImuToggle.addEventListener("click", () => {
+      setImuEnabled(!state.imuEnabled);
+    });
+  }
+
   if (els.debugGpsToggle) {
     els.debugGpsToggle.addEventListener("click", () => {
       setDebugGpsEnabled(!state.debugGpsEnabled);
+    });
+  }
+
+  if (els.debugImuToggle) {
+    els.debugImuToggle.addEventListener("click", () => {
+      setImuEnabled(!state.imuEnabled);
     });
   }
 
