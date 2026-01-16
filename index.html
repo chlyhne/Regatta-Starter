@@ -177,32 +177,34 @@
         </div>
         <div class="race-quad race-quad-controls">
           <div class="race-controls">
-            <div class="race-toggle" role="group" aria-label="Race metric">
-              <button
-                id="race-metric-distance"
-                class="race-toggle-btn"
-                type="button"
-                aria-pressed="true"
-              >
-                Distance
-              </button>
-              <button
-                id="race-metric-time"
-                class="race-toggle-btn"
-                type="button"
-                aria-pressed="false"
-              >
-                Time
-              </button>
+            <div class="race-stack">
+              <button id="race-imu-toggle" class="race-btn">IMU: off</button>
+              <div class="race-toggle horizontal race-toggle-full" role="group" aria-label="m/s">
+                <button
+                  id="race-metric-distance"
+                  class="race-toggle-btn"
+                  type="button"
+                  aria-pressed="true"
+                >
+                  m
+                </button>
+                <button
+                  id="race-metric-time"
+                  class="race-toggle-btn"
+                  type="button"
+                  aria-pressed="false"
+                >
+                  s
+                </button>
+              </div>
             </div>
             <div class="race-stack">
               <button id="race-plus" class="race-btn">+1 s</button>
               <button id="race-minus" class="race-btn">−1 s</button>
             </div>
             <div class="race-stack">
-              <button id="race-imu-toggle" class="race-btn">IMU: off</button>
               <button id="sync-race" class="race-btn">Sync to minute</button>
-              <button id="close-race" class="race-btn">Back to setup</button>
+              <button id="close-race" class="race-btn">Setup</button>
             </div>
           </div>
         </div>

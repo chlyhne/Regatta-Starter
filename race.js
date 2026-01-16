@@ -193,6 +193,12 @@ function updateRaceHintUnits(unitDirect, unitClosing) {
 }
 
 function updateRaceMetricLabels() {
+  if (els.raceMetricDistance) {
+    els.raceMetricDistance.textContent = getDistanceUnitMeta().label;
+  }
+  if (els.raceMetricTime) {
+    els.raceMetricTime.textContent = "s";
+  }
   if (state.raceMetric === "time") {
     const directLabel = buildRaceMetricLabel(getTimeLabelFallback(), DIRECT_SUFFIX);
     const closingLabel = buildRaceMetricLabel(getTimeLabelFallback(), CLOSING_SUFFIX);

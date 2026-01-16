@@ -1,11 +1,13 @@
 import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "./state.js";
 import { els } from "./dom.js";
 import { toMeters } from "./geo.js";
-import { getKalmanPositionCovariance } from "./kalman.js";
+import { getKalmanProcessPositionCovariance } from "./kalman.js";
 
 const TRACK_PADDING = 16;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 50;
+const PROCESS_COV_DT_SECONDS = 1;
+const PROCESS_COV_SCALE = 20;
 const viewState = {
   origin: null,
   center: null,
@@ -441,14 +443,15 @@ function renderTrack() {
   if (boat) addBounds(boat);
   if (phonePosition) addBounds(phonePosition);
 
-  // Covariance is for the phone estimate, not the bow.
-  const covarianceCenter = boat || phonePosition || dot;
-  const positionAxes = scaleAxes(
-    covarianceToAxes(getKalmanPositionCovariance()),
-    20
-  );
-  if (covarianceCenter && positionAxes) {
-    const endpoints = axesEndpoints(covarianceCenter, positionAxes);
+  const processCenter = boat || phonePosition || null;
+  const processAxes = processCenter
+    ? scaleAxes(
+        covarianceToAxes(getKalmanProcessPositionCovariance(PROCESS_COV_DT_SECONDS)),
+        PROCESS_COV_SCALE
+      )
+    : null;
+  if (processCenter && processAxes) {
+    const endpoints = axesEndpoints(processCenter, processAxes);
     if (endpoints) {
       addBounds(endpoints.majorStart);
       addBounds(endpoints.majorEnd);
@@ -810,8 +813,11 @@ function renderTrack() {
 
   drawBoatSvg();
 
-  if (positionAxes && covarianceCenter) {
-    drawAxesAt(covarianceCenter, positionAxes, "#c00000", 2.5, 2);
+  const processCenterScreen = processCenter
+    ? projectMeters(processCenter.x, processCenter.y)
+    : null;
+  if (processAxes && processCenterScreen) {
+    drawAxesAt(processCenterScreen, processAxes, "#c00000", 2.5, 2);
   }
   if (dot) {
     drawScreenDot(dot, 3, "#c00000");

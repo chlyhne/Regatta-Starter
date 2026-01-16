@@ -817,6 +817,10 @@ button:active {
   width: auto;
 }
 
+.race-toggle.race-toggle-full {
+  width: 100%;
+}
+
 .race-toggle-btn {
   border: none;
   background: transparent;

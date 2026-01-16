@@ -744,7 +744,7 @@ function setDistanceUnit(unit) {
   saveSettings();
   updateDistanceUnitToggle();
   updateStatusUnitLabels();
-  updateRaceHintUnits();
+  updateRaceMetricLabels();
   syncBowOffsetInput();
   syncBoatLengthInput();
   updateLineProjection();

@@ -420,6 +420,24 @@ function getKalmanPositionCovariance() {
   return { xx, xy, yy };
 }
 
+function getKalmanProcessPositionCovariance(dtSeconds) {
+  // Return the position block of the process noise Q for a given dt.
+  const dt = Number.isFinite(dtSeconds) && dtSeconds > 0 ? dtSeconds : 1;
+  const qBase = getProcessNoiseVariance();
+  const lateralRatio = KALMAN_TUNING.imu.lateralVarianceRatio;
+  const headingRad =
+    Number.isFinite(state.kalman?.headingRad)
+      ? state.kalman.headingRad
+      : getVelocityHeadingRad(state.velocity?.x, state.velocity?.y) ?? 0;
+  const posCov = buildDirectionalCovariance(qBase, qBase * lateralRatio, headingRad);
+  const dt4 = dt * dt * dt * dt;
+  return {
+    xx: (posCov.xx * dt4) / 4,
+    xy: (posCov.xy * dt4) / 4,
+    yy: (posCov.yy * dt4) / 4,
+  };
+}
+
 function getKalmanPredictedPositionCovariance(seconds) {
   // Integrate the covariance forward for the time-to-start projection.
   if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
@@ -509,5 +527,6 @@ export {
   applyImuYawRate,
   predictKalmanState,
   getKalmanPositionCovariance,
+  getKalmanProcessPositionCovariance,
   getKalmanPredictedPositionCovariance,
 };
