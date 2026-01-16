@@ -259,7 +259,7 @@ function handleDeviceMotion(event) {
   const gx = g.x / gMag;
   const gy = g.y / gMag;
   const gz = g.z / gMag;
-  const yawRate = omegaX * gx + omegaY * gy + omegaZ * gz;
+  const yawRate = -(omegaX * gx + omegaY * gy + omegaZ * gz);
 
   const timestamp = Number.isFinite(event.timeStamp) ? event.timeStamp : Date.now();
   if (!Number.isFinite(state.imu.lastTimestamp)) {
