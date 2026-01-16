@@ -272,9 +272,9 @@ function handleDeviceMotion(event) {
     beta: Number.isFinite(beta) ? beta : 0,
     gamma: Number.isFinite(gamma) ? gamma : 0,
   };
-  const omegaX = toRadians(Number.isFinite(beta) ? beta : 0);
-  const omegaY = toRadians(Number.isFinite(gamma) ? gamma : 0);
-  const omegaZ = toRadians(Number.isFinite(alpha) ? alpha : 0);
+  const omegaX = toRadians(Number.isFinite(alpha) ? alpha : 0);
+  const omegaY = toRadians(Number.isFinite(beta) ? beta : 0);
+  const omegaZ = toRadians(Number.isFinite(gamma) ? gamma : 0);
   const g = state.imu.gravity;
   const gMag = Math.hypot(g.x, g.y, g.z);
   if (!Number.isFinite(gMag) || gMag <= 0) return;
