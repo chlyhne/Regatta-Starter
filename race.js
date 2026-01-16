@@ -51,12 +51,12 @@ function formatRaceTimeLabel(deltaSeconds) {
     return "M:SS";
   }
   if (total < 3600) {
-    return "M";
+    return "MINUTES";
   }
   if (total < 36000) {
     return "H:MM";
   }
-  return "H";
+  return "HOURS";
 }
 
 const DIRECT_SUFFIX = "DIRECT";
