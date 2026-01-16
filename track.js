@@ -442,12 +442,13 @@ function renderTrack() {
   if (phonePosition) addBounds(phonePosition);
 
   // Covariance is for the phone estimate, not the bow.
+  const covarianceCenter = boat || phonePosition || dot;
   const positionAxes = scaleAxes(
     covarianceToAxes(getKalmanPositionCovariance()),
     20
   );
-  if (phonePosition && positionAxes) {
-    const endpoints = axesEndpoints(phonePosition, positionAxes);
+  if (covarianceCenter && positionAxes) {
+    const endpoints = axesEndpoints(covarianceCenter, positionAxes);
     if (endpoints) {
       addBounds(endpoints.majorStart);
       addBounds(endpoints.majorEnd);
@@ -809,7 +810,6 @@ function renderTrack() {
 
   drawBoatSvg();
 
-  const covarianceCenter = phonePosition || dot;
   if (positionAxes && covarianceCenter) {
     drawAxesAt(covarianceCenter, positionAxes, "#c00000", 2.5, 2);
   }
