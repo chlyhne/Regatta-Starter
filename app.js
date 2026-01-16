@@ -228,6 +228,8 @@ function getImuGravityAlpha() {
 function resetImuState() {
   state.imu.gravity = null;
   state.imu.lastTimestamp = null;
+  state.imu.lastRotation = null;
+  state.imu.lastYawRate = null;
 }
 
 function handleDeviceMotion(event) {
@@ -262,9 +264,17 @@ function handleDeviceMotion(event) {
 
   const rotation = event.rotationRate;
   if (!rotation) return;
-  const omegaX = toRadians(Number(rotation.beta) || 0);
-  const omegaY = toRadians(Number(rotation.gamma) || 0);
-  const omegaZ = toRadians(Number(rotation.alpha) || 0);
+  const alpha = Number(rotation.alpha);
+  const beta = Number(rotation.beta);
+  const gamma = Number(rotation.gamma);
+  state.imu.lastRotation = {
+    alpha: Number.isFinite(alpha) ? alpha : 0,
+    beta: Number.isFinite(beta) ? beta : 0,
+    gamma: Number.isFinite(gamma) ? gamma : 0,
+  };
+  const omegaX = toRadians(Number.isFinite(beta) ? beta : 0);
+  const omegaY = toRadians(Number.isFinite(gamma) ? gamma : 0);
+  const omegaZ = toRadians(Number.isFinite(alpha) ? alpha : 0);
   const g = state.imu.gravity;
   const gMag = Math.hypot(g.x, g.y, g.z);
   if (!Number.isFinite(gMag) || gMag <= 0) return;
@@ -272,6 +282,7 @@ function handleDeviceMotion(event) {
   const gy = g.y / gMag;
   const gz = g.z / gMag;
   const yawRate = -(omegaX * gx + omegaY * gy + omegaZ * gz);
+  state.imu.lastYawRate = yawRate;
 
   const timestamp = Number.isFinite(event.timeStamp) ? event.timeStamp : Date.now();
   if (!Number.isFinite(state.imu.lastTimestamp)) {

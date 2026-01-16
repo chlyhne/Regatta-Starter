@@ -111,7 +111,8 @@ Why those powers of `dt`?
 - velocity is the integral of acceleration
 - integrating white noise introduces these time scalings
 
-The full 2D filter is simply two independent copies (x and y), combined into 4×4 form:
+If we assumed identical behavior in every direction, the full 2D filter would be two
+independent copies (x and y), combined into 4×4 form:
 
 ```
 Q = [[q·dt^4/4, 0,        q·dt^3/2, 0       ],
@@ -120,12 +121,15 @@ Q = [[q·dt^4/4, 0,        q·dt^3/2, 0       ],
      [0,        q·dt^3/2, 0,        q·dt^2  ]]
 ```
 
-Key takeaways:
-- `Q` is symmetric
-- `Q` is **not diagonal** (position/velocity are coupled within each axis)
+In RaceTimer we make a more boat-like assumption: **forward and sideways acceleration are
+not equally likely**. We therefore:
 
-In code, we sometimes conceptually treat “position part” and “velocity part”, but the matrix
-structure is still this CV form.
+- set a forward acceleration variance `q_f`
+- set a lateral acceleration variance `q_l` (typically smaller)
+- rotate this anisotropic covariance into the global x/y frame using the current heading
+
+The matrix is still symmetric and uses the same CV structure, but it now contains off-diagonal
+terms because the “forward” axis is not aligned with the global x/y axes.
 
 ## 4) Measurement model: GPS gives position (with accuracy)
 
@@ -231,7 +235,56 @@ Relevant code:
 - `predictKalmanState()` in `kalman.js` (predict-only step)
 - the 5 Hz loop in `app.js` that keeps the estimate moving
 
-## 7) Gain scheduling: how we choose Q in a physically meaningful way
+## 7) IMU-assisted heading (optional, race/debug toggle)
+
+The GPS-derived heading can be slow or unstable, especially at low speed. When IMU assist
+is enabled, we use the gyroscope's yaw rate to update the heading estimate between GPS
+fixes, while still letting GPS gently correct long-term drift.
+
+### 7.1 Estimating the down axis continuously
+
+The gyroscope reports rotation rates about the phone's axes, but we need the component of
+rotation about the vertical (down) axis to get yaw. Because the phone can move in waves,
+we estimate down on every motion event:
+
+- read `accelerationIncludingGravity`
+- if `acceleration` is available, subtract it to remove fast linear motion  
+  (`gravity ~= accelIncludingGravity - acceleration`)
+- low-pass the result so down changes smoothly
+
+The low-pass factor is tunable and scaled by boat length: large boats get a slower, steadier
+gravity estimate; small boats react faster.
+
+### 7.2 Converting gyro into yaw rate
+
+The device supplies rotation rates around its own axes. We project that rotation vector
+onto the estimated gravity direction:
+
+`yawRate ~= - (omega dot ghat)`
+
+This gives an estimated rotation rate about down. The sign is chosen so a right turn
+increases heading in the race/debug view.
+
+### 7.3 Updating the filter with IMU yaw
+
+When we have a yaw rate:
+
+- update a separate `headingRad`
+- rotate the velocity vector by the yaw change
+- rotate the velocity covariance block so `P` stays consistent
+
+This does not add a new measurement update; it is a deterministic update between GPS
+fixes. The measurement noise `R` is unchanged.
+
+### 7.4 Blending GPS heading and IMU heading
+
+When GPS speed is above a minimum threshold, we compute a GPS heading from the Kalman
+velocity. If IMU is enabled, GPS nudges the IMU heading with a tunable weight
+(`headingImuWeight`). If IMU is disabled, GPS heading is used directly.
+
+Relevant tuning: `KALMAN_TUNING.imu.*` in `tuning.js`.
+
+## 8) Gain scheduling: how we choose Q in a physically meaningful way
 
 The main “feel” of the filter comes from the relationship between `Q` and `R`.
 `R` comes from GPS accuracy. That leaves `Q` (via `q`) as the lever we tune.
@@ -241,7 +294,7 @@ RaceTimer schedules `q` in two steps:
 1) **Boat length scaling** (physical scaling argument for displacement boats)  
 2) **Speed scaling** (practical behavior near the start line)
 
-### 7.1 Boat length scaling (displacement keelboats)
+### 8.1 Boat length scaling (displacement keelboats)
 
 For similar displacement boats, a useful scaling approximation is:
 
@@ -277,7 +330,7 @@ This is implemented in `kalman.js#getProcessNoiseVariance()` using:
 Interpretation:
 - Longer boat ⇒ smaller `q` ⇒ filter changes velocity estimate more slowly ⇒ steadier output.
 
-### 7.2 Speed scaling using recent max speed (not instantaneous speed)
+### 8.2 Speed scaling using recent max speed (not instantaneous speed)
 
 If we made `q` depend on instantaneous speed, you get a bad corner case:
 
@@ -304,7 +357,7 @@ So:
 
 This makes the filter responsive if the boat has recently moved fast, even if it is currently slow.
 
-## 8) Marking the start line with GPS (no bow offset)
+## 9) Marking the start line with GPS (no bow offset)
 
 When you press “Set port mark (GPS)” or “Set starboard mark (GPS)”, the app stores the
 **latest Kalman position estimate for the phone**. We deliberately do **not** apply the
@@ -317,7 +370,7 @@ bow offset here:
 Because the Kalman estimate updates at 5 Hz between fixes, the “latest” position is a
 smooth, up-to-date estimate even if GPS delivers at a slower rate.
 
-## 9) Bow offset: how it is applied in race projections
+## 10) Bow offset: how it is applied in race projections
 
 The Kalman filter estimates the phone position and velocity. The boat bow is then
 constructed by shifting the phone position **forward along the velocity vector** by the
@@ -337,7 +390,7 @@ Race view uses two projections, and the bow offset is handled differently in eac
 
 This keeps the geometry consistent for each assumption.
 
-## 10) Covariance and plotting: why you can see rotated axes
+## 11) Covariance and plotting: why you can see rotated axes
 
 Even with isotropic `R`, the full covariance `P` is not diagonal because:
 - the CV model creates correlation between position and velocity (`cov(p, v)`)
@@ -349,7 +402,7 @@ but the debug view computes ellipse axes robustly (eigen decomposition) because:
 - it keeps the visualization correct if we ever introduce anisotropic `R` or additional sensors
 - it avoids “false confidence” from assuming `Pxy = 0` always
 
-## 11) Where to look in the repo
+## 12) Where to look in the repo
 
 - Core filter: `kalman.js`
 - Tuning constants: `tuning.js`

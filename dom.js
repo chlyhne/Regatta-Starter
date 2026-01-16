@@ -147,6 +147,8 @@ const els = {
   debugImuToggle: document.getElementById("debug-imu-toggle"),
   debugGpsStatus: document.getElementById("debug-gps-status"),
   debugGpsDelta: document.getElementById("debug-gps-delta"),
+  debugImuRotation: document.getElementById("debug-imu-rotation"),
+  debugImuYaw: document.getElementById("debug-imu-yaw"),
   openTrack: document.getElementById("open-track"),
   closeTrack: document.getElementById("close-track"),
   trackCanvas: document.getElementById("track-canvas"),

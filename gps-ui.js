@@ -82,6 +82,34 @@ function updateDebugControls() {
     }
     els.debugGpsDelta.textContent = deltaText;
   }
+  if (els.debugImuRotation) {
+    const rot = state.imu?.lastRotation;
+    if (rot) {
+      const a = rot.alpha.toFixed(1);
+      const b = rot.beta.toFixed(1);
+      const g = rot.gamma.toFixed(1);
+      els.debugImuRotation.textContent = `IMU rot: a ${a} b ${b} g ${g} deg/s`;
+    } else {
+      els.debugImuRotation.textContent = "IMU rot: --";
+    }
+  }
+  if (els.debugImuYaw) {
+    const yawRate = state.imu?.lastYawRate;
+    const gravity = state.imu?.gravity;
+    if (Number.isFinite(yawRate)) {
+      const yawDeg = (yawRate * 180) / Math.PI;
+      let gravityText = "";
+      if (gravity) {
+        const gx = gravity.x.toFixed(2);
+        const gy = gravity.y.toFixed(2);
+        const gz = gravity.z.toFixed(2);
+        gravityText = ` g ${gx},${gy},${gz}`;
+      }
+      els.debugImuYaw.textContent = `IMU yaw: ${yawDeg.toFixed(1)} deg/s${gravityText}`;
+    } else {
+      els.debugImuYaw.textContent = "IMU yaw: --";
+    }
+  }
 }
 
 export { updateGPSDisplay, updateDebugControls };

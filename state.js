@@ -48,6 +48,8 @@ const state = {
   imu: {
     gravity: null,
     lastTimestamp: null,
+    lastRotation: null,
+    lastYawRate: null,
   },
   debugIntervalId: null,
   geoWatchId: null,
