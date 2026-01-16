@@ -31,6 +31,12 @@ function getVelocityHeadingRad(vx, vy) {
   return Math.atan2(vx, vy);
 }
 
+function getCovarianceHeadingRad(vx, vy, fallbackRad) {
+  const velocityHeading = getVelocityHeadingRad(vx, vy);
+  if (Number.isFinite(velocityHeading)) return velocityHeading;
+  return Number.isFinite(fallbackRad) ? fallbackRad : 0;
+}
+
 function rotateVelocityCovariance(P, cos, sin) {
   if (!Array.isArray(P) || P.length < 16) return;
   const p00 = P[0];
@@ -190,8 +196,7 @@ function buildPrediction(filter, dt) {
   const qPosLateral = qBase * lateralRatio;
   const qVelForward = qBase * speedScale;
   const qVelLateral = qVelForward * lateralRatio;
-  const headingRad =
-    Number.isFinite(filter.headingRad) ? filter.headingRad : getVelocityHeadingRad(x[2], x[3]) ?? 0;
+  const headingRad = getCovarianceHeadingRad(x[2], x[3], filter.headingRad);
   const posCov = buildDirectionalCovariance(qPosForward, qPosLateral, headingRad);
   const velCov = buildDirectionalCovariance(qVelForward, qVelLateral, headingRad);
   const dt2 = dt * dt;
@@ -422,13 +427,15 @@ function getKalmanPositionCovariance() {
 
 function getKalmanProcessPositionCovariance(dtSeconds) {
   // Return the position block of the process noise Q for a given dt.
+  if (!state.kalman) return null;
   const dt = Number.isFinite(dtSeconds) && dtSeconds > 0 ? dtSeconds : 1;
   const qBase = getProcessNoiseVariance();
   const lateralRatio = KALMAN_TUNING.imu.lateralVarianceRatio;
-  const headingRad =
-    Number.isFinite(state.kalman?.headingRad)
-      ? state.kalman.headingRad
-      : getVelocityHeadingRad(state.velocity?.x, state.velocity?.y) ?? 0;
+  const headingRad = getCovarianceHeadingRad(
+    state.kalman.x[2],
+    state.kalman.x[3],
+    state.kalman.headingRad
+  );
   const posCov = buildDirectionalCovariance(qBase, qBase * lateralRatio, headingRad);
   const dt4 = dt * dt * dt * dt;
   return {
@@ -453,10 +460,11 @@ function getKalmanPredictedPositionCovariance(seconds) {
   const qPosLateral = qBase * lateralRatio;
   const qVelForward = qBase * speedScale;
   const qVelLateral = qVelForward * lateralRatio;
-  const headingRad =
-    Number.isFinite(state.kalman.headingRad)
-      ? state.kalman.headingRad
-      : getVelocityHeadingRad(state.kalman.x[2], state.kalman.x[3]) ?? 0;
+  const headingRad = getCovarianceHeadingRad(
+    state.kalman.x[2],
+    state.kalman.x[3],
+    state.kalman.headingRad
+  );
   const posCov = buildDirectionalCovariance(qPosForward, qPosLateral, headingRad);
   const velCov = buildDirectionalCovariance(qVelForward, qVelLateral, headingRad);
   let remaining = seconds;

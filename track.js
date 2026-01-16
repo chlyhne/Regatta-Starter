@@ -7,7 +7,7 @@ const TRACK_PADDING = 16;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 50;
 const PROCESS_COV_DT_SECONDS = 1;
-const PROCESS_COV_SCALE = 20;
+const PROCESS_COV_DISPLAY_METERS = 10;
 const viewState = {
   origin: null,
   center: null,
@@ -431,6 +431,10 @@ function renderTrack() {
         origin
       )
     : null;
+  const phoneAnchor =
+    phonePosition ||
+    (phonePoints.length ? toXY(phonePoints[phonePoints.length - 1]) : null) ||
+    (rawPoints.length ? toXY(rawPoints[rawPoints.length - 1]) : null);
 
   let boat = bowPosition || phonePosition || null;
   if (!boat && bowPoints.length) {
@@ -443,13 +447,17 @@ function renderTrack() {
   if (boat) addBounds(boat);
   if (phonePosition) addBounds(phonePosition);
 
-  const processCenter = boat || phonePosition || null;
-  const processAxes = processCenter
-    ? scaleAxes(
-        covarianceToAxes(getKalmanProcessPositionCovariance(PROCESS_COV_DT_SECONDS)),
-        PROCESS_COV_SCALE
-      )
-    : null;
+  const processCenter = phoneAnchor;
+  let processAxes = null;
+  if (processCenter) {
+    const rawAxes = covarianceToAxes(
+      getKalmanProcessPositionCovariance(PROCESS_COV_DT_SECONDS)
+    );
+    if (rawAxes && rawAxes.major > 0) {
+      const scale = PROCESS_COV_DISPLAY_METERS / rawAxes.major;
+      processAxes = scaleAxes(rawAxes, scale);
+    }
+  }
   if (processCenter && processAxes) {
     const endpoints = axesEndpoints(processCenter, processAxes);
     if (endpoints) {
