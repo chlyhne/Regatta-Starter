@@ -9,11 +9,29 @@
   --danger: #000000;
   --shadow: rgba(0, 0, 0, 0.12);
   --start-control-height: 3.2rem;
+  --app-height: 100vh;
   font-size: 16px;
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
 }
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
@@ -23,7 +41,10 @@ body {
   font-weight: 400;
   background: #ffffff;
   color: #000000;
-  min-height: 100vh;
+  min-height: var(--app-height);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -159,6 +180,12 @@ body {
   max-height: 80vh;
 }
 
+@supports (height: 100dvh) {
+  .modal-panel {
+    max-height: min(80dvh, calc(var(--app-height) - 48px));
+  }
+}
+
 .modal-list {
   display: grid;
   gap: 10px;
@@ -244,7 +271,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
-  min-height: 100vh;
+  min-height: var(--app-height);
 }
 
 #setup-view.shell > * {
@@ -724,8 +751,8 @@ button:active {
 
 .race-view {
   display: none;
-  height: 100vh;
-  height: 100svh;
+  height: var(--app-height);
+  min-height: var(--app-height);
   overflow: hidden;
   padding: 0;
   gap: 0;
@@ -1115,7 +1142,7 @@ button:active {
 .boat-view,
 .info-view {
   display: none;
-  min-height: 100vh;
+  min-height: var(--app-height);
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;

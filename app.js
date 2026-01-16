@@ -76,6 +76,12 @@ let imuCalibrationSamples = [];
 let imuCalibrationTimer = null;
 let imuCalibrationError = "";
 
+function updateViewportHeight() {
+  const height = window.visualViewport?.height || window.innerHeight;
+  if (!Number.isFinite(height)) return;
+  document.documentElement.style.setProperty("--app-height", `${height}px`);
+}
+
 function formatBowOffsetValue(meters) {
   if (!Number.isFinite(meters)) return "";
   const { factor } = getDistanceUnitMeta();
@@ -2533,12 +2539,18 @@ updateImuCalibrationUi();
 updateCurrentTime();
 syncViewFromHash();
 tick();
+updateViewportHeight();
 
 window.addEventListener("resize", () => {
+  updateViewportHeight();
   if (document.body.classList.contains("track-mode")) {
     renderTrack();
   }
 });
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", updateViewportHeight);
+}
 
 document.addEventListener("click", unlockAudio, { once: true });
 document.addEventListener("touchstart", unlockAudio, { once: true });
