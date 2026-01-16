@@ -844,6 +844,10 @@ button:active {
   width: auto;
 }
 
+.race-controls .race-toggle.horizontal {
+  width: 100%;
+}
+
 .race-toggle.race-toggle-full {
   width: 100%;
 }
@@ -872,6 +876,11 @@ button:active {
 .race-toggle.horizontal .race-toggle-btn {
   width: auto;
   min-width: 72px;
+}
+
+.race-controls .race-toggle.horizontal .race-toggle-btn {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .panel .setting-row .race-toggle.horizontal {
@@ -1366,5 +1375,17 @@ button:active {
 
   .coords-latlon-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@supports not (-webkit-touch-callout: none) {
+  #setup-view.shell > * {
+    padding-block: 24px;
+  }
+
+  .countdown-picker select {
+    padding: 2px 8px;
+    line-height: 1;
+    font-size: 1.05rem;
   }
 }
