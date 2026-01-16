@@ -55,15 +55,15 @@ function rotateVelocityCovariance(P, cos, sin) {
   const p12n = p12 * cos + p13 * sin;
   const p13n = -p12 * sin + p13 * cos;
 
-  const p20n = cos * p20 - sin * p30;
-  const p21n = cos * p21 - sin * p31;
-  const p30n = sin * p20 + cos * p30;
-  const p31n = sin * p21 + cos * p31;
+  const p20n = cos * p20 + sin * p30;
+  const p21n = cos * p21 + sin * p31;
+  const p30n = -sin * p20 + cos * p30;
+  const p31n = -sin * p21 + cos * p31;
 
-  const b00 = cos * p22 - sin * p32;
-  const b01 = cos * p23 - sin * p33;
-  const b10 = sin * p22 + cos * p32;
-  const b11 = sin * p23 + cos * p33;
+  const b00 = cos * p22 + sin * p32;
+  const b01 = cos * p23 + sin * p33;
+  const b10 = -sin * p22 + cos * p32;
+  const b11 = -sin * p23 + cos * p33;
 
   const p22n = b00 * cos + b01 * sin;
   const p23n = -b00 * sin + b01 * cos;
@@ -95,8 +95,8 @@ function rotateVelocityState(filter, deltaRad) {
   const sin = Math.sin(deltaRad);
   const vx = filter.x[2];
   const vy = filter.x[3];
-  filter.x[2] = cos * vx - sin * vy;
-  filter.x[3] = sin * vx + cos * vy;
+  filter.x[2] = cos * vx + sin * vy;
+  filter.x[3] = -sin * vx + cos * vy;
   rotateVelocityCovariance(filter.P, cos, sin);
 }
 
