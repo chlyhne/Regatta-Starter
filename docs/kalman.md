@@ -431,21 +431,35 @@ Race view uses two projections, and the bow offset is handled differently in eac
 
 This keeps the geometry consistent for each assumption.
 
-## 11) Covariance and plotting: why you can see rotated axes
+## 11) Why `Q` is rotated: forward vs sideways acceleration
 
-Even with isotropic `R`, the full covariance `P` is not diagonal because:
-- the CV model creates correlation between position and velocity (`cov(p, v)`)
-- numerical effects and clamped `dt` also introduce small asymmetries
+The **important modeling choice** is that a boat can change speed **much more easily
+along its heading** than sideways. In other words, acceleration uncertainty is **anisotropic**:
 
-The 2×2 position covariance block can be close to circular if you keep everything symmetric,
-but the debug view computes ellipse axes robustly (eigen decomposition) because:
+- **Forward (along the boat’s heading):** higher variance, because speed changes here are common.
+- **Sideways (across the boat):** lower variance, because real boats do not slide sideways
+  nearly as much.
 
-- it keeps the visualization correct if we ever introduce anisotropic `R` or additional sensors
-- it avoids “false confidence” from assuming `Pxy = 0` always
+We encode that by building an anisotropic `Q` with a forward variance and a smaller
+sideways variance (see `lateralVarianceRatio`), then **rotating that covariance into the
+global x/y frame** using the current velocity heading. This keeps the model aligned with
+the boat’s direction of travel and makes the filter less willing to “invent” sideways speed.
+
+In the debug view we draw the **position block of `Q`** so this anisotropy is obvious.
+The overlay is:
+
+- anchored to the **phone position** (the Kalman state is the phone)
+- rotated by the **current velocity heading** (changes with GPS or IMU updates)
+- scaled to a fixed display length (currently 10 m) to show orientation only
+
+We still maintain the full covariance `P` internally, and it is generally **not diagonal**
+even if `R` is isotropic (the CV model couples position/velocity, and updates add
+correlations). We avoid plotting `P` here because its shape is dominated by measurement
+updates rather than the model structure we want to inspect.
 
 ## 12) Where to look in the repo
 
 - Core filter: `kalman.js`
 - Tuning constants: `tuning.js`
 - Speed history used for scheduling: `state.speedHistory` maintained in `app.js`
-- Debug covariance visualization: `track.js`
+- Debug process-noise visualization: `track.js`

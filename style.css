@@ -1087,6 +1087,7 @@ button:active {
   cursor: pointer;
   width: 100%;
   min-height: 44px;
+  white-space: nowrap;
 }
 
 .race-btn:disabled {

@@ -35,7 +35,7 @@ function updateDebugControls() {
       state.debugGpsEnabled ? "true" : "false"
     );
   }
-  const imuLabel = state.imuEnabled ? "IMU: on" : "IMU: off";
+  const imuLabel = state.imuEnabled ? "IMU: ON" : "IMU: OFF";
   if (els.debugImuToggle) {
     els.debugImuToggle.textContent = imuLabel;
     els.debugImuToggle.setAttribute(
