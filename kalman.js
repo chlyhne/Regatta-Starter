@@ -4,19 +4,22 @@ import { computeVelocityFromHeading } from "./velocity.js";
 import { KALMAN_TUNING } from "./tuning.js";
 
 // State vector layout: [x, y, vx, vy] in meters and meters/second, relative to a local origin.
-// We keep the math explicit (no linear algebra helpers) for readability and debugging.
+// Axes follow the local tangent plane: x = east, y = north (see geo.js).
+// We keep the math explicit (no linear algebra helpers) so every step stays inspectable.
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
 function clampDtSeconds(dtRaw) {
+  // Clamp large dt spikes so a single stale GPS fix cannot explode covariance.
   if (!Number.isFinite(dtRaw) || dtRaw <= 0) return 0;
   const dtClamp = KALMAN_TUNING.timing.dtClampSeconds;
   return Math.min(dtRaw, dtClamp.max);
 }
 
 function normalizeAngleRad(angle) {
+  // Keep heading in a stable range so delta computations stay small and well-behaved.
   if (!Number.isFinite(angle)) return 0;
   let wrapped = angle % (Math.PI * 2);
   if (wrapped <= -Math.PI) wrapped += Math.PI * 2;
@@ -25,6 +28,7 @@ function normalizeAngleRad(angle) {
 }
 
 function getVelocityHeadingRad(vx, vy) {
+  // Heading is defined as atan2(east, north): 0 = north, +90° = east.
   if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
   const speed = Math.hypot(vx, vy);
   if (!Number.isFinite(speed) || speed < 1e-6) return null;
@@ -32,12 +36,14 @@ function getVelocityHeadingRad(vx, vy) {
 }
 
 function getCovarianceHeadingRad(vx, vy, fallbackRad) {
+  // Prefer the velocity-derived heading; fall back to stored heading when nearly stopped.
   const velocityHeading = getVelocityHeadingRad(vx, vy);
   if (Number.isFinite(velocityHeading)) return velocityHeading;
   return Number.isFinite(fallbackRad) ? fallbackRad : 0;
 }
 
 function rotateVelocityCovariance(P, cos, sin) {
+  // Rotate the velocity block (and cross terms) so covariance stays aligned with heading.
   if (!Array.isArray(P) || P.length < 16) return;
   const p00 = P[0];
   const p01 = P[1];
@@ -95,6 +101,7 @@ function rotateVelocityCovariance(P, cos, sin) {
 }
 
 function rotateVelocityState(filter, deltaRad) {
+  // Apply a yaw delta to the velocity state so heading and velocity stay consistent.
   if (!filter || !Array.isArray(filter.x) || filter.x.length < 4) return;
   if (!Number.isFinite(deltaRad) || deltaRad === 0) return;
   const cos = Math.cos(deltaRad);
@@ -107,6 +114,7 @@ function rotateVelocityState(filter, deltaRad) {
 }
 
 function buildDirectionalCovariance(qForward, qLateral, headingRad) {
+  // Convert forward/sideways variances into the global x/y frame via rotation.
   const heading = Number.isFinite(headingRad) ? headingRad : 0;
   const fx = Math.sin(heading);
   const fy = Math.cos(heading);
@@ -129,6 +137,7 @@ function getProcessNoiseVariance() {
 }
 
 function getRecentMaxSpeed() {
+  // Use max speed over the recent window as a proxy for potential acceleration.
   if (!Array.isArray(state.speedHistory) || !state.speedHistory.length) {
     return null;
   }
@@ -142,7 +151,7 @@ function getRecentMaxSpeed() {
 }
 
 function getSpeedScale(speed) {
-  // Use recent max speed as a proxy for "how quickly this boat can change speed".
+  // Scale q by recent max speed so the filter remains responsive after fast maneuvers.
   const recentMaxSpeed = getRecentMaxSpeed();
   const speedSource = Number.isFinite(recentMaxSpeed) ? recentMaxSpeed : speed;
   const speedKnots = Number.isFinite(speedSource) ? speedSource * 1.943844 : 0;
@@ -152,7 +161,8 @@ function getSpeedScale(speed) {
 }
 
 function initKalmanState(position) {
-  // Initialize the filter at the current GPS fix, using accuracy as the position variance.
+  // Initialize the filter at the first GPS fix, using accuracy as the initial position variance.
+  // The origin anchors the local meter conversion so later math stays stable.
   const origin = { lat: position.coords.latitude, lon: position.coords.longitude };
   const accuracyDefault = KALMAN_TUNING.measurementNoise.accuracyDefaultMeters;
   const accuracyClamp = KALMAN_TUNING.measurementNoise.accuracyClampMeters;
@@ -184,6 +194,7 @@ function initKalmanState(position) {
 
 function buildPrediction(filter, dt) {
   // Constant-velocity model with tuned acceleration process noise.
+  // This is the standard CV form with white acceleration noise mapped into x/y.
   const x = filter.x;
   const P = filter.P;
   if (!Number.isFinite(dt) || dt <= 0) {
@@ -192,6 +203,7 @@ function buildPrediction(filter, dt) {
   const qBase = getProcessNoiseVariance();
   const speedScale = getSpeedScale(Math.hypot(x[2], x[3]));
   const lateralRatio = KALMAN_TUNING.imu.lateralVarianceRatio;
+  // Position noise uses the base acceleration variance; velocity noise scales with speed.
   const qPosForward = qBase;
   const qPosLateral = qBase * lateralRatio;
   const qVelForward = qBase * speedScale;
@@ -203,12 +215,14 @@ function buildPrediction(filter, dt) {
   const dt3 = dt2 * dt;
   const dt4 = dt2 * dt2;
 
+  // State transition for CV: x += v*dt, v constant over the step.
   const F = [
     1, 0, dt, 0,
     0, 1, 0, dt,
     0, 0, 1, 0,
     0, 0, 0, 1,
   ];
+  // Process noise for CV with white acceleration: Q = G q G^T.
   const qPos00 = posCov.xx * dt4 / 4;
   const qPos01 = posCov.xy * dt4 / 4;
   const qPos11 = posCov.yy * dt4 / 4;
@@ -226,6 +240,7 @@ function buildPrediction(filter, dt) {
     qVel01, qVel11, qVelV01, qVelV11,
   ];
 
+  // Predict state first so the measurement update has a clean prior.
   const xPred = [
     x[0] + x[2] * dt,
     x[1] + x[3] * dt,
@@ -233,6 +248,7 @@ function buildPrediction(filter, dt) {
     x[3],
   ];
 
+  // Explicit 4x4 multiply (F * P * F^T + Q) to keep the math transparent.
   const FP = new Array(16).fill(0);
   for (let r = 0; r < 4; r += 1) {
     for (let c = 0; c < 4; c += 1) {
@@ -258,7 +274,7 @@ function buildPrediction(filter, dt) {
 }
 
 function formatKalmanOutput(filter, timestamp) {
-  // Convert back to lat/lon for UI, while keeping velocity in meters/second.
+  // Convert back to lat/lon for UI while preserving velocity in meters/second.
   const coords = fromMeters({ x: filter.x[0], y: filter.x[1] }, filter.origin);
   return {
     position: {
@@ -286,10 +302,12 @@ function applyKalmanFilter(position) {
   const dtRaw = (timestamp - filter.lastTs) / 1000;
   const dt = clampDtSeconds(dtRaw);
   filter.lastTs = timestamp;
+  // Predict once to build the prior used by the GPS update.
   const predicted = buildPrediction(filter, dt);
   const xPred = predicted.xPred;
   const PPred = predicted.PPred;
 
+  // Measurement z is GPS position in the same local meter frame.
   const measurement = toMeters(
     { lat: position.coords.latitude, lon: position.coords.longitude },
     filter.origin
@@ -299,6 +317,7 @@ function applyKalmanFilter(position) {
   const accuracyClamp = KALMAN_TUNING.measurementNoise.accuracyClampMeters;
   const accuracy = clamp(position.coords.accuracy || accuracyDefault, accuracyClamp.min, accuracyClamp.max);
   filter.accuracy = accuracy;
+  // Innovation covariance S = HPH^T + R (H selects position).
   const r = accuracy ** 2;
   const S00 = PPred[0] + r;
   const S01 = PPred[1];
@@ -314,6 +333,7 @@ function applyKalmanFilter(position) {
     const invS10 = -S10 / det;
     const invS11 = S00 / det;
 
+    // Kalman gain K = P H^T S^-1, written out to stay legible.
     const PHt = [
       PPred[0], PPred[1],
       PPred[4], PPred[5],
@@ -331,6 +351,7 @@ function applyKalmanFilter(position) {
       PHt[6] * invS01 + PHt[7] * invS11,
     ];
 
+    // Innovation y = z - H xPred.
     const y0 = z[0] - xPred[0];
     const y1 = z[1] - xPred[1];
 
@@ -339,6 +360,7 @@ function applyKalmanFilter(position) {
     xPred[2] += K[4] * y0 + K[5] * y1;
     xPred[3] += K[6] * y0 + K[7] * y1;
 
+    // Covariance update: P = P - K H P.
     const HP = [
       PPred[0], PPred[1], PPred[2], PPred[3],
       PPred[4], PPred[5], PPred[6], PPred[7],
@@ -359,6 +381,7 @@ function applyKalmanFilter(position) {
     filter.x = xPred;
     filter.P = PPred;
   }
+  // Update heading from velocity when moving, and blend GPS heading into IMU heading.
   const speed = Math.hypot(filter.x[2], filter.x[3]);
   const minSpeed = KALMAN_TUNING.imu.gpsHeadingMinSpeed;
   if (Number.isFinite(speed) && speed >= minSpeed) {
@@ -382,7 +405,7 @@ function applyKalmanFilter(position) {
 }
 
 function predictKalmanState(targetTimestamp) {
-  // Pure prediction step used between GPS fixes (keeps UI motion smooth).
+  // Pure prediction step used between GPS fixes to keep the UI moving smoothly.
   if (!state.kalman) return null;
   const filter = state.kalman;
   const timestamp = Math.max(
@@ -402,6 +425,8 @@ function predictKalmanState(targetTimestamp) {
 }
 
 function applyImuYawRate(yawRateRad, dtSeconds) {
+  // Integrate yaw rate to keep heading responsive between GPS updates.
+  // We rotate the velocity state so the model and heading stay aligned.
   if (!state.imuEnabled || !state.kalman) return;
   if (!Number.isFinite(yawRateRad) || !Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
   const filter = state.kalman;
@@ -415,7 +440,7 @@ function applyImuYawRate(yawRateRad, dtSeconds) {
 }
 
 function getKalmanPositionCovariance() {
-  // Return the 2x2 position covariance for debug visualization.
+  // Extract the symmetric 2x2 position block of P for debug use.
   if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
   const covariance = state.kalman.P;
   const xx = covariance[0];
@@ -427,6 +452,7 @@ function getKalmanPositionCovariance() {
 
 function getKalmanProcessPositionCovariance(dtSeconds) {
   // Return the position block of the process noise Q for a given dt.
+  // This is used for the debug overlay to visualize anisotropy and rotation.
   if (!state.kalman) return null;
   const dt = Number.isFinite(dtSeconds) && dtSeconds > 0 ? dtSeconds : 1;
   const qBase = getProcessNoiseVariance();
@@ -446,7 +472,8 @@ function getKalmanProcessPositionCovariance(dtSeconds) {
 }
 
 function getKalmanPredictedPositionCovariance(seconds) {
-  // Integrate the covariance forward for the time-to-start projection.
+  // Integrate covariance forward for the time-to-start projection.
+  // This uses a repeated predict step so the intent is visible in code.
   if (!state.kalman || !Array.isArray(state.kalman.P)) return null;
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return getKalmanPositionCovariance();

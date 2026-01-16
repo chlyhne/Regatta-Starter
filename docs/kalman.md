@@ -298,6 +298,21 @@ When we have a yaw rate:
 - rotate the velocity vector by the yaw change
 - rotate the velocity covariance block so `P` stays consistent
 
+This is effectively a **coordinated-turn assumption**: heading changes redirect the
+velocity vector while preserving its magnitude and without introducing sideways speed.
+For sailboats this is a reasonable first-order model (the keel resists sideslip), even
+if reality is not perfectly lossless.
+
+Once we choose that deterministic rotation, the covariance **must** rotate with it.
+`P` is the covariance of the current state vector; if the state is rotated by a matrix
+`A`, the correct covariance is `P' = A P Aᵀ`. Not rotating `P` would leave the filter
+internally inconsistent (uncertainty still aligned to the old velocity direction).
+
+There is also a real-world constraint: the device is fixed to the boat, so the IMU is
+measuring **actual hull rotation**, and the boat’s own inertia acts as a physical
+low‑pass. That helps keep the yaw updates grounded. We still avoid unphysical
+instantaneous spins by clamping IMU dt and blending GPS heading over time.
+
 This does not add a new measurement update; it is a deterministic update between GPS
 fixes. The measurement noise `R` is unchanged.
 

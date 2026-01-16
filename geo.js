@@ -5,6 +5,8 @@ function toRadians(deg) {
 }
 
 function toMeters(point, origin) {
+  // Local tangent-plane projection (equirectangular) around the origin.
+  // Accurate enough for short race-course distances and fast to compute.
   const latRad = toRadians(point.lat);
   const lonRad = toRadians(point.lon);
   const originLatRad = toRadians(origin.lat);
@@ -15,6 +17,7 @@ function toMeters(point, origin) {
 }
 
 function fromMeters(point, origin) {
+  // Inverse of the local tangent-plane approximation in toMeters().
   const originLatRad = toRadians(origin.lat);
   const lat = origin.lat + (point.y / EARTH_RADIUS) * (180 / Math.PI);
   const lon =
@@ -24,6 +27,8 @@ function fromMeters(point, origin) {
 }
 
 function applyForwardOffset(position, velocity, offsetMeters) {
+  // Shift a GPS position forward along the current velocity direction.
+  // Used to estimate bow position from the device position.
   if (!position || !velocity) return position;
   if (!Number.isFinite(offsetMeters) || offsetMeters <= 0) return position;
   const speed = Math.hypot(velocity.x, velocity.y);
