@@ -234,11 +234,23 @@ function handleDeviceMotion(event) {
   if (!state.imuEnabled) return;
   const accel = event.accelerationIncludingGravity;
   if (!accel) return;
-  const next = {
+  const raw = {
     x: Number(accel.x) || 0,
     y: Number(accel.y) || 0,
     z: Number(accel.z) || 0,
   };
+  const linear = event.acceleration;
+  let next = raw;
+  if (linear) {
+    const lx = Number(linear.x) || 0;
+    const ly = Number(linear.y) || 0;
+    const lz = Number(linear.z) || 0;
+    const candidate = { x: raw.x - lx, y: raw.y - ly, z: raw.z - lz };
+    const candidateMag = Math.hypot(candidate.x, candidate.y, candidate.z);
+    if (Number.isFinite(candidateMag) && candidateMag > 0.1) {
+      next = candidate;
+    }
+  }
   if (!state.imu.gravity) {
     state.imu.gravity = { ...next };
   } else {
