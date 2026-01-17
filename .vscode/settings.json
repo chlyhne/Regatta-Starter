@@ -1,0 +1,29 @@
+{
+  // LaTeX Workshop setup for this repo:
+  // - Build `docs/master.tex` using latexmk from within `docs/` (-cd)
+  // - Enable SyncTeX so double-click in the PDF jumps to the TeX source
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "latexmk (docs/master.tex)",
+      "tools": ["latexmk-docs-master"]
+    }
+  ],
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk-docs-master",
+      "command": "latexmk",
+      "cwd": "${workspaceFolder}/docs",
+      "args": [
+        "-pdf",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-synctex=1",
+        "master.tex"
+      ]
+    }
+  ],
+  "latex-workshop.latex.recipe.default": "latexmk (docs/master.tex)",
+  "latex-workshop.view.pdf.viewer": "tab",
+  "latex-workshop.view.pdf.internal.synctex.keybinding": "double-click",
+  "latex-workshop.synctex.afterBuild.enabled": true
+}

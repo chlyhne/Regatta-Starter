@@ -11,6 +11,11 @@ speed behavior.
 
 Details: `docs/master.tex`
 
+## Docs (LaTeX)
+
+- Build: `latexmk -cd -pdf docs/master.tex`
+- VS Code: open `docs/master.tex` and use LaTeX Workshop’s PDF tab viewer (SyncTeX is enabled).
+
 ## Run locally
 
 Open `index.html` in a browser, or serve the folder with any static server.

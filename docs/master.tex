@@ -1,5 +1,21 @@
+% !TeX program = latexmk
+% !TeX encoding = UTF-8
 \input{preamble.tex}
+
+\title{RaceTimer Technical Notes}
+\author{}
+\date{\today}
+
 \begin{document}
+\pagenumbering{roman}
+\hypersetup{pageanchor=false}
+\maketitle
+\thispagestyle{empty}
+\clearpage
+\tableofcontents
+\clearpage
+\hypersetup{pageanchor=true}
+\pagenumbering{arabic}
 \input{kalman.tex}
 \clearpage
 \input{tuning.tex}
