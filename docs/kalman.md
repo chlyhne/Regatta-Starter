@@ -255,6 +255,12 @@ we estimate down on every motion event:
 The low-pass factor is tunable and scaled by boat length: large boats get a slower, steadier
 gravity estimate; small boats react faster.
 
+Plot: gravity low-pass `alpha` vs boat length. It is flat at the anchor
+(`L0 = 3 m`, `alpha0 = 0.12`), then falls as `1/sqrt(L)` until it hits
+the minimum clamp (`0.04`).
+
+![IMU gravity low-pass vs boat length](./plots/gain-gravity-alpha.svg)
+
 ### 7.2 Converting gyro into yaw rate
 
 The device supplies rotation rates around its own axes. We project that rotation vector
@@ -310,7 +316,7 @@ internally inconsistent (uncertainty still aligned to the old velocity direction
 
 There is also a real-world constraint: the device is fixed to the boat, so the IMU is
 measuring **actual hull rotation**, and the boat’s own inertia acts as a physical
-low‑pass. That helps keep the yaw updates grounded. We still avoid unphysical
+low-pass. That helps keep the yaw updates grounded. We still avoid unphysical
 instantaneous spins by clamping IMU dt and blending GPS heading over time.
 
 This does not add a new measurement update; it is a deterministic update between GPS
@@ -386,6 +392,11 @@ This is implemented in `kalman.js#getProcessNoiseVariance()` using:
 Interpretation:
 - Longer boat ⇒ smaller `q` ⇒ filter changes velocity estimate more slowly ⇒ steadier output.
 
+Plot: `q` length scaling. For `L <= 3 m` it stays at `baseQ`, then follows
+the `1/L^2` curve for longer boats.
+
+![Process noise vs boat length](./plots/gain-q-length.svg)
+
 ### 8.2 Speed scaling using recent max speed (not instantaneous speed)
 
 If we made `q` depend on instantaneous speed, you get a bad corner case:
@@ -412,6 +423,11 @@ So:
 `speedScale = max(v*_kn, 1) / 3`
 
 This makes the filter responsive if the boat has recently moved fast, even if it is currently slow.
+
+Plot: speed scale vs recent max speed. The scale is clamped at `1 kn` and
+equals `1.0` at the `3 kn` anchor.
+
+![Speed-based gain scale](./plots/gain-speed-scale.svg)
 
 ## 9) Marking the start line with GPS (no bow offset)
 
