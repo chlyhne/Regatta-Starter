@@ -16,11 +16,11 @@
 //   anchored so the historical/static tuning corresponds to 3 knots. We use the
 //   recent max speed (instead of current speed) as a proxy for potential acceleration.
 //
-// Full math + physical arguments: docs/kalman.md
+// Full math + physical arguments: docs/master.tex
 
 const KALMAN_TUNING = {
   processNoise: {
-    baseAccelerationVariance: 3.2,
+    baseAccelerationVariance: 0.8,
     baseBoatLengthMeters: 3,
     speedScale: {
       minKnots: 1,

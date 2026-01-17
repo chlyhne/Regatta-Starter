@@ -9,7 +9,7 @@ vector for the start-line calculations. Measurement noise is taken from reported
 and the process noise is gain-scheduled using boat-length scaling arguments and recent-max
 speed behavior.
 
-Details: `docs/kalman.md`
+Details: `docs/master.tex`
 
 ## Run locally
 
