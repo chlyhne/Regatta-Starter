@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v105";
+const CACHE_NAME = "racetimer-v107";
 const ASSETS = [
   "./",
   "./index.html",
@@ -22,15 +22,10 @@ const ASSETS = [
   "./velocity.js",
   "./kalman.js",
   "./map.js",
-  "./docs/kalman.md",
   "./docs/kalman.tex",
-  "./docs/tuning.md",
   "./docs/tuning.tex",
   "./docs/master.tex",
   "./docs/preamble.tex",
-  "./docs/plots/gain-q-length.svg",
-  "./docs/plots/gain-speed-scale.svg",
-  "./docs/plots/gain-gravity-alpha.svg",
   "./docs/plots/gain-q-length.pdf",
   "./docs/plots/gain-speed-scale.pdf",
   "./docs/plots/gain-gravity-alpha.pdf",

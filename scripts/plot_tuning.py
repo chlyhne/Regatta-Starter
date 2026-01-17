@@ -52,8 +52,7 @@ def annotate_line(ax, label, xy, xytext, ha="left", va="center"):
 
 
 def save_plot(fig, name):
-    # Save both SVG (for Markdown) and PDF (for LaTeX builds).
-    fig.savefig(OUTPUT_DIR / f"{name}.svg", format="svg")
+    # Save PDF for LaTeX builds (SVGs removed now that docs are LaTeX-only).
     fig.savefig(OUTPUT_DIR / f"{name}.pdf", format="pdf")
 
 
