@@ -2,30 +2,7 @@
 % !TeX root = master.tex
 
 \hypertarget{kalman-filter-math-physical-arguments-and-gain-scheduling}{%
-\section{Kalman Filter: Math, Physical Arguments, and Gain
-Scheduling}\label{kalman-filter-math-physical-arguments-and-gain-scheduling}}
-
-RaceTimer uses a small Kalman filter to turn ``jittery GPS fixes'' into
-a \textbf{steady position} and a \textbf{stable velocity vector}. The
-aim is not academic perfection; it is a practical tool for sailors:
-
-\begin{itemize}
-\tightlist
-\item
-  numbers should not jump around when you need to make decisions quickly
-\item
-  direction and speed estimates should not flip wildly from one fix to
-  the next
-\item
-  the filter should adapt automatically when GPS quality changes
-\end{itemize}
-
-This document is written as an article. It starts from first principles,
-then ties each assumption directly to the code. Tuning details live in
-\texttt{docs/tuning.tex}.
-
-If you only want the brief version, see the ``Kalman filter'' section in
-\texttt{README.md}.
+\section{Kalman filter}\label{kalman-filter-math-physical-arguments-and-gain-scheduling}}
 
 \hypertarget{why-a-kalman-filter-at-all}{%
 \subsection{Why a Kalman filter at
@@ -58,48 +35,27 @@ The Kalman filter is a compact way to combine:
   measurements (``GPS says we are here, but with some uncertainty'').
 \end{enumerate}
 
-The filter's job is to produce the best compromise \textbf{for the
-use-case}.
+The filter's job is to produce the best compromise for the use-case.
 
-\hypertarget{coordinate-system-turning-latitudelongitude-into-meters}{%
-\subsection{Coordinate system: turning latitude/longitude into
-meters}\label{coordinate-system-turning-latitudelongitude-into-meters}}
-
-The filter runs in a local tangent-plane approximation:
-
-\begin{itemize}
-\tightlist
-\item
-  choose a local origin near the current area
-\item
-  convert \((\text{lat}, \text{lon})\) into \((x, y)\) meters relative
-  to that origin
-\end{itemize}
-
-This is implemented with helpers in \texttt{geo.js} (\texttt{toMeters},
-\texttt{fromMeters}). Over the distances we care about at a start line,
-this is accurate enough and avoids complicated geodesy inside the
-filter.
-
-\hypertarget{what-the-filter-estimates-the-state}{%
-\subsection{What the filter estimates (the
-state)}\label{what-the-filter-estimates-the-state}}
+\subsection{Movement model}
 
 We estimate both position and velocity in 2D:
-
 \[
 x = [p_x, p_y, v_x, v_y]^T
 \]
 
-Units: - \(p_x, p_y\) in meters - \(v_x, v_y\) in meters/second
+Units:
+\begin{itemize}
+\tightlist
+\item
+  \(p_x, p_y\) in meters
+\item
+  \(v_x, v_y\) in meters/second
+\end{itemize}
 
-This means the filter can produce a steady velocity vector even when GPS
-does not provide a reliable heading/speed (e.g., very low speed, or a
+This state definition matters operationally: it lets the app produce a steady velocity
+vector even when GPS does not provide a reliable heading/speed (e.g.\ very low speed, or a
 device/browser that omits those fields).
-
-\hypertarget{the-motion-model-constant-velocity}{%
-\subsection{The motion model (constant
-velocity)}\label{the-motion-model-constant-velocity}}
 
 Between GPS updates, we assume the boat maintains constant velocity over
 a short interval \(dt\). That is:
@@ -135,13 +91,69 @@ The term \texttt{w} is ``everything the model does not capture'':
 acceleration, turning, waves, gusts, steering corrections, and also
 model mismatch.
 
-That is what \textbf{process noise} is for.
+That is what process noise is for.
 
-\hypertarget{process-noise-q-modelling-unknown-acceleration}{%
-\subsection{Process noise Q: modelling unknown
-acceleration}\label{process-noise-q-modelling-unknown-acceleration}}
+Turning update (optional, IMU-assisted). The basic CV model above
+assumes the velocity vector is constant between updates. When IMU assist is
+enabled, we add one extra deterministic step between GPS fixes:
+\begin{itemize}
+\tightlist
+\item
+  integrate the yaw rate to a heading change \(\Delta\psi\)
+\item
+  update a stored heading estimate \(\text{headingRad}\)
+\item
+  rotate the velocity vector \([v_x, v_y]\) by \(\Delta\psi\)
+\item
+  rotate the covariance so \texttt{P} stays consistent
+\end{itemize}
 
-\textbf{Interpretation of \(q\).} We use a standard ``nearly constant velocity''
+This is effectively a coordinated-turn assumption: heading changes
+redirect the velocity vector while preserving its magnitude and without
+introducing sideways speed. For sailboats this is a reasonable first-order
+model (the keel resists sideslip), even if reality is not perfectly lossless.
+
+Once we choose that deterministic rotation, the covariance must
+rotate with it. \(P\) is the covariance of the current state vector; if the
+state is rotated by a matrix \(A\), the correct covariance is
+\(P' = A P A^T\). Here \(P'\) means the \emph{updated} covariance after the
+rotation (not a time derivative). We then \emph{replace} the filter's stored
+covariance with \(P'\) so that every subsequent predict/update step uses the
+rotated uncertainty. In other words, \(P'\) becomes the new \(P\) used in the
+next \(P^- = F P F^T + Q\) and in the next Kalman update. Not rotating \(P\)
+would leave the filter internally inconsistent (uncertainty still aligned to
+the old velocity direction).
+
+Rotation is applied only to the \emph{velocity components} of the state:
+position stays in the world frame, but velocity is rotated to track the boat's
+heading. In matrix form, the state rotation is:
+
+\[
+A =
+\begin{bmatrix}
+1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 \\
+0 & 0 & \cos\Delta\psi & -\sin\Delta\psi \\
+0 & 0 & \sin\Delta\psi & \cos\Delta\psi
+\end{bmatrix}
+\]
+
+Applying \(P' = A P A^T\) with this block-rotation preserves the position
+covariances in the global frame while keeping the velocity uncertainty aligned
+with the updated heading (including the position/velocity cross terms).
+
+There is also a real-world constraint: the device is fixed to the boat, so the
+IMU is measuring actual hull rotation, and the boat's own inertia
+acts as a physical low-pass. That helps keep the yaw updates grounded. We
+still avoid unphysical instantaneous spins by clamping IMU dt and blending GPS
+heading over time.
+
+This turning step does not add a new measurement update; it is a deterministic
+update between GPS fixes. The measurement noise \texttt{R} is unchanged.
+
+\subsection{Noise model (process and measurement)}
+
+Interpretation of \(q\). We use a standard ``nearly constant velocity''
 (CV) model where acceleration is modeled as continuous white noise. In this
 model:
 
@@ -159,7 +171,7 @@ model:
 
 You can think of it as: ``how twitchy is the boat allowed to be?''
 
-\textbf{Discrete-time \(Q\) matrix.} For one axis (say \(x\)), with state
+Discrete-time \(Q\) matrix. For one axis (say \(x\)), with state
 \([p, v]^T\), constant velocity model, and white acceleration noise, the
 discrete-time process noise covariance becomes:
 
@@ -194,27 +206,46 @@ q\,dt^3/2 & 0 & q\,dt^2 & 0 \\
 \end{bmatrix}
 \]
 
-In RaceTimer we make a more boat-like assumption: \textbf{forward and
-sideways acceleration are not equally likely}. We therefore:
+In RaceTimer we make a more boat-like assumption: forward and sideways
+acceleration are not equally likely. We therefore:
+
+The important modeling choice is that a boat can change speed much more easily
+along its heading than sideways. In other words, acceleration uncertainty is
+anisotropic:
 
 \begin{itemize}
 \tightlist
 \item
-  set a forward acceleration variance \(q_f\)
+  \textbf{Forward (along the boat's heading):} higher variance, because
+  speed changes here are common.
 \item
-  set a lateral acceleration variance \(q_l\) (typically smaller)
-\item
-  rotate this anisotropic covariance into the global x/y frame using the
-  current heading
+  \textbf{Sideways (across the boat):} lower variance, because real boats
+  do not slide sideways nearly as much.
 \end{itemize}
+
+We encode that by building an anisotropic \texttt{Q} in a local frame aligned
+with the current heading: a forward acceleration variance \(q_f\) and a
+smaller lateral variance \(q_l\). We then rotate that covariance into the
+global x/y frame so the model stays aligned with the boat's direction of
+travel even as it turns.
 
 The matrix is still symmetric and uses the same CV structure, but it now
 contains off-diagonal terms because the ``forward'' axis is not aligned
 with the global x/y axes.
 
-\hypertarget{measurement-model-gps-gives-position-with-accuracy}{%
-\subsection{Measurement model: GPS gives position (with
-accuracy)}\label{measurement-model-gps-gives-position-with-accuracy}}
+Debug visualization. In the debug view we draw the position block of
+\texttt{Q} so this anisotropy is obvious. The overlay is:
+
+\begin{itemize}
+\tightlist
+\item
+  anchored to the \textbf{device position} (the Kalman state is the device)
+\item
+  rotated by the \textbf{current velocity heading} (changes with GPS or IMU
+  turning updates)
+\item
+  scaled to a fixed display length to show orientation only
+\end{itemize}
 
 GPS provides a measurement of position:
 
@@ -240,7 +271,7 @@ H =
 
 The measurement noise \texttt{v} has covariance \texttt{R}.
 
-\textbf{Choosing \(R\) from GPS accuracy.} Browsers provide
+Choosing \(R\) from GPS accuracy. Browsers provide
 \texttt{position.coords.accuracy} in meters. It is (roughly) a
 \(1\sigma\) radius. We make a simple, explicit assumption:
 
@@ -293,7 +324,7 @@ The filter keeps:
 
 Each new GPS fix performs:
 
-\textbf{Predict step.}
+Predict step:
 
 \[
 x^- = F x
@@ -303,7 +334,7 @@ x^- = F x
 P^- = F P F^T + Q
 \]
 
-\textbf{Update step.}
+Update step:
 
 Innovation covariance:
 
@@ -350,7 +381,7 @@ fixes)}\label{predict-only-updates-at-5-hz-between-fixes}}
 
 GPS does not arrive at a fixed rate. The app still needs a stable,
 smooth estimate for race view, debug view, and GPS marking. To get that,
-we run the \textbf{predict step} on a fixed timer (about 5 Hz) whenever
+we run the predict step on a fixed timer (about 5 Hz) whenever
 a filter state exists.
 
 What that means in practice:
@@ -394,7 +425,7 @@ speed. When IMU assist is enabled, we use the gyroscope's yaw rate to
 update the heading estimate between GPS fixes, while still letting GPS
 gently correct long-term drift.
 
-\textbf{Estimating the down axis.} The gyroscope reports rotation rates about
+Estimating the down axis. The gyroscope reports rotation rates about
 the device's axes, but we need the component of rotation about the vertical
 (down) axis to get yaw. Because the device can move in waves, we estimate down
 on every motion event:
@@ -415,7 +446,7 @@ The low-pass factor is configured in \texttt{docs/tuning.tex} along with
 the other tuning constants. This section focuses on how the estimate is
 used once tuned.
 
-\textbf{Yaw rate from the gyro.} The device supplies rotation rates around its
+Yaw rate from the gyro. The device supplies rotation rates around its
 own axes. We project that rotation vector onto the estimated gravity direction:
 
 \[
@@ -425,7 +456,7 @@ own axes. We project that rotation vector onto the estimated gravity direction:
 This gives an estimated rotation rate about down. The sign is chosen so
 a right turn increases heading in the race/debug view.
 
-\textbf{Axis mapping sanity check.} On iOS (screen up, flat on a table) the
+Axis mapping sanity check. On iOS (screen up, flat on a table) the
 observed mapping is:
 
 \begin{itemize}
@@ -466,69 +497,18 @@ To confirm this on-device, the Debug panel shows:
 These readouts make it clear if pitch/roll are leaking into yaw and
 whether axis mapping needs to be revisited.
 
-\textbf{Updating heading and velocity from yaw.} When we have a yaw rate:
+Applying yaw to the filter. The yaw rate is integrated to a heading
+change and applied through the turning update described in the movement model
+(rotate the velocity state and covariance so the filter stays internally
+consistent). This is a deterministic update between GPS fixes; \(R\) is
+unchanged.
 
-\begin{itemize}
-\tightlist
-\item
-  update a separate \(\text{headingRad}\)
-\item
-  rotate the velocity vector by the yaw change
-\item
-  rotate the velocity covariance block so \texttt{P} stays consistent
-\end{itemize}
-
-This is effectively a \textbf{coordinated-turn assumption}: heading
-changes redirect the velocity vector while preserving its magnitude and
-without introducing sideways speed. For sailboats this is a reasonable
-first-order model (the keel resists sideslip), even if reality is not
-perfectly lossless.
-
-Once we choose that deterministic rotation, the covariance \textbf{must}
-rotate with it. \(P\) is the covariance of the current state vector; if
-the state is rotated by a matrix \(A\), the correct covariance is
-\(P' = A P A^T\). Here \(P'\) means the \emph{updated} covariance after
-the rotation (not a time derivative). We then \emph{replace} the filter's
-stored covariance with \(P'\) so that every subsequent predict/update
-step uses the rotated uncertainty. In other words, \(P'\) becomes the
-new \(P\) used in the next \(P^- = F P F^T + Q\) and in the next Kalman
-update. Not rotating \(P\) would leave the filter internally inconsistent
-(uncertainty still aligned to the old velocity direction).
-
-Rotation is applied only to the \emph{velocity block} of the state:
-the position components stay in the world frame, but the velocity
-components are rotated to track the boat's heading. In matrix form, the
-state rotation is:
-
-\[
-A =
-\begin{bmatrix}
-1 & 0 & 0 & 0 \\
-0 & 1 & 0 & 0 \\
-0 & 0 & \cos\Delta\psi & -\sin\Delta\psi \\
-0 & 0 & \sin\Delta\psi & \cos\Delta\psi
-\end{bmatrix}
-\]
-
-Applying \(P' = A P A^T\) with this block-rotation preserves the
-position covariances in the global frame while keeping the velocity
-uncertainty aligned with the updated heading.
-
-There is also a real-world constraint: the device is fixed to the boat,
-so the IMU is measuring \textbf{actual hull rotation}, and the boat's
-own inertia acts as a physical low-pass. That helps keep the yaw updates
-grounded. We still avoid unphysical instantaneous spins by clamping IMU
-dt and blending GPS heading over time.
-
-This does not add a new measurement update; it is a deterministic update
-between GPS fixes. The measurement noise \texttt{R} is unchanged.
-
-\textbf{Blending GPS and IMU heading.} When GPS speed is above a minimum
+Blending GPS and IMU heading. When GPS speed is above a minimum
 threshold, we compute a GPS heading from the Kalman velocity. If IMU is
 enabled, GPS nudges the IMU heading with a tunable weight. If IMU is disabled,
 GPS heading is used directly. Tuning details live in \texttt{docs/tuning.tex}.
 
-\textbf{Calibration workflow (per device).} Different devices report gyro axes
+Calibration workflow (per device). Different devices report gyro axes
 differently. To avoid hard-coded per-device mappings, RaceTimer uses a simple
 on-device calibration:
 
@@ -556,8 +536,8 @@ disabled.
 offset)}\label{marking-the-start-line-with-gps-no-bow-offset}}
 
 When you press ``Set port mark (GPS)'' or ``Set starboard mark (GPS)'',
-the app stores the \textbf{latest Kalman position estimate for the
-device}. We deliberately do \textbf{not} apply the bow offset here:
+the app stores the latest Kalman position estimate for the device. We
+deliberately do not apply the bow offset here:
 
 \begin{itemize}
 \tightlist
@@ -579,8 +559,8 @@ delivers at a slower rate.
 projections}\label{bow-offset-how-it-is-applied-in-race-projections}}
 
 The Kalman filter estimates the device position and velocity. The boat
-bow is then constructed by shifting the device position \textbf{forward
-along the velocity vector} by the user's bow offset.
+bow is then constructed by shifting the device position forward along the
+velocity vector by the user's bow offset.
 
 Race view uses two projections, and the bow offset is handled
 differently in each:
@@ -588,12 +568,12 @@ differently in each:
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi})}
 \item
-  \textbf{At current heading}\\
+  At current heading\\
   We already have the bow position (device + forward offset). That bow
-  point is projected along the \textbf{current velocity vector} to the
+  point is projected along the current velocity vector to the
   start time.
 \item
-  \textbf{Towards line (direct to the line)}\\
+  Towards line (direct to the line)\\
   Here we assume you will steer straight toward the closest point on the
   line. We therefore:
 
@@ -610,53 +590,6 @@ differently in each:
 \end{enumerate}
 
 This keeps the geometry consistent for each assumption.
-
-\hypertarget{why-q-is-rotated-forward-vs-sideways-acceleration}{%
-\subsection{\texorpdfstring{Why \texttt{Q} is rotated: forward vs
-sideways
-acceleration}{Why Q is rotated: forward vs sideways acceleration}}\label{why-q-is-rotated-forward-vs-sideways-acceleration}}
-
-The \textbf{important modeling choice} is that a boat can change speed
-\textbf{much more easily along its heading} than sideways. In other
-words, acceleration uncertainty is \textbf{anisotropic}:
-
-\begin{itemize}
-\tightlist
-\item
-  \textbf{Forward (along the boat's heading):} higher variance, because
-  speed changes here are common.
-\item
-  \textbf{Sideways (across the boat):} lower variance, because real
-  boats do not slide sideways nearly as much.
-\end{itemize}
-
-We encode that by building an anisotropic \texttt{Q} with a forward
-variance and a smaller sideways variance, then \textbf{rotating that
-covariance into the global x/y frame} using the current velocity
-heading. This keeps the model aligned with the boat's direction of
-travel and makes the filter less willing to ``invent'' sideways speed.
-
-In the debug view we draw the \textbf{position block of \texttt{Q}} so
-this anisotropy is obvious. The overlay is:
-
-\begin{itemize}
-\tightlist
-\item
-  anchored to the \textbf{device position} (the Kalman state is the
-  device)
-\item
-  rotated by the \textbf{current velocity heading} (changes with GPS or
-  IMU updates)
-\item
-  scaled to a fixed display length (currently 10 m) to show orientation
-  only
-\end{itemize}
-
-We still maintain the full covariance \texttt{P} internally, and it is
-generally \textbf{not diagonal} even if \texttt{R} is isotropic (the CV
-model couples position/velocity, and updates add correlations). We avoid
-plotting \texttt{P} here because its shape is dominated by measurement
-updates rather than the model structure we want to inspect.
 
 \hypertarget{where-to-look-in-the-repo}{%
 \subsection{Where to look in the

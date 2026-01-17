@@ -1,0 +1,19 @@
+% !TeX root = master.tex
+
+\section{Appendix}
+
+\subsection{Coordinate system: latitude/longitude to meters}
+
+Internally, the filter runs in a local tangent-plane approximation:
+\begin{itemize}
+\tightlist
+\item
+  choose a local origin near the current area
+\item
+  convert \((\text{lat}, \text{lon})\) into \((x, y)\) meters relative to that origin
+\end{itemize}
+
+This is implemented with helpers in \texttt{geo.js} (\texttt{toMeters}, \texttt{fromMeters}).
+Over the distances we care about at a start line, this approximation is accurate enough and
+avoids complicated geodesy inside the filter.
+

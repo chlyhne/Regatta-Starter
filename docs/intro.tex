@@ -1,0 +1,23 @@
+% !TeX root = master.tex
+
+\section{Introduction}
+
+RaceTimer is a minimal race-start tool for sailors. The goal is simple: stable, readable
+numbers you can trust when the start line is busy.
+
+This document is a technical report that explains how the app works and why the math is
+set up the way it is. It is structured so more chapters can be added later (e.g.\ UI/UX
+design notes, validation logs, or device-specific sensor behavior), without turning the
+Kalman chapter into a catch-all.
+
+The Kalman filter exists to turn jittery GPS fixes into a steady position and a stable
+velocity vector:
+\begin{itemize}
+\tightlist
+\item
+  numbers should not jump around when you need to make decisions quickly
+\item
+  direction and speed estimates should not flip wildly from one fix to the next
+\item
+  the filter should adapt automatically when GPS quality changes
+\end{itemize}

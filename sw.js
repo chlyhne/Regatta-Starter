@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v107";
+const CACHE_NAME = "racetimer-v108";
 const ASSETS = [
   "./",
   "./index.html",
@@ -26,6 +26,8 @@ const ASSETS = [
   "./docs/tuning.tex",
   "./docs/master.tex",
   "./docs/preamble.tex",
+  "./docs/intro.tex",
+  "./docs/appendix.tex",
   "./docs/plots/gain-q-length.pdf",
   "./docs/plots/gain-speed-scale.pdf",
   "./docs/plots/gain-gravity-alpha.pdf",
