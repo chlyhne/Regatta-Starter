@@ -5,25 +5,30 @@ import { formatDistanceWithUnit } from "./format.js";
 import { BUILD_STAMP } from "./build.js";
 
 function updateGPSDisplay() {
-  if (!els.gpsIcon) return;
+  const icons = [els.gpsIcon, els.vmgGpsIcon].filter(Boolean);
+  if (!icons.length) return;
   if (!state.position) {
-    els.gpsIcon.classList.remove("ok", "bad", "warn");
-    els.gpsIcon.classList.add("bad");
-    els.gpsIcon.title = "GPS waiting";
+    icons.forEach((icon) => {
+      icon.classList.remove("ok", "bad", "warn");
+      icon.classList.add("bad");
+      icon.title = "GPS waiting";
+    });
     return;
   }
   const accuracy = state.position.coords.accuracy;
-  if (accuracy <= 10) {
-    els.gpsIcon.classList.add("ok");
-    els.gpsIcon.classList.remove("bad", "warn");
-  } else if (accuracy <= 25) {
-    els.gpsIcon.classList.add("warn");
-    els.gpsIcon.classList.remove("ok", "bad");
-  } else {
-    els.gpsIcon.classList.add("bad");
-    els.gpsIcon.classList.remove("ok", "warn");
-  }
-  els.gpsIcon.title = `GPS accuracy ${formatDistanceWithUnit(accuracy)}`;
+  icons.forEach((icon) => {
+    if (accuracy <= 10) {
+      icon.classList.add("ok");
+      icon.classList.remove("bad", "warn");
+    } else if (accuracy <= 25) {
+      icon.classList.add("warn");
+      icon.classList.remove("ok", "bad");
+    } else {
+      icon.classList.add("bad");
+      icon.classList.remove("ok", "warn");
+    }
+    icon.title = `GPS accuracy ${formatDistanceWithUnit(accuracy)}`;
+  });
 }
 
 function updateDebugControls() {

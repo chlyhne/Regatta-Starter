@@ -67,6 +67,18 @@ const KALMAN_PREDICT_HZ = 5;
 const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
 const IMU_MAPPING_DEFAULT = { axes: ["alpha", "beta", "gamma"], signs: [1, 1, 1] };
 const IMU_MAPPING_CANDIDATES = buildImuMappingCandidates();
+const VMG_TAU_SECONDS = 10;
+const VMG_RLS_INIT_P = 100;
+const KNOTS_TO_MS = 0.514444;
+const VMG_IMU_GPS_MIN_SPEED = 2 * KNOTS_TO_MS;
+const VMG_IMU_GPS_BLEND_TAU = 12;
+const VMG_IMU_DT_CLAMP = { min: 0.005, max: 0.25 };
+const VMG_MIN_SLOPE_SCALE = 0.02;
+const VMG_SLOPE_RANGE = 1.25;
+const VMG_POSITION_RANGE = 40;
+const VMG_CONF_MIN = 12;
+const VMG_CONF_MAX = 90;
+const VMG_CONF_SCALE = 60;
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
 let countdownPickerLive = false;
@@ -75,6 +87,29 @@ let imuCalibrationActive = false;
 let imuCalibrationSamples = [];
 let imuCalibrationTimer = null;
 let imuCalibrationError = "";
+const vmgEstimate = {
+  lastTs: null,
+  lastHeading: null,
+  lastHeadingUnwrapped: null,
+  lastRawPosition: null,
+  lastSpeed: null,
+  headingRef: null,
+  theta0: 0,
+  theta1: 0,
+  p11: VMG_RLS_INIT_P,
+  p12: 0,
+  p22: VMG_RLS_INIT_P,
+  residualVar: null,
+  sampleCount: 0,
+  slope: null,
+  slopeStdErr: null,
+};
+const vmgImu = {
+  headingRad: null,
+  lastTimestamp: null,
+  lastGpsTs: null,
+};
+let vmgTack = "starboard";
 
 function updateViewportHeight() {
   const height = window.visualViewport?.height || window.innerHeight;
@@ -228,6 +263,300 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function normalizeDeltaDegrees(delta) {
+  let wrapped = (delta + 540) % 360;
+  wrapped -= 180;
+  return wrapped;
+}
+
+function normalizeAngleRad(angle) {
+  let wrapped = angle % (2 * Math.PI);
+  if (wrapped < 0) wrapped += 2 * Math.PI;
+  return wrapped;
+}
+
+function normalizeDeltaRad(delta) {
+  let wrapped = (delta + Math.PI) % (2 * Math.PI);
+  if (wrapped < 0) wrapped += 2 * Math.PI;
+  return wrapped - Math.PI;
+}
+
+function headingRadToDegrees(headingRad) {
+  if (!Number.isFinite(headingRad)) return null;
+  const deg = (headingRad * 180) / Math.PI;
+  let wrapped = deg % 360;
+  if (wrapped < 0) wrapped += 360;
+  return wrapped;
+}
+
+function unwrapHeadingDegrees(heading, lastHeading, lastUnwrapped) {
+  if (!Number.isFinite(heading)) return null;
+  if (!Number.isFinite(lastHeading) || !Number.isFinite(lastUnwrapped)) {
+    return heading;
+  }
+  const delta = normalizeDeltaDegrees(heading - lastHeading);
+  return lastUnwrapped + delta;
+}
+
+function headingFromVelocity(velocity) {
+  if (!velocity || !Number.isFinite(velocity.x) || !Number.isFinite(velocity.y)) {
+    return null;
+  }
+  const headingRad = Math.atan2(velocity.x, velocity.y);
+  if (!Number.isFinite(headingRad)) return null;
+  const headingDeg = (headingRad * 180) / Math.PI;
+  return headingDeg < 0 ? headingDeg + 360 : headingDeg;
+}
+
+function resetVmgEstimator() {
+  vmgEstimate.lastTs = null;
+  vmgEstimate.lastHeading = null;
+  vmgEstimate.lastHeadingUnwrapped = null;
+  vmgEstimate.lastRawPosition = null;
+  vmgEstimate.lastSpeed = null;
+  vmgEstimate.headingRef = null;
+  vmgEstimate.theta0 = 0;
+  vmgEstimate.theta1 = 0;
+  vmgEstimate.p11 = VMG_RLS_INIT_P;
+  vmgEstimate.p12 = 0;
+  vmgEstimate.p22 = VMG_RLS_INIT_P;
+  vmgEstimate.residualVar = null;
+  vmgEstimate.sampleCount = 0;
+  vmgEstimate.slope = null;
+  vmgEstimate.slopeStdErr = null;
+  renderVmgIndicator();
+}
+
+function resetVmgImuState() {
+  vmgImu.headingRad = null;
+  vmgImu.lastTimestamp = null;
+  vmgImu.lastGpsTs = null;
+}
+
+function applyVmgImuYawRate(yawRateRad, dtSeconds) {
+  if (!state.imuEnabled) return;
+  if (!Number.isFinite(yawRateRad) || !Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
+  if (!Number.isFinite(vmgImu.headingRad)) return;
+  const delta = yawRateRad * dtSeconds;
+  if (!Number.isFinite(delta) || delta === 0) return;
+  vmgImu.headingRad = normalizeAngleRad(vmgImu.headingRad + delta);
+}
+
+function updateVmgImuFromGps(sample) {
+  if (!state.imuEnabled) return;
+  if (!sample || !Number.isFinite(sample.heading)) return;
+  const headingRad = normalizeAngleRad(toRadians(sample.heading));
+  if (!Number.isFinite(vmgImu.headingRad)) {
+    vmgImu.headingRad = headingRad;
+    vmgImu.lastGpsTs = sample.ts;
+    return;
+  }
+  if (!Number.isFinite(sample.speed) || sample.speed < VMG_IMU_GPS_MIN_SPEED) return;
+  if (isVmgGpsBad()) return;
+  const lastTs = Number.isFinite(vmgImu.lastGpsTs) ? vmgImu.lastGpsTs : sample.ts;
+  const dtSec = Math.max(0, (sample.ts - lastTs) / 1000);
+  vmgImu.lastGpsTs = sample.ts;
+  const delta = normalizeDeltaRad(headingRad - vmgImu.headingRad);
+  const weight = 1 - Math.exp(-dtSec / VMG_IMU_GPS_BLEND_TAU);
+  if (!Number.isFinite(weight) || weight <= 0) return;
+  vmgImu.headingRad = normalizeAngleRad(vmgImu.headingRad + delta * weight);
+}
+
+function getVmgHeadingDegrees(sample) {
+  if (!sample) return null;
+  if (state.imuEnabled) {
+    updateVmgImuFromGps(sample);
+    const imuHeading = headingRadToDegrees(vmgImu.headingRad);
+    if (Number.isFinite(imuHeading)) {
+      return imuHeading;
+    }
+  }
+  return sample.heading;
+}
+
+function getVmgTwaDegrees() {
+  if (!els.vmgTwa) return 40;
+  const value = Number.parseFloat(els.vmgTwa.value);
+  if (!Number.isFinite(value)) return 40;
+  return clamp(value, 35, 50);
+}
+
+function getVmgSample(position) {
+  if (!position || !position.coords) return null;
+  const coords = position.coords;
+  let speed = Number.isFinite(coords.speed) ? coords.speed : null;
+  let heading = Number.isFinite(coords.heading) ? coords.heading : null;
+  if (!Number.isFinite(speed) || !Number.isFinite(heading)) {
+    const previous = vmgEstimate.lastRawPosition;
+    if (previous) {
+      const computed = computeVelocityFromPositions(position, previous);
+      if (!Number.isFinite(speed)) {
+        speed = computed.speed;
+      }
+      if (!Number.isFinite(heading)) {
+        heading = headingFromVelocity(computed);
+      }
+    }
+  }
+  vmgEstimate.lastRawPosition = position;
+  if (!Number.isFinite(speed)) return null;
+  if (!Number.isFinite(heading)) {
+    heading = null;
+  }
+  const ts = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+  return { speed, heading, ts };
+}
+
+function isVmgGpsBad() {
+  if (!state.position) return true;
+  if (isGpsStale()) return true;
+  const accuracy = state.position.coords?.accuracy;
+  if (!Number.isFinite(accuracy)) return true;
+  return accuracy > 20;
+}
+
+function renderVmgIndicator() {
+  if (!els.vmgBar) return;
+  const speed = Number.isFinite(vmgEstimate.lastSpeed) ? vmgEstimate.lastSpeed : null;
+  const slope = Number.isFinite(vmgEstimate.slope) ? vmgEstimate.slope : null;
+  const slopeStdErr = Number.isFinite(vmgEstimate.slopeStdErr) ? vmgEstimate.slopeStdErr : null;
+
+  let positionPercent = 50;
+  let confidencePercent = VMG_CONF_MAX;
+  if (Number.isFinite(speed) && Number.isFinite(slope)) {
+    const twa = getVmgTwaDegrees();
+    const breakEven = speed * Math.tan(toRadians(twa)) * (Math.PI / 180);
+    const scale = Math.max(Math.abs(breakEven), VMG_MIN_SLOPE_SCALE);
+    const bearingAwaySlope = vmgTack === "starboard" ? slope : -slope;
+    const delta = bearingAwaySlope - breakEven;
+    const normalized = clamp(delta / (scale * VMG_SLOPE_RANGE), -1, 1);
+    const bearingAwayIsLeft = vmgTack === "starboard";
+    const orientation = bearingAwayIsLeft ? -1 : 1;
+    positionPercent = 50 + normalized * orientation * VMG_POSITION_RANGE;
+    if (Number.isFinite(slopeStdErr)) {
+      const ratio = slopeStdErr / scale;
+      confidencePercent = clamp(
+        VMG_CONF_MIN + ratio * VMG_CONF_SCALE,
+        VMG_CONF_MIN,
+        VMG_CONF_MAX
+      );
+    }
+  }
+
+  const safePosition = clamp(positionPercent, 5, 95);
+  els.vmgBar.style.setProperty("--vmg-position", `${safePosition}%`);
+  els.vmgBar.style.setProperty("--vmg-confidence", `${confidencePercent}%`);
+}
+
+function updateVmgEstimate(position) {
+  const sample = getVmgSample(position);
+  if (!sample) return;
+
+  const heading = getVmgHeadingDegrees(sample);
+  const headingUnwrapped = unwrapHeadingDegrees(
+    heading,
+    vmgEstimate.lastHeading,
+    vmgEstimate.lastHeadingUnwrapped
+  );
+  vmgEstimate.lastHeading = heading;
+  vmgEstimate.lastHeadingUnwrapped = headingUnwrapped;
+  vmgEstimate.lastSpeed = sample.speed;
+
+  if (!Number.isFinite(headingUnwrapped)) return;
+  if (!Number.isFinite(vmgEstimate.lastTs)) {
+    vmgEstimate.lastTs = sample.ts;
+    vmgEstimate.headingRef = headingUnwrapped;
+    vmgEstimate.theta0 = sample.speed;
+    vmgEstimate.theta1 = 0;
+    vmgEstimate.p11 = VMG_RLS_INIT_P;
+    vmgEstimate.p12 = 0;
+    vmgEstimate.p22 = VMG_RLS_INIT_P;
+    vmgEstimate.residualVar = null;
+    vmgEstimate.sampleCount = 0;
+    vmgEstimate.slope = null;
+    vmgEstimate.slopeStdErr = null;
+    renderVmgIndicator();
+    return;
+  }
+
+  const dtSec = Math.max(0, (sample.ts - vmgEstimate.lastTs) / 1000);
+  vmgEstimate.lastTs = sample.ts;
+  if (dtSec <= 0) return;
+
+  const lambda = Math.exp(-dtSec / VMG_TAU_SECONDS);
+  const alpha = 1 - lambda;
+
+  if (!Number.isFinite(vmgEstimate.headingRef)) {
+    vmgEstimate.headingRef = headingUnwrapped;
+  }
+  const headingDelta = headingUnwrapped - vmgEstimate.headingRef;
+  const x0 = 1;
+  const x1 = headingDelta;
+
+  const p11 = vmgEstimate.p11;
+  const p12 = vmgEstimate.p12;
+  const p22 = vmgEstimate.p22;
+  const px0 = p11 * x0 + p12 * x1;
+  const px1 = p12 * x0 + p22 * x1;
+  const denom = lambda + x0 * px0 + x1 * px1;
+  if (!Number.isFinite(denom) || denom <= 0) {
+    resetVmgEstimator();
+    return;
+  }
+
+  const k0 = px0 / denom;
+  const k1 = px1 / denom;
+  const theta0 = vmgEstimate.theta0;
+  const theta1 = vmgEstimate.theta1;
+  const predicted = x0 * theta0 + x1 * theta1;
+  const residual = sample.speed - predicted;
+
+  const nextTheta0 = theta0 + k0 * residual;
+  const nextTheta1 = theta1 + k1 * residual;
+  const p11Next = (p11 - k0 * px0) / lambda;
+  const p12NextA = (p12 - k0 * px1) / lambda;
+  const p12NextB = (p12 - k1 * px0) / lambda;
+  const p12Next = 0.5 * (p12NextA + p12NextB);
+  const p22Next = (p22 - k1 * px1) / lambda;
+
+  vmgEstimate.theta0 = nextTheta0;
+  vmgEstimate.theta1 = nextTheta1;
+  vmgEstimate.p11 = p11Next;
+  vmgEstimate.p12 = p12Next;
+  vmgEstimate.p22 = p22Next;
+  vmgEstimate.sampleCount += 1;
+
+  let residualVar = vmgEstimate.residualVar;
+  if (!Number.isFinite(residualVar)) {
+    residualVar = residual * residual;
+  } else {
+    residualVar = (1 - alpha) * residualVar + alpha * residual * residual;
+  }
+  vmgEstimate.residualVar = residualVar;
+
+  let slope = null;
+  let slopeStdErr = null;
+  if (Number.isFinite(nextTheta1) && Number.isFinite(p22Next) && p22Next >= 0) {
+    slope = nextTheta1;
+    if (Number.isFinite(residualVar)) {
+      slopeStdErr = Math.sqrt(residualVar * p22Next);
+    }
+  }
+  if (vmgEstimate.sampleCount < 2) {
+    slope = null;
+    slopeStdErr = null;
+  }
+  vmgEstimate.slope = slope;
+  vmgEstimate.slopeStdErr = slopeStdErr;
+
+  renderVmgIndicator();
+}
+
+function updateVmgGpsState() {
+  if (!els.vmgBar) return;
+  els.vmgBar.classList.toggle("gps-bad", isVmgGpsBad());
+}
+
 function buildImuMappingCandidates() {
   const permutations = [
     ["alpha", "beta", "gamma"],
@@ -375,6 +704,16 @@ function handleDeviceMotion(event) {
   const dt = clamp(dtRaw, dtClamp.min, dtClamp.max);
   if (dt <= 0) return;
   applyImuYawRate(yawRate, dt);
+
+  if (!Number.isFinite(vmgImu.lastTimestamp)) {
+    vmgImu.lastTimestamp = timestamp;
+    return;
+  }
+  const vmgDtRaw = (timestamp - vmgImu.lastTimestamp) / 1000;
+  vmgImu.lastTimestamp = timestamp;
+  const vmgDt = clamp(vmgDtRaw, VMG_IMU_DT_CLAMP.min, VMG_IMU_DT_CLAMP.max);
+  if (vmgDt <= 0) return;
+  applyVmgImuYawRate(yawRate, vmgDt);
 }
 
 async function requestImuPermission() {
@@ -395,6 +734,7 @@ function stopImu() {
   }
   state.imuEnabled = false;
   resetImuState();
+  resetVmgImuState();
 }
 
 async function startImu() {
@@ -406,6 +746,7 @@ async function startImu() {
   imuListening = true;
   state.imuEnabled = true;
   resetImuState();
+  resetVmgImuState();
   if (state.kalman) {
     const vx = state.kalman.x[2];
     const vy = state.kalman.x[3];
@@ -1566,6 +1907,8 @@ function resetPositionState() {
   state.speedHistory = [];
   state.kalman = null;
   lastKalmanPredictionTs = 0;
+  resetVmgEstimator();
+  resetVmgImuState();
   state.gpsTrackRaw = [];
   state.gpsTrackDevice = [];
   state.gpsTrackFiltered = [];
@@ -1662,6 +2005,7 @@ function handlePosition(position) {
     applyKalmanEstimate(filtered, { rawPosition: position });
     recordSpeedSample(filtered.speed, position.timestamp || Date.now());
     state.lastPosition = state.position;
+    updateVmgEstimate(position);
     return;
   }
   const coords = position.coords;
@@ -1686,13 +2030,17 @@ function handlePosition(position) {
   state.lastPosition = state.position;
   updateGPSDisplay();
   updateLineProjection();
+  updateVmgEstimate(position);
 }
 
 function handlePositionError(err) {
-  if (!els.gpsIcon) return;
-  els.gpsIcon.classList.add("bad");
-  els.gpsIcon.classList.remove("ok", "warn");
-  els.gpsIcon.title = `GPS error: ${err.message}`;
+  const icons = [els.gpsIcon, els.vmgGpsIcon].filter(Boolean);
+  if (!icons.length) return;
+  icons.forEach((icon) => {
+    icon.classList.add("bad");
+    icon.classList.remove("ok", "warn");
+    icon.title = `GPS error: ${err.message}`;
+  });
   if (!state.debugGpsEnabled && err && (err.code === 2 || err.code === 3)) {
     scheduleGpsRetry(handlePosition, handlePositionError);
   }
@@ -1832,6 +2180,79 @@ function bindEvents() {
     });
   });
 
+  if (els.openSetup) {
+    els.openSetup.addEventListener("click", () => {
+      setView("setup");
+    });
+  }
+
+  if (els.openVmg) {
+    els.openVmg.addEventListener("click", () => {
+      setView("vmg");
+    });
+  }
+
+  if (els.openHomeButtons && els.openHomeButtons.length) {
+    els.openHomeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setView("home");
+      });
+    });
+  }
+
+  if (els.vmgTackPort || els.vmgTackStarboard) {
+    const setVmgTack = (tack) => {
+      vmgTack = tack === "port" ? "port" : "starboard";
+      const isStarboard = tack === "starboard";
+      if (els.vmgTackStarboard) {
+        els.vmgTackStarboard.setAttribute("aria-pressed", isStarboard ? "true" : "false");
+      }
+      if (els.vmgTackPort) {
+        els.vmgTackPort.setAttribute("aria-pressed", isStarboard ? "false" : "true");
+      }
+      if (els.vmgLabelLeft && els.vmgLabelRight) {
+        if (isStarboard) {
+          els.vmgLabelLeft.textContent = "Bear away";
+          els.vmgLabelRight.textContent = "Head up";
+        } else {
+          els.vmgLabelLeft.textContent = "Head up";
+          els.vmgLabelRight.textContent = "Bear away";
+        }
+      }
+      if (els.vmgBar) {
+        const left = isStarboard ? "bear away" : "head up";
+        const right = isStarboard ? "head up" : "bear away";
+        els.vmgBar.setAttribute("aria-label", `VMG balance: ${left} left, ${right} right`);
+      }
+      renderVmgIndicator();
+    };
+
+    setVmgTack("starboard");
+
+    if (els.vmgTackPort) {
+      els.vmgTackPort.addEventListener("click", () => {
+        setVmgTack("port");
+      });
+    }
+
+    if (els.vmgTackStarboard) {
+      els.vmgTackStarboard.addEventListener("click", () => {
+        setVmgTack("starboard");
+      });
+    }
+  }
+
+  if (els.vmgTwa) {
+    const syncVmgTwa = () => {
+      if (els.vmgTwaValue) {
+        els.vmgTwaValue.textContent = `${els.vmgTwa.value} deg`;
+      }
+      renderVmgIndicator();
+    };
+    syncVmgTwa();
+    els.vmgTwa.addEventListener("input", syncVmgTwa);
+  }
+
   els.openMap.addEventListener("click", () => {
     window.location.href = `map.html${getNoCacheQuery()}`;
   });
@@ -1879,23 +2300,11 @@ function bindEvents() {
     setView("location");
   });
 
-  if (els.openSettings) {
-    els.openSettings.addEventListener("click", () => {
-      setView("settings");
-    });
-  }
   const openInfoButton = els.openInfo || document.getElementById("open-info");
   if (openInfoButton) {
     openInfoButton.addEventListener("click", (event) => {
       event.preventDefault();
       setView("info");
-    });
-  }
-  const openBoatButton = els.openBoat || document.getElementById("open-boat");
-  if (openBoatButton) {
-    openBoatButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      setView("boat");
     });
   }
 
@@ -2092,24 +2501,11 @@ function bindEvents() {
     setView("setup");
   });
 
-  if (els.closeSettings) {
-    els.closeSettings.addEventListener("click", () => {
-      setView("setup");
-    });
-  }
   const closeInfoButton = els.closeInfo || document.getElementById("close-info");
   if (closeInfoButton) {
     closeInfoButton.addEventListener("click", (event) => {
       event.preventDefault();
-      setView("setup");
-    });
-  }
-  const closeBoatButton = els.closeBoat || document.getElementById("close-boat");
-  if (closeBoatButton) {
-    closeBoatButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      commitBoatInputs();
-      setView("setup");
+      setView("home");
     });
   }
 
@@ -2287,23 +2683,72 @@ function bindEvents() {
     });
   }
 
+  if (els.vmgDebugRefresh) {
+    els.vmgDebugRefresh.addEventListener("click", () => {
+      hardReload();
+    });
+  }
+
 
   window.addEventListener("hashchange", syncViewFromHash);
 }
 
 function setView(view) {
+  document.body.classList.remove("home-mode");
+  document.body.classList.remove("vmg-mode");
+  document.getElementById("home-view").setAttribute("aria-hidden", "true");
+  document.getElementById("vmg-view").setAttribute("aria-hidden", "true");
+
+  if (view === "home") {
+    updateInputs();
+    updateImuCalibrationUi();
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.body.classList.add("home-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    document.getElementById("home-view").setAttribute("aria-hidden", "false");
+    history.replaceState(null, "", "#home");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    releaseWakeLock();
+    setGpsMode("setup");
+    return;
+  }
+  if (view === "vmg") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.body.classList.add("vmg-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    document.getElementById("vmg-view").setAttribute("aria-hidden", "false");
+    history.replaceState(null, "", "#vmg");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    releaseWakeLock();
+    setGpsMode("setup");
+    return;
+  }
   if (view === "race") {
     document.body.classList.add("race-mode");
     document.body.classList.remove("coords-mode");
     document.body.classList.remove("location-mode");
-    document.body.classList.remove("settings-mode");
-    document.body.classList.remove("boat-mode");
     document.body.classList.remove("info-mode");
     document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "false");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
     document.getElementById("info-view").setAttribute("aria-hidden", "true");
     document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
@@ -2319,15 +2764,11 @@ function setView(view) {
     document.body.classList.remove("race-mode");
     document.body.classList.add("coords-mode");
     document.body.classList.remove("location-mode");
-    document.body.classList.remove("settings-mode");
-    document.body.classList.remove("boat-mode");
     document.body.classList.remove("info-mode");
     document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "false");
     document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
     document.getElementById("info-view").setAttribute("aria-hidden", "true");
     document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
@@ -2341,15 +2782,11 @@ function setView(view) {
     document.body.classList.remove("race-mode");
     document.body.classList.remove("coords-mode");
     document.body.classList.add("location-mode");
-    document.body.classList.remove("settings-mode");
-    document.body.classList.remove("boat-mode");
     document.body.classList.remove("info-mode");
     document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("location-view").setAttribute("aria-hidden", "false");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
     document.getElementById("info-view").setAttribute("aria-hidden", "true");
     document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
@@ -2358,65 +2795,15 @@ function setView(view) {
     setGpsMode("setup", { force: true, highAccuracy: true });
     return;
   }
-  if (view === "settings") {
-    updateInputs();
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.add("settings-mode");
-    document.body.classList.remove("boat-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "false");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
-    history.replaceState(null, "", "#settings");
-    window.scrollTo({ top: 0, behavior: "instant" });
-    releaseWakeLock();
-    setGpsMode("setup");
-    return;
-  }
-  if (view === "boat") {
-    updateInputs();
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("settings-mode");
-    document.body.classList.add("boat-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "false");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
-    history.replaceState(null, "", "#boat");
-    window.scrollTo({ top: 0, behavior: "instant" });
-    releaseWakeLock();
-    setGpsMode("setup");
-    return;
-  }
   if (view === "info") {
     document.body.classList.remove("race-mode");
     document.body.classList.remove("coords-mode");
     document.body.classList.remove("location-mode");
-    document.body.classList.remove("settings-mode");
-    document.body.classList.remove("boat-mode");
     document.body.classList.add("info-mode");
     document.body.classList.remove("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
     document.getElementById("info-view").setAttribute("aria-hidden", "false");
     document.getElementById("track-view").setAttribute("aria-hidden", "true");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
@@ -2430,15 +2817,11 @@ function setView(view) {
     document.body.classList.remove("race-mode");
     document.body.classList.remove("coords-mode");
     document.body.classList.remove("location-mode");
-    document.body.classList.remove("settings-mode");
-    document.body.classList.remove("boat-mode");
     document.body.classList.remove("info-mode");
     document.body.classList.add("track-mode");
     document.getElementById("race-view").setAttribute("aria-hidden", "true");
     document.getElementById("coords-view").setAttribute("aria-hidden", "true");
     document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
     document.getElementById("info-view").setAttribute("aria-hidden", "true");
     document.getElementById("track-view").setAttribute("aria-hidden", "false");
     document.getElementById("setup-view").setAttribute("aria-hidden", "true");
@@ -2452,15 +2835,11 @@ function setView(view) {
   document.body.classList.remove("race-mode");
   document.body.classList.remove("coords-mode");
   document.body.classList.remove("location-mode");
-  document.body.classList.remove("settings-mode");
-  document.body.classList.remove("boat-mode");
   document.body.classList.remove("info-mode");
   document.body.classList.remove("track-mode");
   document.getElementById("race-view").setAttribute("aria-hidden", "true");
   document.getElementById("coords-view").setAttribute("aria-hidden", "true");
   document.getElementById("location-view").setAttribute("aria-hidden", "true");
-  document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-  document.getElementById("boat-view").setAttribute("aria-hidden", "true");
   document.getElementById("info-view").setAttribute("aria-hidden", "true");
   document.getElementById("track-view").setAttribute("aria-hidden", "true");
   document.getElementById("setup-view").setAttribute("aria-hidden", "false");
@@ -2470,6 +2849,14 @@ function setView(view) {
 }
 
 function syncViewFromHash() {
+  if (location.hash === "#home") {
+    setView("home");
+    return;
+  }
+  if (location.hash === "#vmg") {
+    setView("vmg");
+    return;
+  }
   if (location.hash === "#race") {
     setView("race");
     return;
@@ -2482,14 +2869,6 @@ function syncViewFromHash() {
     setView("location");
     return;
   }
-  if (location.hash === "#settings") {
-    setView("settings");
-    return;
-  }
-  if (location.hash === "#boat") {
-    setView("boat");
-    return;
-  }
   if (location.hash === "#info") {
     setView("info");
     return;
@@ -2498,7 +2877,15 @@ function syncViewFromHash() {
     setView("track");
     return;
   }
-  setView("setup");
+  if (location.hash === "#settings" || location.hash === "#boat") {
+    setView("home");
+    return;
+  }
+  if (location.hash === "#setup") {
+    setView("setup");
+    return;
+  }
+  setView("home");
 }
 
 function tick() {
@@ -2506,6 +2893,7 @@ function tick() {
   updateStartDisplay();
   updateCurrentTime();
   updateDebugControls();
+  updateVmgGpsState();
   if (document.body.classList.contains("track-mode")) {
     renderTrack();
   }

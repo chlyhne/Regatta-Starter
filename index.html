@@ -13,15 +13,13 @@
     <link rel="stylesheet" href="style.css" />
     <title>RaceTimer Start</title>
   </head>
-  <body>
-    <main id="setup-view" class="shell">
-      <header class="hero setup-head">
-        <h1>Setup</h1>
-        <div class="setup-actions">
-          <div class="gps-status">
-            <span>GPS</span>
-            <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
-          </div>
+  <body class="home-mode">
+    <section id="home-view" class="shell home-view" aria-hidden="false">
+      <header class="hero home-head">
+        <div class="home-title">
+          <h1>RaceTimer</h1>
+        </div>
+        <div class="home-actions">
           <button id="open-info" class="icon-btn" type="button" aria-label="About">
             <svg class="icon-info" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
@@ -29,37 +27,120 @@
               <circle cx="12" cy="7" r="1.5" fill="currentColor" />
             </svg>
           </button>
-          <button id="open-boat" class="icon-btn" type="button" aria-label="Boat">
-            <svg class="icon-boat" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path
-                d="M12 3v11M12 3l6 7h-6"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-              />
-              <path
-                d="M3 17h18l-3 4H6l-3-4z"
-                fill="none"
-                stroke="currentColor"
-                stroke-linejoin="round"
-                stroke-width="2"
-              />
-            </svg>
-          </button>
-          <button id="open-settings" class="icon-btn" type="button" aria-label="Settings">
-            <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
-              <path
-                d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-width="2"
-              />
-            </svg>
-          </button>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h2>Modes</h2>
+        <div class="row stack">
+          <button id="open-setup" class="home-entry" type="button">Race timer</button>
+          <button id="open-vmg" class="home-entry" type="button">VMG Hunter</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Boat</h2>
+        <div class="row setting-row">
+          <label for="boat-length" class="setting-label">Boat length</label>
+          <div class="input-with-unit">
+            <input
+              id="boat-length"
+              type="number"
+              inputmode="decimal"
+              step="0.1"
+              min="0"
+              placeholder="0"
+            />
+            <span id="boat-length-unit" class="input-unit">[m]</span>
+          </div>
+        </div>
+        <div class="row setting-row">
+          <label for="bow-offset" class="setting-label">Device to bow</label>
+          <div class="input-with-unit">
+            <input
+              id="bow-offset"
+              type="number"
+              inputmode="decimal"
+              step="0.1"
+              min="0"
+              placeholder="0"
+            />
+            <span id="bow-offset-unit" class="input-unit">[m]</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Settings</h2>
+        <div class="row setting-row">
+          <div class="setting-label">Sound</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Sound">
+            <button id="sound-on" class="race-toggle-btn" type="button" aria-pressed="true">
+              On
+            </button>
+            <button id="sound-off" class="race-toggle-btn" type="button" aria-pressed="false">
+              Off
+            </button>
+          </div>
+        </div>
+        <div class="row setting-row">
+          <div class="setting-label">Time format</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Time format">
+            <button id="time-format-24" class="race-toggle-btn" type="button" aria-pressed="true">
+              24 h
+            </button>
+            <button id="time-format-12" class="race-toggle-btn" type="button" aria-pressed="false">
+              12 h
+            </button>
+          </div>
+        </div>
+        <div class="row setting-row">
+          <div class="setting-label">Speed unit</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Speed unit">
+            <button id="speed-unit-kn" class="race-toggle-btn" type="button" aria-pressed="true">
+              kn
+            </button>
+            <button id="speed-unit-ms" class="race-toggle-btn" type="button" aria-pressed="false">
+              m/s
+            </button>
+            <button id="speed-unit-mph" class="race-toggle-btn" type="button" aria-pressed="false">
+              mph
+            </button>
+          </div>
+        </div>
+        <div class="row setting-row">
+          <div class="setting-label">Distance unit</div>
+          <div class="race-toggle horizontal" role="group" aria-label="Distance unit">
+            <button id="distance-unit-m" class="race-toggle-btn" type="button" aria-pressed="true">
+              m
+            </button>
+            <button id="distance-unit-ft" class="race-toggle-btn" type="button" aria-pressed="false">
+              ft
+            </button>
+            <button id="distance-unit-yd" class="race-toggle-btn" type="button" aria-pressed="false">
+              yd
+            </button>
+          </div>
+        </div>
+        <div class="row setting-row">
+          <div class="setting-label">IMU calibration</div>
+          <button id="open-imu-calibration" type="button">Calibrate IMU</button>
+        </div>
+        <div id="imu-calibration-status" class="setting-note">IMU: not calibrated</div>
+      </section>
+    </section>
+
+    <main id="setup-view" class="shell" aria-hidden="true">
+      <header class="hero setup-head">
+        <div class="setup-title">
+          <h1>Race timer</h1>
+          <button class="ghost nav-btn open-home" type="button">Home</button>
+        </div>
+        <div class="setup-actions">
+          <div class="gps-status">
+            <span>GPS</span>
+            <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
+          </div>
         </div>
       </header>
 
@@ -157,6 +238,92 @@
 
     </main>
 
+    <section id="vmg-view" class="vmg-view" aria-hidden="true">
+      <div class="vmg-shell">
+        <header class="vmg-head">
+          <div class="vmg-title">
+            <h1>VMG Hunter</h1>
+            <button class="ghost nav-btn open-home" type="button">Home</button>
+          </div>
+          <div class="vmg-actions">
+            <div class="gps-status">
+              <span>GPS</span>
+              <div
+                id="vmg-gps-icon"
+                class="gps-icon"
+                aria-label="GPS status"
+                title="GPS status"
+              ></div>
+            </div>
+          </div>
+        </header>
+
+        <section class="vmg-panel">
+          <div class="vmg-tack-toggle" role="group" aria-label="Tack">
+            <button
+              id="vmg-tack-port"
+              class="vmg-tack-btn vmg-tack-port"
+              type="button"
+              aria-pressed="false"
+            >
+              P Tack
+            </button>
+            <button
+              id="vmg-tack-starboard"
+              class="vmg-tack-btn vmg-tack-starboard"
+              type="button"
+              aria-pressed="true"
+            >
+              SB Tack
+            </button>
+          </div>
+          <div class="vmg-bar-wrap">
+            <div
+              id="vmg-bar"
+              class="vmg-bar"
+              role="img"
+              aria-label="VMG balance: bear away left, head up right"
+            >
+              <div id="vmg-interval" class="vmg-interval"></div>
+              <div id="vmg-dot" class="vmg-dot" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div class="vmg-scale" aria-hidden="true">
+            <span id="vmg-label-left" class="vmg-scale-left">Bear away</span>
+            <span id="vmg-label-right" class="vmg-scale-right">Head up</span>
+          </div>
+        </section>
+
+        <section class="vmg-panel">
+          <div class="vmg-twa-head">
+            <h2 id="vmg-twa-title">Approx TWA</h2>
+            <div id="vmg-twa-value" class="vmg-twa-value">40 deg</div>
+          </div>
+          <input
+            id="vmg-twa"
+            class="vmg-twa-slider"
+            type="range"
+            min="35"
+            max="50"
+            step="1"
+            value="40"
+            aria-labelledby="vmg-twa-title vmg-twa-value"
+          />
+          <div class="vmg-twa-scale" aria-hidden="true">
+            <span>35</span>
+            <span>50</span>
+          </div>
+        </section>
+
+        <section id="vmg-debug-panel" class="vmg-panel">
+          <h2>Debug</h2>
+          <div class="row stack">
+            <button id="vmg-debug-refresh">Reload</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section id="race-view" class="race-view" aria-hidden="true">
       <div class="race-quad-grid">
         <div class="race-quad race-quad-direct race-block">
@@ -204,7 +371,7 @@
             </div>
             <div class="race-stack">
               <button id="sync-race" class="race-btn">Sync</button>
-              <button id="close-race" class="race-btn">Setup</button>
+              <button id="close-race" class="race-btn">Race timer</button>
             </div>
           </div>
         </div>
@@ -550,107 +717,6 @@
         <div class="hint">Best accuracy: hold still or move straight at steady speed when marking.</div>
         <div class="row stack">
           <button id="close-location">Done</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="settings-view" class="settings-view" aria-hidden="true">
-      <div class="coords-panel">
-        <h2>Settings</h2>
-        <div class="row setting-row">
-          <div class="setting-label">Sound</div>
-          <div class="race-toggle horizontal" role="group" aria-label="Sound">
-            <button id="sound-on" class="race-toggle-btn" type="button" aria-pressed="true">
-              On
-            </button>
-            <button id="sound-off" class="race-toggle-btn" type="button" aria-pressed="false">
-              Off
-            </button>
-          </div>
-        </div>
-        <div class="row setting-row">
-          <div class="setting-label">Time format</div>
-          <div class="race-toggle horizontal" role="group" aria-label="Time format">
-            <button id="time-format-24" class="race-toggle-btn" type="button" aria-pressed="true">
-              24 h
-            </button>
-            <button id="time-format-12" class="race-toggle-btn" type="button" aria-pressed="false">
-              12 h
-            </button>
-          </div>
-        </div>
-        <div class="row setting-row">
-          <div class="setting-label">Speed unit</div>
-          <div class="race-toggle horizontal" role="group" aria-label="Speed unit">
-            <button id="speed-unit-kn" class="race-toggle-btn" type="button" aria-pressed="true">
-              kn
-            </button>
-            <button id="speed-unit-ms" class="race-toggle-btn" type="button" aria-pressed="false">
-              m/s
-            </button>
-            <button id="speed-unit-mph" class="race-toggle-btn" type="button" aria-pressed="false">
-              mph
-            </button>
-          </div>
-        </div>
-        <div class="row setting-row">
-          <div class="setting-label">Distance unit</div>
-          <div class="race-toggle horizontal" role="group" aria-label="Distance unit">
-            <button id="distance-unit-m" class="race-toggle-btn" type="button" aria-pressed="true">
-              m
-            </button>
-            <button id="distance-unit-ft" class="race-toggle-btn" type="button" aria-pressed="false">
-              ft
-            </button>
-            <button id="distance-unit-yd" class="race-toggle-btn" type="button" aria-pressed="false">
-              yd
-            </button>
-          </div>
-        </div>
-        <div class="row setting-row">
-          <div class="setting-label">IMU calibration</div>
-          <button id="open-imu-calibration" type="button">Calibrate IMU</button>
-        </div>
-        <div id="imu-calibration-status" class="setting-note">IMU: not calibrated</div>
-        <div class="row stack">
-          <button id="close-settings">Done</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="boat-view" class="boat-view" aria-hidden="true">
-      <div class="coords-panel">
-        <h2>Boat</h2>
-        <div class="row setting-row">
-          <label for="boat-length" class="setting-label">Boat length</label>
-          <div class="input-with-unit">
-            <input
-              id="boat-length"
-              type="number"
-              inputmode="decimal"
-              step="0.1"
-              min="0"
-              placeholder="0"
-            />
-            <span id="boat-length-unit" class="input-unit">[m]</span>
-          </div>
-        </div>
-        <div class="row setting-row">
-          <label for="bow-offset" class="setting-label">Device to bow</label>
-          <div class="input-with-unit">
-            <input
-              id="bow-offset"
-              type="number"
-              inputmode="decimal"
-              step="0.1"
-              min="0"
-              placeholder="0"
-            />
-            <span id="bow-offset-unit" class="input-unit">[m]</span>
-          </div>
-        </div>
-        <div class="row stack">
-          <button id="close-boat">Done</button>
         </div>
       </div>
     </section>
