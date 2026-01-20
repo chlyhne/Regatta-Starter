@@ -237,11 +237,26 @@ function getNoCacheQuery() {
   return `?nocache=${encodeURIComponent(token)}`;
 }
 
-function hardReload() {
+async function hardReload() {
   const url = new URL(window.location.href);
   const token = String(Date.now());
   sessionStorage.setItem(NO_CACHE_KEY, token);
   url.searchParams.set("nocache", token);
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.update();
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
+      }
+    }
+  } catch {
+    // Ignore update errors; the reload still bypasses caches via nocache.
+  }
+
   window.location.replace(url.toString());
 }
 

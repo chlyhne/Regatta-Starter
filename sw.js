@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v121";
+const CACHE_NAME = "racetimer-v122";
 const ASSETS = [
   "./",
   "./index.html",
@@ -37,6 +37,12 @@ const ASSETS = [
   "./vendor/leaflet.css",
   "./vendor/leaflet.js",
 ];
+
+self.addEventListener("message", (event) => {
+  if (event && event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
