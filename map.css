@@ -32,7 +32,7 @@ body {
 .map-title {
   font-size: clamp(1.1rem, 4vw, 1.8rem);
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.12em;
 }
 
@@ -144,7 +144,7 @@ body {
   right: 12px;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
   color: #ffffff;
   background: rgba(0, 0, 0, 0.85);
   padding: 6px 10px;
@@ -159,7 +159,7 @@ body {
   right: 12px;
   font-size: 0.7rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
   color: #ffffff;
   background: rgba(0, 0, 0, 0.6);
   padding: 6px 10px;

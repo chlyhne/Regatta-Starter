@@ -15,6 +15,7 @@ Instructions for coding agents working in this repo.
 - Black/white theme with strong contrast.
 - Avoid decorative elements, extra text, or crowded layouts.
 - Avoid small tap targets; prioritize legibility over density.
+- Never use `text-transform: uppercase;` anywhere.
 
 ## Data and storage
 - Settings and saved lines live in `localStorage` via `state.js` and `settings.js`.
