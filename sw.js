@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v113";
+const CACHE_NAME = "racetimer-v117";
 const ASSETS = [
   "./",
   "./index.html",
@@ -75,10 +75,24 @@ self.addEventListener("fetch", (event) => {
         }
       }
 
+      const stripNoCache = (request) => {
+        const url = new URL(request.url);
+        if (!url.searchParams.has("nocache")) return null;
+        url.searchParams.delete("nocache");
+        return new Request(url.toString(), request);
+      };
+
       if (bypassCache) {
         try {
           return await fetch(event.request, { cache: "reload" });
         } catch {
+          const stripped = stripNoCache(event.request);
+          if (stripped) {
+            const cachedStripped = await caches.match(stripped);
+            if (cachedStripped) return cachedStripped;
+          }
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
           const fallback = await caches.match("./index.html");
           return fallback || Response.error();
         }

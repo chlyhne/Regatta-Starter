@@ -10,16 +10,33 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="style.css" />
+    <script>
+      (function () {
+        const key = "racetimer-nocache";
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get("nocache") || sessionStorage.getItem(key);
+        if (token) sessionStorage.setItem(key, token);
+        const href = token ? `style.css?nocache=${encodeURIComponent(token)}` : "style.css";
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = href;
+        document.head.appendChild(link);
+      })();
+    </script>
+    <noscript>
+      <link rel="stylesheet" href="style.css" />
+    </noscript>
     <title>RaceTools</title>
   </head>
   <body class="home-mode">
-    <section id="home-view" class="shell home-view" aria-hidden="false">
-      <header class="hero home-head">
-        <div class="home-title">
-          <h1>RaceTools</h1>
+    <section id="home-view" class="shell" aria-hidden="false">
+      <header class="hero page-head">
+        <div class="head-title">
+          <h1 class="brand-mark brand-light">
+            <span class="brand-label">Race</span><span class="brand-accent">Tools</span>
+          </h1>
         </div>
-        <div class="home-actions">
+        <div class="head-actions">
           <button id="open-info" class="icon-btn" type="button" aria-label="About">
             <svg class="icon-info" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
@@ -65,11 +82,11 @@
       <section class="panel">
         <h2>Modes</h2>
         <div class="row stack">
-          <button id="open-setup" class="home-entry" type="button">
-            <span class="mode-label">Race</span><span class="mode-accent">Starter</span>
+          <button id="open-setup" class="home-entry brand-btn brand-mark brand-dark" type="button">
+            <span class="brand-label">Race</span><span class="brand-accent">Starter</span>
           </button>
-          <button id="open-vmg" class="home-entry" type="button">
-            <span class="mode-label">Race</span><span class="mode-accent">VMG</span>
+          <button id="open-vmg" class="home-entry brand-btn brand-mark brand-dark" type="button">
+            <span class="brand-label">Race</span><span class="brand-accent">VMG</span>
           </button>
         </div>
       </section>
@@ -77,12 +94,16 @@
     </section>
 
     <main id="setup-view" class="shell" aria-hidden="true">
-      <header class="hero setup-head">
-        <div class="setup-title">
-          <h1>RaceStarter</h1>
-          <button class="ghost nav-btn open-home" type="button">RaceTools</button>
+      <header class="hero page-head">
+        <div class="head-title">
+          <h1 class="brand-mark brand-light">
+            <span class="brand-label">Race</span><span class="brand-accent">Starter</span>
+          </h1>
+          <button class="nav-btn brand-btn brand-mark brand-dark open-home" type="button">
+            <span class="brand-label">Race</span><span class="brand-accent">Tools</span>
+          </button>
         </div>
-        <div class="setup-actions">
+        <div class="head-actions">
           <div class="gps-status">
             <span>GPS</span>
             <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
@@ -186,12 +207,16 @@
 
     <section id="vmg-view" class="vmg-view" aria-hidden="true">
       <div class="vmg-shell">
-        <header class="vmg-head">
-          <div class="vmg-title">
-            <h1>RaceVMG</h1>
-            <button class="ghost nav-btn open-home" type="button">RaceTools</button>
+        <header class="page-head">
+          <div class="head-title">
+            <h1 class="brand-mark brand-light">
+              <span class="brand-label">Race</span><span class="brand-accent">VMG</span>
+            </h1>
+            <button class="nav-btn brand-btn brand-mark brand-dark open-home" type="button">
+              <span class="brand-label">Race</span><span class="brand-accent">Tools</span>
+            </button>
           </div>
-          <div class="vmg-actions">
+          <div class="head-actions">
             <div class="gps-status">
               <span>GPS</span>
               <div
@@ -317,7 +342,7 @@
             </div>
             <div class="race-stack">
               <button id="sync-race" class="race-btn">Sync</button>
-              <button id="close-race" class="race-btn">Race timer</button>
+              <button id="close-race" class="race-btn">Setup</button>
             </div>
           </div>
         </div>
@@ -830,6 +855,18 @@
       </div>
     </section>
 
-    <script type="module" src="app.js"></script>
+    <script>
+      (function () {
+        const key = "racetimer-nocache";
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get("nocache") || sessionStorage.getItem(key);
+        if (token) sessionStorage.setItem(key, token);
+        const src = token ? `app.js?nocache=${encodeURIComponent(token)}` : "app.js";
+        const script = document.createElement("script");
+        script.type = "module";
+        script.src = src;
+        document.body.appendChild(script);
+      })();
+    </script>
   </body>
 </html>

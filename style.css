@@ -321,7 +321,6 @@ body {
 .nav-btn {
   min-height: 3rem;
   font-size: 1rem;
-  letter-spacing: 0.06em;
 }
 
 .vmg-shell {
@@ -343,25 +342,6 @@ body {
   border-bottom: none;
 }
 
-.vmg-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px;
-  align-items: center;
-}
-
-.vmg-title {
-  display: grid;
-  gap: 10px;
-  align-items: start;
-  justify-items: start;
-}
-
-.vmg-actions {
-  display: inline-flex;
-  align-items: center;
-}
-
 .vmg-panel {
   display: grid;
   gap: 16px;
@@ -371,8 +351,7 @@ body {
   margin: 0 0 12px;
   font-size: 1.2rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
 }
 
 .vmg-tack-toggle {
@@ -388,8 +367,7 @@ body {
   border-radius: 999px;
   font-weight: 800;
   font-size: 1.2rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
   min-height: 3.8rem;
   cursor: pointer;
 }
@@ -472,8 +450,7 @@ body {
   display: flex;
   justify-content: space-between;
   font-size: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.08em;
   font-weight: 700;
 }
 
@@ -513,7 +490,6 @@ body {
   font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .vmg-twa-slider {
@@ -589,19 +565,27 @@ body {
   border-radius: 0;
   padding: 0;
 }
-.home-head {
-  grid-template-columns: 1fr auto;
-  align-items: start;
+.page-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
-.home-title {
+.head-title {
   display: grid;
   gap: 10px;
-  align-items: start;
-  justify-items: start;
+  align-items: center;
+  justify-items: center;
+  text-align: center;
 }
 
-.home-actions {
+.head-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -610,28 +594,39 @@ body {
 .home-entry {
   min-height: 3.8rem;
   font-size: 1.3rem;
-  letter-spacing: 0.06em;
   width: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
 }
 
-.home-entry .mode-label,
-.home-entry .mode-accent {
+.brand-mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  text-transform: none;
+}
+
+.brand-btn {
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.06em;
+}
+
+.brand-mark .brand-label,
+.brand-mark .brand-accent {
   display: inline-block;
   text-transform: none;
 }
 
-.home-entry .mode-label {
-  color: #ffffff;
-  font-style: normal;
-}
-
-.home-entry .mode-accent {
+.brand-mark .brand-accent {
   color: #c00000;
   font-style: italic;
+}
+
+.brand-light .brand-label {
+  color: #000000;
+}
+
+.brand-dark .brand-label {
+  color: #ffffff;
 }
 
 .home-reload {
@@ -641,24 +636,6 @@ body {
   letter-spacing: 0.08em;
   text-transform: none;
   font-weight: 700;
-}
-
-.setup-head {
-  grid-template-columns: 1fr auto;
-  align-items: start;
-}
-
-.setup-title {
-  display: grid;
-  gap: 10px;
-  align-items: start;
-  justify-items: start;
-}
-
-.setup-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .icon-btn {
@@ -710,8 +687,7 @@ body {
   gap: 8px;
   flex-wrap: wrap;
   font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 .track-swatch {
@@ -749,7 +725,6 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 0.85rem;
-  text-transform: uppercase;
   letter-spacing: 0.12em;
 }
 
@@ -774,7 +749,6 @@ body {
 }
 
 .eyebrow {
-  text-transform: uppercase;
   letter-spacing: 0.18em;
   font-size: 0.7rem;
   color: #000000;
@@ -800,8 +774,7 @@ h1 {
 
 .label {
   font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   color: #000000;
   font-weight: 500;
 }
@@ -876,16 +849,14 @@ h1 {
   margin: 0 0 12px;
   font-size: 1.2rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
 }
 
 .panel-title {
   margin: 0 0 12px;
   font-size: 1.2rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
 }
 
 .debug-only {
@@ -993,8 +964,7 @@ input:focus {
 .setting-label {
   font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin: 0;
   white-space: normal;
   flex: 1 1 auto;
@@ -1004,8 +974,7 @@ input:focus {
 .setting-note {
   font-size: 0.85rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin-top: -4px;
 }
 
@@ -1050,7 +1019,6 @@ input:focus {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
   display: none;
 }
 
@@ -1408,8 +1376,7 @@ button:active {
 }
 
 .race-label {
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.08em;
   font-size: 0.8rem;
   color: #000000;
   font-weight: 500;
@@ -1607,8 +1574,7 @@ button:active {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
 }
 
 .coords-latlon {
@@ -1717,14 +1683,14 @@ button:active {
     border-right-width: 10px;
   }
 
-  .vmg-head {
-    grid-template-columns: 1fr;
-    align-items: start;
+  .page-head {
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .home-head {
-    grid-template-columns: 1fr;
-    align-items: start;
+  .head-actions {
+    position: static;
+    transform: none;
   }
 
   .race-quad {
