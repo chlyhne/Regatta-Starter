@@ -2,31 +2,23 @@
 
 \section{Introduction}
 
-RaceTools is a minimal collection of race-day tools for sailors. RaceStarter is the
-race-start module. The goal is simple: stable, readable
-numbers you can trust when the start line is busy.
+RaceTools is a small collection of race-day tools for sailors. The design goal is
+deliberately narrow: show only the information you actually need, with stable numbers and
+clear UI that remains readable when the start line is busy and you are operating the
+phone one-handed.
 
 The app opens on a Home screen with two tools: RaceStarter and RaceVMG. Boat and Settings
 are accessed from Home so both modes share the same configuration.
 
 This document is a technical report that explains how the app works and why the math is
-set up the way it is. It is structured by tool:
-\begin{itemize}
-\tightlist
-\item RaceStarter: start line setup, race view, and the estimation methods needed to make
-  the numbers stable.
-\item RaceVMG: VMG Hunter (upwind), which estimates the speed/heading trade-off from small
-  changes while sailing.
-\end{itemize}
+set up the way it is. The report is structured by tool. The RaceStarter part focuses on
+start line setup and the race view, and on the estimation methods needed to make distance,
+speed, and direction stable enough to trust. The RaceVMG part introduces the VMG Hunter
+idea (upwind first) and the estimator that drives the left/right indicator.
 
-Across both tools, the most important requirement is trust: jittery raw GPS fixes must be
-turned into a steady position and stable speed/heading estimates:
-\begin{itemize}
-\tightlist
-\item
-  numbers should not jump around when you need to make decisions quickly
-\item
-  direction and speed estimates should not flip wildly from one fix to the next
-\item
-  the filter should adapt automatically when GPS quality changes
-\end{itemize}
+Across both tools, the most important requirement is trust. Raw GPS fixes are jittery, and
+naively differentiating them produces even noisier speed and heading. For this reason, we
+invest most of the mathematical complexity in estimation: turning intermittent, noisy
+measurements into a smooth position and a stable velocity vector. When that layer works
+well, everything above it becomes straightforward: geometry on top of a steady state
+estimate, rather than UI that fights noisy sensors.

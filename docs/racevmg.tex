@@ -41,15 +41,17 @@ comparison uses:
 
 \subsection{Estimating the slope (RLS with forgetting)}
 
-We estimate the local slope using recursive least squares (RLS) with exponential
-forgetting so it behaves like an IIR filter and responds smoothly:
-\begin{itemize}
-\tightlist
-\item use GPS speed (later: Kalman-filtered) and a heading estimate
-\item unwrap heading to avoid \(360^\circ\) discontinuities
-\item update the RLS state \((\theta, P)\) with a forgetting time constant
-  \(\tau \approx 10\,\mathrm{s}\)
-\end{itemize}
+In the app we do not try to build a full polar model. Instead, we estimate the \emph{local}
+slope in the neighborhood of the current trim and sea state. That is precisely what we
+need to decide whether a small heading change is paying off. We use recursive least
+squares (RLS) with exponential forgetting so the estimator behaves like an IIR filter: it
+reacts to new information, but it does not jump around when the boat is steady.
+
+Concretely, we feed the estimator a speed measurement (GPS speed for now, later optionally
+Kalman-filtered speed) and a heading estimate. Because heading wraps at \(360^\circ\), we
+unwrap it so small real changes do not appear as huge jumps. The forgetting is controlled
+by a time constant \(\tau \approx 10\,\mathrm{s}\), which sets the effective memory of the
+fit: shorter \(\tau\) reacts faster but is noisier; longer \(\tau\) is steadier but slower.
 
 Heading source. When IMU is enabled, we integrate the gyro yaw rate to track heading
 changes and use that heading in the regressor. GPS course is used to correct long-term

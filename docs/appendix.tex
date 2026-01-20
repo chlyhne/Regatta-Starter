@@ -9,14 +9,9 @@ code but are not central to the main method descriptions.
 
 This subsection explains the local projection used so the filters can operate in meters.
 
-Internally, the filter runs in a local tangent-plane approximation:
-\begin{itemize}
-\tightlist
-\item
-  choose a local origin near the current area
-\item
-  convert \((\text{lat}, \text{lon})\) into \((x, y)\) meters relative to that origin
-\end{itemize}
+Internally, the filter runs in a local tangent-plane approximation. We choose a local
+origin near the current area and convert \((\text{lat}, \text{lon})\) into \((x, y)\)
+meters relative to that origin.
 
 This is implemented with helpers in \texttt{geo.js} (\texttt{toMeters}, \texttt{fromMeters}).
 Over the distances we care about at a start line, this approximation is accurate enough and

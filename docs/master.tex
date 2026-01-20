@@ -20,14 +20,17 @@
 \clearpage
 \part{RaceStarter}
 \noindent This part covers RaceStarter: how the app turns noisy sensor inputs into stable
-numbers for start-line decisions, and how those estimates are used in the race views.
+numbers for start-line decisions, how those estimates connect to the start-line geometry,
+and how the UI uses them without surprising the user. The key theme is that good start
+line decisions depend more on stable estimates than on raw precision.
 \input{racestarter.tex}
 \clearpage
 \input{tuning.tex}
 \clearpage
 \part{RaceVMG}
 \noindent This part covers RaceVMG (VMG Hunter): how we estimate the local speed--heading
-trade-off upwind (without a wind sensor) and how that drives the on-screen indicator.
+trade-off upwind (without a wind sensor), what we can and cannot infer from GPS alone,
+and how that estimate is presented in a way that makes steering decisions feel natural.
 \input{racevmg.tex}
 \clearpage
 \appendix
