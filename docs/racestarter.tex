@@ -1,16 +1,25 @@
 
 % !TeX root = master.tex
 
-\hypertarget{kalman-filter-math-physical-arguments-and-gain-scheduling}{%
-\section{Kalman filter}\label{kalman-filter-math-physical-arguments-and-gain-scheduling}}
+\hypertarget{speed-and-heading-estimation}{%
+\section{Speed and Heading Estimation}\label{speed-and-heading-estimation}}
 
-\hypertarget{why-a-kalman-filter-at-all}{%
-\subsection{Why a Kalman filter at
-all?}\label{why-a-kalman-filter-at-all}}
+\hypertarget{why-estimate-speed-and-heading}{%
+\subsection{Why estimate speed and heading?}\label{why-estimate-speed-and-heading}}
 
-GPS position updates are noisy. If you derive speed and heading from
-consecutive fixes, you amplify that noise. Near a start line, small
-errors become big problems:
+RaceStarter (and RaceVMG) depend on detecting small changes in position, speed, and
+heading. But the boat has real dynamics, and the sensors are imperfect:
+
+\begin{itemize}
+\tightlist
+\item the boat cannot teleport; it moves smoothly (most of the time)
+\item GPS fixes are noisy, and differentiating position amplifies noise
+\item at low speed, GPS course is often unreliable
+\item the IMU can provide fast rotation (gyro) and acceleration cues, but drifts and is
+  device-dependent
+\end{itemize}
+
+Near a start line, small errors become big problems:
 
 \begin{itemize}
 \tightlist
@@ -23,7 +32,7 @@ errors become big problems:
   ``trustworthy''
 \end{itemize}
 
-The Kalman filter is a compact way to combine:
+The estimation approach in RaceStarter combines:
 
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi})}
@@ -35,7 +44,9 @@ The Kalman filter is a compact way to combine:
   measurements (``GPS says we are here, but with some uncertainty'').
 \end{enumerate}
 
-The filter's job is to produce the best compromise for the use-case.
+We use a Kalman filter to turn jittery GPS into a steady 2D position and velocity vector,
+and we optionally use the gyro to update heading changes between GPS fixes. The filter's
+job is to produce the best compromise for the use-case.
 
 \subsection{Movement model}
 
@@ -590,110 +601,6 @@ differently in each:
 \end{enumerate}
 
 This keeps the geometry consistent for each assumption.
-
-\hypertarget{vmg-hunter-method-approximate-upwind-vmg}{%
-\subsection{VMG Hunter method (approximate upwind
-VMG)}\label{vmg-hunter-method-approximate-upwind-vmg}}
-
-VMG Hunter works without a wind sensor. We assume the boat is sailing
-upwind and the true wind angle (TWA) stays within a narrow range
-(roughly \(35^\circ\) to \(50^\circ\)). The user selects an approximate
-TWA, and we use that to decide whether a small change in heading should
-be a \emph{bear away} or \emph{head up}.
-
-For a given TWA \(\psi\), the upwind velocity made good is:
-\[
-\mathrm{VMG}(\psi) = v(\psi)\cos\psi
-\]
-
-For a small change \(d\psi\), the first-order change is:
-\[
-\frac{d}{d\psi}\mathrm{VMG} =
-\frac{dv}{d\psi}\cos\psi - v\sin\psi
-\]
-
-At the break-even point (no VMG gain or loss), this derivative is zero:
-\[
-\frac{dv}{d\psi} = v\tan\psi
-\]
-
-This is the trade-off slope between speed and heading. We estimate
-\(\frac{dv}{d\psi}\) from GPS data and compare it to the break-even
-slope. If the estimated slope is greater than the break-even slope,
-bearing away is faster; if it is smaller, heading up is faster. Because
-our heading samples are in degrees, the comparison uses:
-\[
-\frac{dv}{d(\mathrm{deg})} = v\tan\psi \cdot \frac{\pi}{180}
-\]
-
-Estimating the slope from GPS. We use recursive least squares (RLS) with
-exponential forgetting so it behaves like an IIR filter and responds
-smoothly:
-\begin{itemize}
-\tightlist
-\item
-  use GPS speed and heading (or compute them from successive positions)
-\item
-  unwrap heading to avoid \(360^\circ\) discontinuities
-\item
-  update the RLS state \((\theta, P)\) with a forgetting factor set by
-  \(\tau \approx 10\,\mathrm{s}\)
-\end{itemize}
-
-Heading source. When IMU is enabled, we integrate the gyro yaw rate to
-track heading changes and use that heading in the regressor. GPS course
-is used to correct long-term drift only when speed exceeds
-\(2\,\mathrm{kn}\) and GPS accuracy is acceptable. If IMU is disabled, or
-no IMU heading is available yet, we fall back to GPS heading.
-
-Let \(h_k\) be heading (degrees) and \(v_k\) speed (m/s) at sample \(k\).
-We use unwrapped heading relative to a fixed reference so the regressor
-stays small: \(h_k = \psi_k - \psi_0\). This shift does not change the
-slope. We fit a line \(v_k = b_k + s_k h_k + e_k\), written in vector form:
-\[
-v_k = x_k^T \theta_k + e_k,\quad
-x_k = \begin{bmatrix} 1 \\ h_k \end{bmatrix},\quad
-\theta_k = \begin{bmatrix} b_k \\ s_k \end{bmatrix}
-\]
-
-With forgetting factor \(\lambda_k = e^{-\Delta t_k/\tau}\), the RLS
-recursion is:
-\[
-K_k = \frac{P_{k-1} x_k}{\lambda_k + x_k^T P_{k-1} x_k}
-\]
-\[
-\theta_k = \theta_{k-1} + K_k \left(v_k - x_k^T \theta_{k-1}\right)
-\]
-\[
-P_k = \frac{1}{\lambda_k}\left(P_{k-1} - K_k x_k^T P_{k-1}\right)
-\]
-where the residual is \(e_k = v_k - x_k^T \theta_{k-1}\).
-
-The slope estimate at sample \(k\) is the second component:
-\[
-s_k = \theta_{k,2}
-\]
-when the heading excitation is large enough to be reliable.
-
-This is the standard RLS form; the implementation follows this
-recursion directly.
-
-Confidence band. We compute a simple standard error for the slope:
-\[
-\sigma_{s,k} \approx \sqrt{\sigma_{e,k}^2 \, P_{k,22}}
-\]
-where \(\sigma_{e,k}^2\) is an exponentially weighted residual variance,
-for example:
-\[
-\sigma_{e,k}^2 = (1-\alpha_k)\sigma_{e,k-1}^2 + \alpha_k e_k^2,\quad
-\alpha_k = 1 - e^{-\Delta t_k/\tau}
-\]
-The UI maps \(\sigma_{s,k}\) to a confidence band width. If GPS is stale or
-accuracy is poor, the bar is desaturated to signal low trust.
-
-Tack handling. The indicator is directional: on port tack the left/right
-meaning flips. We implement this by negating the slope before comparing
-to the break-even value and swapping the labels accordingly.
 
 \hypertarget{where-to-look-in-the-repo}{%
 \subsection{Where to look in the

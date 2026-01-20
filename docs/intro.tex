@@ -10,12 +10,17 @@ The app opens on a Home screen with two tools: RaceStarter and RaceVMG. Boat and
 are accessed from Home so both modes share the same configuration.
 
 This document is a technical report that explains how the app works and why the math is
-set up the way it is. It is structured so more chapters can be added later (e.g.\ UI/UX
-design notes, validation logs, or device-specific sensor behavior), without turning the
-Kalman chapter into a catch-all.
+set up the way it is. It is structured by tool:
+\begin{itemize}
+\tightlist
+\item RaceStarter: start line setup, race view, and the estimation methods needed to make
+  the numbers stable.
+\item RaceVMG: VMG Hunter (upwind), which estimates the speed/heading trade-off from small
+  changes while sailing.
+\end{itemize}
 
-The Kalman filter exists to turn jittery GPS fixes into a steady position and a stable
-velocity vector:
+Across both tools, the most important requirement is trust: jittery raw GPS fixes must be
+turned into a steady position and stable speed/heading estimates:
 \begin{itemize}
 \tightlist
 \item
