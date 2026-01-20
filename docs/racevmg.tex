@@ -9,6 +9,9 @@ change in heading should be a \emph{bear away} or a \emph{head up}.
 
 \subsection{Speed--heading trade-off}
 
+This subsection derives a break-even slope that converts speed changes into an equivalent
+heading change at the selected TWA, giving a left/right steering decision rule.
+
 For a given TWA \(\psi\), the upwind velocity made good is:
 \[
 \mathrm{VMG}(\psi) = v(\psi)\cos\psi
@@ -84,7 +87,10 @@ when the heading excitation is large enough to be reliable.
 
 \subsection{Confidence band and tack handling}
 
-Confidence band. We compute a simple standard error for the slope:
+This subsection explains how estimator uncertainty becomes the UI confidence band, and how
+port/starboard tack flips the meaning of left/right.
+
+We compute a simple standard error for the slope:
 \[
 \sigma_{s,k} \approx \sqrt{\sigma_{e,k}^2 \, P_{k,22}}
 \]

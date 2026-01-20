@@ -47,6 +47,9 @@ job is to produce the best compromise for the use-case.
 
 \subsection{Movement model}
 
+This subsection defines the state vector and the motion model used between GPS fixes,
+including the optional turning update when IMU assist is enabled.
+
 We estimate both position and velocity in 2D:
 \[
 x = [p_x, p_y, v_x, v_y]^T
@@ -161,6 +164,9 @@ update between GPS fixes. The measurement noise \texttt{R} is unchanged.
 
 \subsection{Noise model (process and measurement)}
 
+This subsection describes the process noise (\(Q\)) and measurement noise (\(R\)), and how
+the parameters map to expected boat dynamics and GPS quality.
+
 Interpretation of \(q\). We use a standard ``nearly constant velocity''
 (CV) model where acceleration is modeled as continuous white noise. In this
 model:
@@ -215,7 +221,7 @@ q\,dt^3/2 & 0 & q\,dt^2 & 0 \\
 \]
 
 In RaceStarter we make a more boat-like assumption: forward and sideways
-acceleration are not equally likely. We therefore:
+acceleration are not equally likely.
 
 The important modeling choice is that a boat can change speed much more easily
 along its heading than sideways. In other words, acceleration uncertainty is
@@ -320,6 +326,8 @@ What this means for the Kalman gain:
 \hypertarget{the-kalman-filter-equations-what-happens-each-gps-update}{%
 \subsection{The Kalman filter equations (what happens each GPS
 update)}\label{the-kalman-filter-equations-what-happens-each-gps-update}}
+
+This subsection walks through the predict/update steps used when a GPS fix arrives.
 
 The filter keeps:
 \begin{itemize}
@@ -602,6 +610,8 @@ This keeps the geometry consistent for each assumption.
 \hypertarget{where-to-look-in-the-repo}{%
 \subsection{Where to look in the
 repo}\label{where-to-look-in-the-repo}}
+
+This subsection lists the main source files for the estimation and supporting logic.
 
 \begin{itemize}
 \tightlist

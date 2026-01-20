@@ -2,7 +2,12 @@
 
 \section{Appendix}
 
+This appendix collects small implementation notes that are useful for understanding the
+code but are not central to the main method descriptions.
+
 \subsection{Coordinate system: latitude/longitude to meters}
+
+This subsection explains the local projection used so the filters can operate in meters.
 
 Internally, the filter runs in a local tangent-plane approximation:
 \begin{itemize}
@@ -16,4 +21,3 @@ Internally, the filter runs in a local tangent-plane approximation:
 This is implemented with helpers in \texttt{geo.js} (\texttt{toMeters}, \texttt{fromMeters}).
 Over the distances we care about at a start line, this approximation is accurate enough and
 avoids complicated geodesy inside the filter.
-
