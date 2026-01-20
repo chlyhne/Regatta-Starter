@@ -566,11 +566,10 @@ body {
   padding: 0;
 }
 .page-head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  display: grid;
+  gap: 14px;
+  justify-items: stretch;
+  align-items: start;
 }
 
 .head-title {
@@ -581,14 +580,29 @@ body {
   text-align: center;
 }
 
-.head-actions {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+.head-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.head-left,
+.head-right {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+}
+
+.head-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.head-right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
 }
 
 .home-entry {
@@ -1683,14 +1697,8 @@ button:active {
     border-right-width: 10px;
   }
 
-  .page-head {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .head-actions {
-    position: static;
-    transform: none;
+  .head-bar {
+    flex-wrap: nowrap;
   }
 
   .race-quad {
