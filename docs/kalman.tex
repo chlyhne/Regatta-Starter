@@ -206,7 +206,7 @@ q\,dt^3/2 & 0 & q\,dt^2 & 0 \\
 \end{bmatrix}
 \]
 
-In RaceTimer we make a more boat-like assumption: forward and sideways
+In RaceStarter we make a more boat-like assumption: forward and sideways
 acceleration are not equally likely. We therefore:
 
 The important modeling choice is that a boat can change speed much more easily
@@ -509,7 +509,7 @@ enabled, GPS nudges the IMU heading with a tunable weight. If IMU is disabled,
 GPS heading is used directly. Tuning details live in \texttt{docs/tuning.tex}.
 
 Calibration workflow (per device). Different devices report gyro axes
-differently. To avoid hard-coded per-device mappings, RaceTimer uses a simple
+differently. To avoid hard-coded per-device mappings, RaceStarter uses a simple
 on-device calibration:
 
 \begin{itemize}

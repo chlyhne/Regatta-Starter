@@ -80,6 +80,7 @@ const els = {
   openCoords: document.getElementById("open-coords"),
   openLocation: document.getElementById("open-location"),
   openInfo: document.getElementById("open-info"),
+  homeRefresh: document.getElementById("home-refresh"),
   openSettings: document.getElementById("open-settings"),
   openBoat: document.getElementById("open-boat"),
   loadLine: document.getElementById("load-line"),

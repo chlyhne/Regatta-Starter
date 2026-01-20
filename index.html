@@ -11,13 +11,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="style.css" />
-    <title>RaceTimer Start</title>
+    <title>RaceTools</title>
   </head>
   <body class="home-mode">
     <section id="home-view" class="shell home-view" aria-hidden="false">
       <header class="hero home-head">
         <div class="home-title">
-          <h1>RaceTimer</h1>
+          <h1>RaceTools</h1>
         </div>
         <div class="home-actions">
           <button id="open-info" class="icon-btn" type="button" aria-label="About">
@@ -27,31 +27,60 @@
               <circle cx="12" cy="7" r="1.5" fill="currentColor" />
             </svg>
           </button>
+          <button id="open-boat" class="icon-btn" type="button" aria-label="Boat">
+            <svg class="icon-boat" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M12 3v11M12 3l6 7h-6"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M3 17h18l-3 4H6l-3-4z"
+                fill="none"
+                stroke="currentColor"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+            </svg>
+          </button>
+          <button id="open-settings" class="icon-btn" type="button" aria-label="Settings">
+            <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+              <path
+                d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-width="2"
+              />
+            </svg>
+          </button>
+          <button id="home-refresh" class="ghost home-reload" type="button">Reload</button>
         </div>
       </header>
 
       <section class="panel">
         <h2>Modes</h2>
         <div class="row stack">
-          <button id="open-setup" class="home-entry" type="button">Race timer</button>
-          <button id="open-vmg" class="home-entry" type="button">VMG Hunter</button>
+          <button id="open-setup" class="home-entry" type="button">
+            <span class="mode-label">Race</span><span class="mode-accent">Starter</span>
+          </button>
+          <button id="open-vmg" class="home-entry" type="button">
+            <span class="mode-label">Race</span><span class="mode-accent">VMG</span>
+          </button>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>Setup</h2>
-        <div class="row stack">
-          <button id="open-boat" class="home-entry" type="button">Boat</button>
-          <button id="open-settings" class="home-entry" type="button">Settings</button>
-        </div>
-      </section>
     </section>
 
     <main id="setup-view" class="shell" aria-hidden="true">
       <header class="hero setup-head">
         <div class="setup-title">
-          <h1>Race timer</h1>
-          <button class="ghost nav-btn open-home" type="button">Home</button>
+          <h1>RaceStarter</h1>
+          <button class="ghost nav-btn open-home" type="button">RaceTools</button>
         </div>
         <div class="setup-actions">
           <div class="gps-status">
@@ -159,8 +188,8 @@
       <div class="vmg-shell">
         <header class="vmg-head">
           <div class="vmg-title">
-            <h1>VMG Hunter</h1>
-            <button class="ghost nav-btn open-home" type="button">Home</button>
+            <h1>RaceVMG</h1>
+            <button class="ghost nav-btn open-home" type="button">RaceTools</button>
           </div>
           <div class="vmg-actions">
             <div class="gps-status">
@@ -746,11 +775,11 @@
           <span>Version: 0.1</span>
           <span>Date: 12-1-2026</span>
           <span>Author: Casper Hillerup Lyhne</span>
-        </div>
-        <p class="info-text">
-          RaceTimer is a small, offline-friendly race start companion for sailors who want
-          clear numbers and fast decisions at the line.
-        </p>
+	        </div>
+	        <p class="info-text">
+	          RaceTools is a small, offline-friendly set of race-day tools for sailors who want clear
+	          numbers and fast decisions at the line.
+	        </p>
         <p class="info-text">
           This is a tool, not a gadget. The design is stark and high-contrast on purpose so it
           stays readable when it matters.

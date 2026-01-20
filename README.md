@@ -1,10 +1,13 @@
-# RaceTimer
+# RaceTools
 
-Static web app for race start timing and line setup.
+Static web app with two race-day tools:
+
+- RaceStarter (race start timing + line setup)
+- RaceVMG (VMG Hunter)
 
 ## Kalman filter (GPS smoothing)
 
-RaceTimer uses a small Kalman filter to smooth GPS position and estimate a steady velocity
+RaceStarter uses a small Kalman filter to smooth GPS position and estimate a steady velocity
 vector for the start-line calculations. Measurement noise is taken from reported GPS accuracy,
 and the process noise is gain-scheduled using boat-length scaling arguments and recent-max
 speed behavior.

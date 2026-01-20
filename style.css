@@ -610,9 +610,37 @@ body {
 .home-entry {
   min-height: 3.8rem;
   font-size: 1.3rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
   width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.home-entry .mode-label,
+.home-entry .mode-accent {
+  display: inline-block;
+  text-transform: none;
+}
+
+.home-entry .mode-label {
+  color: #ffffff;
+  font-style: normal;
+}
+
+.home-entry .mode-accent {
+  color: #c00000;
+  font-style: italic;
+}
+
+.home-reload {
+  min-height: 2.2rem;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  font-weight: 700;
 }
 
 .setup-head {
@@ -1040,6 +1068,7 @@ button {
   font-weight: 700;
   font-size: 1rem;
   letter-spacing: 0.04em;
+  text-transform: none;
   cursor: pointer;
   box-shadow: none;
 }

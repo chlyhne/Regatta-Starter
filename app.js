@@ -2312,6 +2312,12 @@ function bindEvents() {
     });
   }
 
+  if (els.homeRefresh) {
+    els.homeRefresh.addEventListener("click", () => {
+      hardReload();
+    });
+  }
+
   const openInfoButton = els.openInfo || document.getElementById("open-info");
   if (openInfoButton) {
     openInfoButton.addEventListener("click", (event) => {
