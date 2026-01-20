@@ -354,49 +354,6 @@ body {
   letter-spacing: 0.04em;
 }
 
-.vmg-toggle {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border: 2px solid #000000;
-  border-radius: 999px;
-  background: #ffffff;
-  overflow: hidden;
-  gap: 0;
-}
-
-.vmg-toggle .race-toggle-btn {
-  border: none;
-  border-radius: 0;
-  background: #ffffff;
-  color: #000000;
-  font-size: 1.2rem;
-  letter-spacing: 0.06em;
-  padding: 10px 16px;
-  min-height: 3.8rem;
-}
-
-.vmg-toggle .race-toggle-btn + .race-toggle-btn {
-  border-left: 2px solid #000000;
-}
-
-.vmg-toggle .race-toggle-btn[aria-pressed="false"] {
-  filter: grayscale(1);
-  opacity: 0.28;
-}
-
-.vmg-toggle .race-toggle-btn[aria-pressed="true"] {
-  filter: none;
-  opacity: 1;
-  color: #ffffff;
-}
-
-.vmg-toggle .vmg-tack-port[aria-pressed="true"] {
-  background: #d00000;
-}
-
-.vmg-toggle .vmg-tack-starboard[aria-pressed="true"] {
-  background: #00a000;
-}
 
 .vmg-bar-wrap {
   padding: 0.25in 0;
