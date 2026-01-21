@@ -2207,6 +2207,12 @@ function bindEvents() {
     });
   }
 
+  if (els.goVmg) {
+    els.goVmg.addEventListener("click", () => {
+      setView("vmg");
+    });
+  }
+
   if (els.openHomeButtons && els.openHomeButtons.length) {
     els.openHomeButtons.forEach((button) => {
       button.addEventListener("click", () => {
@@ -2738,6 +2744,12 @@ function bindEvents() {
   window.addEventListener("hashchange", syncViewFromHash);
 }
 
+function setViewHidden(id, hidden) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  section.setAttribute("aria-hidden", hidden ? "true" : "false");
+}
+
 function setView(view) {
   document.body.classList.remove(
     "home-mode",
@@ -2750,7 +2762,7 @@ function setView(view) {
     "info-mode",
     "track-mode"
   );
-  [
+  const sections = [
     "home-view",
     "vmg-view",
     "race-view",
@@ -2761,29 +2773,14 @@ function setView(view) {
     "info-view",
     "track-view",
     "setup-view",
-  ].forEach((id) => {
-    const section = document.getElementById(id);
-    if (section) {
-      section.setAttribute("aria-hidden", "true");
-    }
-  });
+  ];
+  sections.forEach((id) => setViewHidden(id, true));
 
   if (view === "home") {
     updateInputs();
     updateImuCalibrationUi();
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
     document.body.classList.add("home-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
-    document.getElementById("home-view").setAttribute("aria-hidden", "false");
+    setViewHidden("home-view", false);
     history.replaceState(null, "", "#home");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2791,19 +2788,8 @@ function setView(view) {
     return;
   }
   if (view === "vmg") {
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
     document.body.classList.add("vmg-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
-    document.getElementById("vmg-view").setAttribute("aria-hidden", "false");
+    setViewHidden("vmg-view", false);
     history.replaceState(null, "", "#vmg");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2812,15 +2798,7 @@ function setView(view) {
   }
   if (view === "race") {
     document.body.classList.add("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "false");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("race-view", false);
     history.replaceState(null, "", "#race");
     window.scrollTo({ top: 0, behavior: "instant" });
     requestWakeLock();
@@ -2830,17 +2808,8 @@ function setView(view) {
   }
   if (view === "coords") {
     updateInputs();
-    document.body.classList.remove("race-mode");
     document.body.classList.add("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "false");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("coords-view", false);
     history.replaceState(null, "", "#coords");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2848,17 +2817,8 @@ function setView(view) {
     return;
   }
   if (view === "location") {
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
     document.body.classList.add("location-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "false");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("location-view", false);
     history.replaceState(null, "", "#location");
     releaseWakeLock();
     setGpsMode("setup", { force: true, highAccuracy: true });
@@ -2867,20 +2827,8 @@ function setView(view) {
   if (view === "settings") {
     updateInputs();
     updateImuCalibrationUi();
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
     document.body.classList.add("settings-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "false");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("settings-view", false);
     history.replaceState(null, "", "#settings");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2889,21 +2837,8 @@ function setView(view) {
   }
   if (view === "boat") {
     updateInputs();
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("settings-mode");
     document.body.classList.add("boat-mode");
-    document.body.classList.remove("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
-    document.getElementById("boat-view").setAttribute("aria-hidden", "false");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("boat-view", false);
     history.replaceState(null, "", "#boat");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2911,17 +2846,8 @@ function setView(view) {
     return;
   }
   if (view === "info") {
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
     document.body.classList.add("info-mode");
-    document.body.classList.remove("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "false");
-    document.getElementById("track-view").setAttribute("aria-hidden", "true");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("info-view", false);
     history.replaceState(null, "", "#info");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2929,17 +2855,8 @@ function setView(view) {
     return;
   }
   if (view === "track") {
-    document.body.classList.remove("race-mode");
-    document.body.classList.remove("coords-mode");
-    document.body.classList.remove("location-mode");
-    document.body.classList.remove("info-mode");
     document.body.classList.add("track-mode");
-    document.getElementById("race-view").setAttribute("aria-hidden", "true");
-    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-    document.getElementById("location-view").setAttribute("aria-hidden", "true");
-    document.getElementById("info-view").setAttribute("aria-hidden", "true");
-    document.getElementById("track-view").setAttribute("aria-hidden", "false");
-    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    setViewHidden("track-view", false);
     history.replaceState(null, "", "#track");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2947,17 +2864,7 @@ function setView(view) {
     renderTrack();
     return;
   }
-  document.body.classList.remove("race-mode");
-  document.body.classList.remove("coords-mode");
-  document.body.classList.remove("location-mode");
-  document.body.classList.remove("info-mode");
-  document.body.classList.remove("track-mode");
-  document.getElementById("race-view").setAttribute("aria-hidden", "true");
-  document.getElementById("coords-view").setAttribute("aria-hidden", "true");
-  document.getElementById("location-view").setAttribute("aria-hidden", "true");
-  document.getElementById("info-view").setAttribute("aria-hidden", "true");
-  document.getElementById("track-view").setAttribute("aria-hidden", "true");
-  document.getElementById("setup-view").setAttribute("aria-hidden", "false");
+  setViewHidden("setup-view", false);
   history.replaceState(null, "", "#setup");
   releaseWakeLock();
   setGpsMode("setup");

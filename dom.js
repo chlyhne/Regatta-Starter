@@ -66,6 +66,7 @@ const els = {
   lineStatus: document.getElementById("line-status"),
   openSetup: document.getElementById("open-setup"),
   openVmg: document.getElementById("open-vmg"),
+  goVmg: document.getElementById("go-vmg"),
   openHomeButtons: document.querySelectorAll(".open-home"),
   vmgGpsIcon: document.getElementById("vmg-gps-icon"),
   vmgBar: document.getElementById("vmg-bar"),
