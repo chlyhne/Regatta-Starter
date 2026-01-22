@@ -5,7 +5,7 @@ import { formatDistanceWithUnit } from "./format.js";
 import { BUILD_STAMP } from "./build.js";
 
 function updateGPSDisplay() {
-  const icons = [els.gpsIcon, els.vmgGpsIcon].filter(Boolean);
+  const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   if (!state.position) {
     icons.forEach((icon) => {

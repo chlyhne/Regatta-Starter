@@ -79,6 +79,20 @@ const VMG_POSITION_RANGE = 40;
 const VMG_CONF_MIN = 12;
 const VMG_CONF_MAX = 90;
 const VMG_CONF_SCALE = 60;
+const VMG_EVAL_WINDOW_SEC = 30;
+const VMG_EVAL_TWA_DEG = 45;
+const VMG_EVAL_MAX_GAIN = 50;
+const VMG_EVAL_MIN_BASE = 0.2;
+const VMG_EVAL_HISTORY_MS = (VMG_EVAL_WINDOW_SEC * 2 + 5) * 1000;
+const LIFTER_DEFAULT_WINDOW_SECONDS = 300;
+const LIFTER_MIN_SPEED = 0.5;
+const LIFTER_HISTORY_MAX_MS = 2 * 60 * 60 * 1000;
+const LIFTER_BIN_COUNT = 60;
+const LIFTER_DEBUG_TICK_MS = 250;
+const LIFTER_DEBUG_SPEED_DEFAULT = 1;
+const LIFTER_DEBUG_SPEED_MIN = 0.5;
+const LIFTER_DEBUG_SPEED_MAX = 4;
+const LIFTER_DEBUG_SPEED_STEP = 0.5;
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
 let countdownPickerLive = false;
@@ -87,6 +101,27 @@ let imuCalibrationActive = false;
 let imuCalibrationSamples = [];
 let imuCalibrationTimer = null;
 let imuCalibrationError = "";
+const lifterHistory = [];
+let lifterWindowSeconds = LIFTER_DEFAULT_WINDOW_SECONDS;
+let lifterLastSampleTs = null;
+let lifterBinDurationMs = Math.round((LIFTER_DEFAULT_WINDOW_SECONDS * 1000) / LIFTER_BIN_COUNT);
+let lifterLastBinId = null;
+let lifterLastRenderAt = 0;
+let lifterRenderTimer = null;
+const lifterBins = new Map();
+let lifterHeadingSource = "gps";
+const lifterDebug = {
+  enabled: false,
+  loading: false,
+  error: null,
+  samples: null,
+  cursor: 0,
+  startWallTs: 0,
+  playbackStartMs: 0,
+  speed: LIFTER_DEBUG_SPEED_DEFAULT,
+  requestId: 0,
+  timer: null,
+};
 const vmgEstimate = {
   lastTs: null,
   lastHeading: null,
@@ -104,6 +139,7 @@ const vmgEstimate = {
   slope: null,
   slopeStdErr: null,
 };
+const vmgEvalHistory = [];
 const vmgImu = {
   headingRad: null,
   lastTimestamp: null,
@@ -323,6 +359,544 @@ function headingFromVelocity(velocity) {
   return headingDeg < 0 ? headingDeg + 360 : headingDeg;
 }
 
+function formatWindowSeconds(seconds) {
+  const safe = Math.max(0, Math.round(seconds || 0));
+  if (safe < 90) return `${safe} s`;
+  const minutes = Math.round(safe / 60);
+  return `${minutes} min`;
+}
+
+function clampLifterWindowSeconds(seconds) {
+  const safe = Number.parseInt(seconds, 10);
+  if (!Number.isFinite(safe)) return LIFTER_DEFAULT_WINDOW_SECONDS;
+  return clamp(safe, 60, 1800);
+}
+
+function syncLifterWindowUi() {
+  if (els.lifterWindow) {
+    els.lifterWindow.value = String(lifterWindowSeconds);
+  }
+  if (els.lifterWindowValue) {
+    els.lifterWindowValue.textContent = formatWindowSeconds(lifterWindowSeconds);
+  }
+}
+
+function normalizeHeadingDegrees(degrees) {
+  if (!Number.isFinite(degrees)) return null;
+  let wrapped = degrees % 360;
+  if (wrapped < 0) wrapped += 360;
+  return wrapped;
+}
+
+function meanHeadingDegreesFromSinCos(sumSin, sumCos) {
+  if (!Number.isFinite(sumSin) || !Number.isFinite(sumCos)) return null;
+  if (sumSin === 0 && sumCos === 0) return null;
+  const meanRad = Math.atan2(sumSin, sumCos);
+  return normalizeHeadingDegrees((meanRad * 180) / Math.PI);
+}
+
+function circularMeanDegrees(angles) {
+  if (!angles || !angles.length) return null;
+  let sumSin = 0;
+  let sumCos = 0;
+  let count = 0;
+  angles.forEach((deg) => {
+    if (!Number.isFinite(deg)) return;
+    const rad = toRadians(deg);
+    sumSin += Math.sin(rad);
+    sumCos += Math.cos(rad);
+    count += 1;
+  });
+  if (!count) return null;
+  return meanHeadingDegreesFromSinCos(sumSin, sumCos);
+}
+
+function getLifterBinDurationMs(seconds = lifterWindowSeconds) {
+  const safeSeconds = clampLifterWindowSeconds(seconds);
+  const windowMs = safeSeconds * 1000;
+  return Math.max(1, Math.round(windowMs / LIFTER_BIN_COUNT));
+}
+
+function getLifterBinId(timestampMs, binDurationMs = lifterBinDurationMs) {
+  const ts = Number.isFinite(timestampMs) ? timestampMs : 0;
+  const duration = Number.isFinite(binDurationMs) && binDurationMs > 0 ? binDurationMs : 1;
+  return Math.floor(ts / duration);
+}
+
+function rebuildLifterBins() {
+  lifterBins.clear();
+  lifterBinDurationMs = getLifterBinDurationMs(lifterWindowSeconds);
+  if (!Number.isFinite(lifterLastSampleTs)) {
+    lifterLastBinId = null;
+    return;
+  }
+  lifterLastBinId = getLifterBinId(lifterLastSampleTs);
+  lifterHistory.forEach((sample) => {
+    if (!sample) return;
+    if (!Number.isFinite(sample.ts) || !Number.isFinite(sample.heading)) return;
+    const binId = getLifterBinId(sample.ts);
+    let bin = lifterBins.get(binId);
+    if (!bin) {
+      bin = { sumSin: 0, sumCos: 0, count: 0 };
+      lifterBins.set(binId, bin);
+    }
+    const rad = toRadians(sample.heading);
+    bin.sumSin += Math.sin(rad);
+    bin.sumCos += Math.cos(rad);
+    bin.count += 1;
+  });
+}
+
+function updateLifterBinsWithSample(timestampMs, headingDegrees, cutoffTs) {
+  const nextDuration = getLifterBinDurationMs(lifterWindowSeconds);
+  if (nextDuration !== lifterBinDurationMs) {
+    rebuildLifterBins();
+    return;
+  }
+  const binId = getLifterBinId(timestampMs);
+  let bin = lifterBins.get(binId);
+  if (!bin) {
+    bin = { sumSin: 0, sumCos: 0, count: 0 };
+    lifterBins.set(binId, bin);
+  }
+  const rad = toRadians(headingDegrees);
+  bin.sumSin += Math.sin(rad);
+  bin.sumCos += Math.cos(rad);
+  bin.count += 1;
+
+  const previousBinId = lifterLastBinId;
+  lifterLastBinId = binId;
+  if (!Number.isFinite(previousBinId) || previousBinId === binId) return;
+  if (!Number.isFinite(cutoffTs)) return;
+  const cutoffBinId = getLifterBinId(cutoffTs);
+  for (const key of lifterBins.keys()) {
+    if (key < cutoffBinId) {
+      lifterBins.delete(key);
+    }
+  }
+}
+
+function requestLifterRender(options = {}) {
+  if (!document.body.classList.contains("lifter-mode")) return;
+  const force = options.force === true;
+  const speed =
+    lifterHeadingSource === "debug-wind" ? Math.max(0.1, lifterDebug.speed || 1) : 1;
+  const maxIntervalMs = 1000 / speed;
+  const now = Date.now();
+  const elapsed = now - lifterLastRenderAt;
+  if (force || !Number.isFinite(lifterLastRenderAt) || elapsed >= maxIntervalMs) {
+    if (lifterRenderTimer) {
+      clearTimeout(lifterRenderTimer);
+      lifterRenderTimer = null;
+    }
+    lifterLastRenderAt = now;
+    renderLifterPlot();
+    return;
+  }
+  if (lifterRenderTimer) return;
+  const delay = Math.max(0, maxIntervalMs - elapsed);
+  lifterRenderTimer = setTimeout(() => {
+    lifterRenderTimer = null;
+    lifterLastRenderAt = Date.now();
+    renderLifterPlot();
+  }, delay);
+}
+
+function resetLifterHistory() {
+  lifterHistory.length = 0;
+  lifterLastSampleTs = null;
+  lifterLastBinId = null;
+  lifterBins.clear();
+}
+
+function normalizeLifterDebugSpeed(value) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return LIFTER_DEBUG_SPEED_DEFAULT;
+  const clamped = clamp(parsed, LIFTER_DEBUG_SPEED_MIN, LIFTER_DEBUG_SPEED_MAX);
+  const steps = Math.round(clamped / LIFTER_DEBUG_SPEED_STEP);
+  const snapped = steps * LIFTER_DEBUG_SPEED_STEP;
+  return clamp(snapped, LIFTER_DEBUG_SPEED_MIN, LIFTER_DEBUG_SPEED_MAX);
+}
+
+function formatLifterDebugSpeed(speed) {
+  if (!Number.isFinite(speed)) return "--";
+  const rounded = Math.round(speed * 10) / 10;
+  if (Number.isInteger(rounded)) return `${rounded}x`;
+  return `${rounded.toFixed(1)}x`;
+}
+
+function getLifterDebugPlaybackMs(now = Date.now()) {
+  if (!Number.isFinite(lifterDebug.startWallTs) || lifterDebug.startWallTs <= 0) {
+    return Math.max(0, lifterDebug.playbackStartMs || 0);
+  }
+  const wallElapsed = Math.max(0, now - lifterDebug.startWallTs);
+  const elapsed = (lifterDebug.playbackStartMs || 0) + wallElapsed * lifterDebug.speed;
+  return Math.max(0, elapsed);
+}
+
+function syncLifterDebugSpeedUi() {
+  if (els.lifterDebugSpeedValue) {
+    els.lifterDebugSpeedValue.textContent = formatLifterDebugSpeed(lifterDebug.speed);
+  }
+  if (els.lifterDebugSpeed) {
+    els.lifterDebugSpeed.value = String(lifterDebug.speed);
+    els.lifterDebugSpeed.disabled =
+      lifterHeadingSource !== "debug-wind" || lifterDebug.loading;
+  }
+}
+
+function setLifterDebugSpeed(nextSpeed) {
+  const normalized = normalizeLifterDebugSpeed(nextSpeed);
+  if (normalized === lifterDebug.speed) {
+    syncLifterDebugSpeedUi();
+    return;
+  }
+  const now = Date.now();
+  const elapsed = getLifterDebugPlaybackMs(now);
+  if (Number.isFinite(lifterDebug.startWallTs) && lifterDebug.startWallTs > 0) {
+    const wallElapsed = Math.max(0, now - lifterDebug.startWallTs);
+    lifterDebug.speed = normalized;
+    lifterDebug.playbackStartMs = elapsed - wallElapsed * normalized;
+  } else {
+    lifterDebug.speed = normalized;
+    lifterDebug.playbackStartMs = elapsed;
+  }
+  syncLifterDebugSpeedUi();
+}
+
+function syncLifterDebugToggleUi() {
+  const enabled = lifterHeadingSource === "debug-wind";
+  if (els.lifterDebugToggle) {
+    els.lifterDebugToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+    els.lifterDebugToggle.disabled = lifterDebug.loading;
+    els.lifterDebugToggle.title = enabled ? "Debug wind on" : "Debug wind off";
+    els.lifterDebugToggle.textContent = lifterDebug.loading ? "Loading…" : "Debug";
+  }
+  syncLifterDebugSpeedUi();
+}
+
+function recordLifterHeadingFromSource(source, heading, timestamp) {
+  if (source !== lifterHeadingSource) return;
+  const safeHeading = normalizeHeadingDegrees(heading);
+  if (!Number.isFinite(safeHeading)) return;
+  const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
+  lifterHistory.push({ ts, heading: safeHeading });
+  lifterLastSampleTs = ts;
+  const cutoff = ts - LIFTER_HISTORY_MAX_MS;
+  while (lifterHistory.length && lifterHistory[0].ts < cutoff) {
+    lifterHistory.shift();
+  }
+  updateLifterBinsWithSample(ts, safeHeading, cutoff);
+  requestLifterRender();
+}
+
+function recordLifterHeadingFromGps(velocity, speed, timestamp) {
+  if (lifterHeadingSource !== "gps") return;
+  if (!Number.isFinite(speed) || speed < LIFTER_MIN_SPEED) return;
+  const heading = headingFromVelocity(velocity);
+  recordLifterHeadingFromSource("gps", heading, timestamp);
+}
+
+function parseDebugWindCsv(text) {
+  const raw = String(text || "");
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const tsIndex = headers.findIndex((h) => h === "timestamp" || h === "time");
+  const dirIndex = headers.findIndex((h) => h === "wind_dir_deg" || h.includes("wind_dir"));
+  if (dirIndex < 0) return [];
+
+  const samples = [];
+  let firstTimestampMs = null;
+  for (let i = 1; i < lines.length; i += 1) {
+    const cols = lines[i].split(",");
+    if (cols.length <= dirIndex) continue;
+    const dir = Number.parseFloat(cols[dirIndex]);
+    if (!Number.isFinite(dir)) continue;
+    let offsetMs = i - 1;
+    offsetMs *= 1000;
+    if (tsIndex >= 0 && cols.length > tsIndex) {
+      const rawTs = String(cols[tsIndex] || "").trim();
+      const iso = rawTs.includes("T") ? rawTs : rawTs.replace(" ", "T");
+      const parsed = Date.parse(`${iso}Z`);
+      if (Number.isFinite(parsed)) {
+        if (!Number.isFinite(firstTimestampMs)) {
+          firstTimestampMs = parsed;
+        }
+        offsetMs = parsed - firstTimestampMs;
+      }
+    }
+    samples.push({ offsetMs, heading: normalizeHeadingDegrees(dir) });
+  }
+  return samples.filter((sample) => Number.isFinite(sample.heading));
+}
+
+async function loadLifterDebugWindSamples() {
+  if (lifterDebug.samples) return lifterDebug.samples;
+  const response = await fetch("./debug_wind_data.csv");
+  if (!response.ok) {
+    throw new Error(`Failed to load wind data (${response.status})`);
+  }
+  const text = await response.text();
+  const samples = parseDebugWindCsv(text);
+  if (!samples.length) {
+    throw new Error("No wind samples found");
+  }
+  lifterDebug.samples = samples;
+  return samples;
+}
+
+function stopLifterDebugPlayback() {
+  lifterDebug.requestId += 1;
+  lifterDebug.loading = false;
+  if (lifterDebug.timer) {
+    clearInterval(lifterDebug.timer);
+    lifterDebug.timer = null;
+  }
+  lifterDebug.cursor = 0;
+  lifterDebug.startWallTs = 0;
+  lifterDebug.playbackStartMs = 0;
+  syncLifterDebugToggleUi();
+}
+
+function restartLifterDebugPlayback(now) {
+  lifterDebug.cursor = 0;
+  lifterDebug.startWallTs = Number.isFinite(now) ? now : Date.now();
+  lifterDebug.playbackStartMs = 0;
+  resetLifterHistory();
+}
+
+function tickLifterDebugPlayback() {
+  if (lifterHeadingSource !== "debug-wind") return;
+  if (!document.body.classList.contains("lifter-mode")) return;
+  const samples = lifterDebug.samples;
+  if (!samples || !samples.length) return;
+  const now = Date.now();
+  if (!Number.isFinite(lifterDebug.startWallTs) || lifterDebug.startWallTs <= 0) {
+    restartLifterDebugPlayback(now);
+  }
+  const elapsedMs = getLifterDebugPlaybackMs(now);
+  while (lifterDebug.cursor < samples.length && samples[lifterDebug.cursor].offsetMs <= elapsedMs) {
+    const sample = samples[lifterDebug.cursor];
+    recordLifterHeadingFromSource(
+      "debug-wind",
+      sample.heading,
+      lifterDebug.startWallTs + sample.offsetMs
+    );
+    lifterDebug.cursor += 1;
+  }
+  if (lifterDebug.cursor >= samples.length) {
+    restartLifterDebugPlayback(now);
+  }
+}
+
+async function startLifterDebugPlayback() {
+  if (lifterHeadingSource !== "debug-wind") return;
+  if (!document.body.classList.contains("lifter-mode")) return;
+  if (lifterDebug.timer) return;
+  const requestId = (lifterDebug.requestId += 1);
+  lifterDebug.loading = true;
+  lifterDebug.error = null;
+  syncLifterDebugToggleUi();
+  try {
+    await loadLifterDebugWindSamples();
+  } catch (err) {
+    lifterDebug.error = err instanceof Error ? err.message : String(err);
+    lifterHeadingSource = "gps";
+    lifterDebug.enabled = false;
+    stopLifterDebugPlayback();
+    lifterDebug.loading = false;
+    syncLifterDebugToggleUi();
+    window.alert(`Debug wind load failed: ${lifterDebug.error}`);
+    return;
+  }
+  if (
+    lifterDebug.requestId !== requestId ||
+    lifterHeadingSource !== "debug-wind" ||
+    !document.body.classList.contains("lifter-mode")
+  ) {
+    lifterDebug.loading = false;
+    syncLifterDebugToggleUi();
+    return;
+  }
+  lifterDebug.loading = false;
+  syncLifterDebugToggleUi();
+  restartLifterDebugPlayback(Date.now());
+  tickLifterDebugPlayback();
+  lifterDebug.timer = setInterval(tickLifterDebugPlayback, LIFTER_DEBUG_TICK_MS);
+}
+
+function setLifterHeadingSource(nextSource) {
+  const normalized = nextSource === "debug-wind" ? "debug-wind" : "gps";
+  if (normalized === lifterHeadingSource) return;
+  lifterDebug.requestId += 1;
+  lifterHeadingSource = normalized;
+  lifterDebug.enabled = lifterHeadingSource === "debug-wind";
+  resetLifterHistory();
+  stopLifterDebugPlayback();
+  syncLifterDebugToggleUi();
+  if (lifterHeadingSource === "debug-wind") {
+    startLifterDebugPlayback();
+  } else {
+    requestLifterRender({ force: true });
+  }
+}
+
+function resizeCanvasToCssPixels(canvas) {
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, rect.width || 0);
+  const height = Math.max(1, rect.height || 0);
+  const dpr = window.devicePixelRatio || 1;
+  const targetWidth = Math.max(1, Math.round(width * dpr));
+  const targetHeight = Math.max(1, Math.round(height * dpr));
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width, height };
+}
+
+function renderLifterPlot() {
+  if (!document.body.classList.contains("lifter-mode")) return;
+  if (!els.lifterCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.lifterCanvas);
+  if (!canvasInfo) return;
+  const { ctx, width, height } = canvasInfo;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  if (els.lifterMeanValue) {
+    els.lifterMeanValue.textContent = "--°";
+  }
+
+  if (!Number.isFinite(lifterLastSampleTs)) {
+    ctx.fillStyle = "#000000";
+    ctx.font = "16px sans-serif";
+    ctx.fillText("No heading", 12, 24);
+    return;
+  }
+
+  const binCount = LIFTER_BIN_COUNT;
+  const nextDuration = getLifterBinDurationMs(lifterWindowSeconds);
+  if (nextDuration !== lifterBinDurationMs) {
+    rebuildLifterBins();
+  }
+
+  const binDurationMs = lifterBinDurationMs;
+  const lastBinId = getLifterBinId(lifterLastSampleTs, binDurationMs);
+  const startBinId = lastBinId - binCount + 1;
+  const binValues = new Array(binCount).fill(null);
+
+  for (let i = 0; i < binCount; i += 1) {
+    const binId = startBinId + i;
+    const bin = lifterBins.get(binId);
+    if (!bin || !Number.isFinite(bin.count) || bin.count <= 0) continue;
+    const mean = meanHeadingDegreesFromSinCos(bin.sumSin, bin.sumCos);
+    if (!Number.isFinite(mean)) continue;
+    binValues[i] = mean;
+  }
+
+  const activeIndex = binCount - 1;
+  const meanBins = binCount > 1 ? binValues.slice(0, activeIndex) : [];
+  const meanDeg = circularMeanDegrees(meanBins);
+  if (!Number.isFinite(meanDeg)) {
+    ctx.fillStyle = "#000000";
+    ctx.font = "16px sans-serif";
+    ctx.fillText("No heading", 12, 24);
+    return;
+  }
+
+  if (els.lifterMeanValue) {
+    els.lifterMeanValue.textContent = `${Math.round(meanDeg)}°`;
+  }
+
+  const deltas = new Array(binCount).fill(null);
+  let maxAbs = 0;
+  for (let i = 0; i < activeIndex; i += 1) {
+    const value = binValues[i];
+    if (!Number.isFinite(value)) continue;
+    const delta = normalizeDeltaDegrees(value - meanDeg);
+    if (!Number.isFinite(delta)) continue;
+    deltas[i] = delta;
+    maxAbs = Math.max(maxAbs, Math.abs(delta));
+  }
+  const scaleStep = 2;
+  if (!Number.isFinite(maxAbs) || maxAbs <= 0) {
+    maxAbs = scaleStep;
+  } else {
+    maxAbs = Math.max(scaleStep, Math.ceil(maxAbs / scaleStep) * scaleStep);
+  }
+
+  const centerX = width / 2;
+  const padding = 10;
+  const maxBar = Math.max(1, centerX - padding);
+  const xScale = maxBar / maxAbs;
+
+  if (activeIndex >= 0) {
+    const activeValue = binValues[activeIndex];
+    if (Number.isFinite(activeValue)) {
+      let delta = normalizeDeltaDegrees(activeValue - meanDeg);
+      if (Number.isFinite(delta)) {
+        delta = clamp(delta, -maxAbs, maxAbs);
+        deltas[activeIndex] = delta;
+      }
+    }
+  }
+
+  const stepY = height / binCount;
+  const gap = Math.min(2, Math.max(0, stepY - 1));
+  const barH = Math.max(1, stepY - gap);
+
+  const gridStepDeg = maxAbs >= 6 ? 4 : 2;
+  const maxGridDeg = Math.floor(maxAbs / gridStepDeg) * gridStepDeg;
+  if (maxGridDeg >= gridStepDeg) {
+    ctx.save();
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+    for (let deg = gridStepDeg; deg <= maxGridDeg; deg += gridStepDeg) {
+      const dx = deg * xScale;
+      const xLeft = centerX - dx;
+      const xRight = centerX + dx;
+      [xLeft, xRight].forEach((x) => {
+        if (!Number.isFinite(x) || x < 0 || x > width) return;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
+  }
+
+  ctx.fillStyle = "#000000";
+  for (let i = 0; i < binCount; i += 1) {
+    const delta = deltas[i];
+    if (!Number.isFinite(delta)) continue;
+    const barLen = delta * xScale;
+    const barW = Math.abs(barLen);
+    const x = centerX + Math.min(0, barLen);
+    const y = height - (i + 1) * stepY + gap / 2;
+    ctx.fillRect(x, y, barW, barH);
+  }
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(centerX, 0);
+  ctx.lineTo(centerX, height);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function resetVmgEstimator() {
   vmgEstimate.lastTs = null;
   vmgEstimate.lastHeading = null;
@@ -390,9 +964,9 @@ function getVmgHeadingDegrees(sample) {
 }
 
 function getVmgTwaDegrees() {
-  if (!els.vmgTwa) return 40;
+  if (!els.vmgTwa) return VMG_EVAL_TWA_DEG;
   const value = Number.parseFloat(els.vmgTwa.value);
-  if (!Number.isFinite(value)) return 40;
+  if (!Number.isFinite(value)) return VMG_EVAL_TWA_DEG;
   return clamp(value, 35, 50);
 }
 
@@ -430,37 +1004,158 @@ function isVmgGpsBad() {
   return accuracy > 20;
 }
 
-function renderVmgIndicator() {
-  if (!els.vmgBar) return;
-  const speed = Number.isFinite(vmgEstimate.lastSpeed) ? vmgEstimate.lastSpeed : null;
-  const slope = Number.isFinite(vmgEstimate.slope) ? vmgEstimate.slope : null;
-  const slopeStdErr = Number.isFinite(vmgEstimate.slopeStdErr) ? vmgEstimate.slopeStdErr : null;
+function pruneVmgEvalHistory(cutoffTs) {
+  let index = 0;
+  while (index < vmgEvalHistory.length && vmgEvalHistory[index].ts < cutoffTs) {
+    index += 1;
+  }
+  const keepFrom = Math.max(0, index - 1);
+  if (keepFrom > 0) {
+    vmgEvalHistory.splice(0, keepFrom);
+  }
+}
 
-  let positionPercent = 50;
-  let confidencePercent = VMG_CONF_MAX;
-  if (Number.isFinite(speed) && Number.isFinite(slope)) {
-    const twa = getVmgTwaDegrees();
-    const breakEven = speed * Math.tan(toRadians(twa)) * (Math.PI / 180);
-    const scale = Math.max(Math.abs(breakEven), VMG_MIN_SLOPE_SCALE);
-    const bearingAwaySlope = vmgTack === "starboard" ? slope : -slope;
-    const delta = bearingAwaySlope - breakEven;
-    const normalized = clamp(delta / (scale * VMG_SLOPE_RANGE), -1, 1);
-    const bearingAwayIsLeft = vmgTack === "starboard";
-    const orientation = bearingAwayIsLeft ? -1 : 1;
-    positionPercent = 50 + normalized * orientation * VMG_POSITION_RANGE;
-    if (Number.isFinite(slopeStdErr)) {
-      const ratio = slopeStdErr / scale;
-      confidencePercent = clamp(
-        VMG_CONF_MIN + ratio * VMG_CONF_SCALE,
-        VMG_CONF_MIN,
-        VMG_CONF_MAX
-      );
-    }
+function recordVmgEvalSample(sample, heading, headingUnwrapped) {
+  if (!sample) return;
+  if (!Number.isFinite(sample.speed)) return;
+  if (!Number.isFinite(headingUnwrapped)) return;
+  const ts = Number.isFinite(sample.ts) ? sample.ts : Date.now();
+  const safeHeading = normalizeHeadingDegrees(heading);
+  if (!Number.isFinite(safeHeading)) return;
+  vmgEvalHistory.push({
+    ts,
+    speed: sample.speed,
+    heading: safeHeading,
+    headingUnwrapped,
+  });
+  pruneVmgEvalHistory(ts - VMG_EVAL_HISTORY_MS);
+}
+
+function interpolateLinear(prev, curr, ts, key) {
+  if (!prev || !curr) return null;
+  const start = prev.ts;
+  const end = curr.ts;
+  const span = end - start;
+  if (!Number.isFinite(span) || span <= 0) {
+    return Number.isFinite(prev[key]) ? prev[key] : null;
+  }
+  const frac = clamp((ts - start) / span, 0, 1);
+  const value = prev[key] + (curr[key] - prev[key]) * frac;
+  return Number.isFinite(value) ? value : null;
+}
+
+function interpolateHeadingDegrees(prev, curr, ts) {
+  const unwrapped = interpolateLinear(prev, curr, ts, "headingUnwrapped");
+  if (!Number.isFinite(unwrapped)) return null;
+  return normalizeHeadingDegrees(unwrapped);
+}
+
+function forEachVmgEvalSegment(startTs, endTs, callback) {
+  for (let i = 1; i < vmgEvalHistory.length; i += 1) {
+    const prev = vmgEvalHistory[i - 1];
+    const curr = vmgEvalHistory[i];
+    if (!prev || !curr) continue;
+    if (curr.ts <= startTs || prev.ts >= endTs) continue;
+    const segStart = Math.max(prev.ts, startTs);
+    const segEnd = Math.min(curr.ts, endTs);
+    if (segEnd <= segStart) continue;
+    callback(prev, curr, segStart, segEnd);
+  }
+}
+
+function computeWindowHeadingMean(startTs, endTs) {
+  let sumSin = 0;
+  let sumCos = 0;
+  let duration = 0;
+  forEachVmgEvalSegment(startTs, endTs, (prev, curr, segStart, segEnd) => {
+    const midTs = (segStart + segEnd) / 2;
+    const heading = interpolateHeadingDegrees(prev, curr, midTs);
+    if (!Number.isFinite(heading)) return;
+    const weight = segEnd - segStart;
+    const rad = toRadians(heading);
+    sumSin += Math.sin(rad) * weight;
+    sumCos += Math.cos(rad) * weight;
+    duration += weight;
+  });
+  if (duration <= 0) return null;
+  return meanHeadingDegreesFromSinCos(sumSin, sumCos);
+}
+
+function computeVmgAtTime(prev, curr, ts, windAxisDeg) {
+  if (!Number.isFinite(windAxisDeg)) return null;
+  const heading = interpolateHeadingDegrees(prev, curr, ts);
+  if (!Number.isFinite(heading)) return null;
+  const speed = interpolateLinear(prev, curr, ts, "speed");
+  if (!Number.isFinite(speed)) return null;
+  const angleDiff = Math.abs(normalizeDeltaDegrees(heading - windAxisDeg));
+  return speed * Math.cos(toRadians(angleDiff));
+}
+
+function computeWindowVmgAverage(startTs, endTs, windAxisDeg) {
+  let sum = 0;
+  let duration = 0;
+  forEachVmgEvalSegment(startTs, endTs, (prev, curr, segStart, segEnd) => {
+    const v0 = computeVmgAtTime(prev, curr, segStart, windAxisDeg);
+    const v1 = computeVmgAtTime(prev, curr, segEnd, windAxisDeg);
+    if (!Number.isFinite(v0) || !Number.isFinite(v1)) return;
+    const segAvg = 0.5 * (v0 + v1);
+    const weight = segEnd - segStart;
+    sum += segAvg * weight;
+    duration += weight;
+  });
+  if (duration <= 0) return null;
+  return sum / duration;
+}
+
+function computeVmgWindAxis(startTs, endTs) {
+  const meanHeading = computeWindowHeadingMean(startTs, endTs);
+  if (!Number.isFinite(meanHeading)) return null;
+  const twa = getVmgTwaDegrees();
+  const offset = vmgTack === "starboard" ? twa : -twa;
+  return normalizeHeadingDegrees(meanHeading + offset);
+}
+
+function formatVmgChangePercent(percent) {
+  if (!Number.isFinite(percent)) return "--%";
+  if (percent >= VMG_EVAL_MAX_GAIN) return ">50%";
+  if (percent <= -VMG_EVAL_MAX_GAIN) return "<-50%";
+  const rounded = Math.round(percent);
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded}%`;
+}
+
+function renderVmgIndicator() {
+  if (!els.vmgEvalValue) return;
+  if (!vmgEvalHistory.length) {
+    els.vmgEvalValue.textContent = "--%";
+    return;
   }
 
-  const safePosition = clamp(positionPercent, 5, 95);
-  els.vmgBar.style.setProperty("--vmg-position", `${safePosition}%`);
-  els.vmgBar.style.setProperty("--vmg-confidence", `${confidencePercent}%`);
+  const windowMs = VMG_EVAL_WINDOW_SEC * 1000;
+  const endTs = vmgEvalHistory[vmgEvalHistory.length - 1].ts;
+  const currentStart = endTs - windowMs;
+  const prevStart = currentStart - windowMs;
+  pruneVmgEvalHistory(prevStart - 1000);
+
+  const windAxis = computeVmgWindAxis(prevStart, currentStart);
+  if (!Number.isFinite(windAxis)) {
+    els.vmgEvalValue.textContent = "--%";
+    return;
+  }
+
+  const prevAvg = computeWindowVmgAverage(prevStart, currentStart, windAxis);
+  const currAvg = computeWindowVmgAverage(currentStart, endTs, windAxis);
+  if (!Number.isFinite(prevAvg) || !Number.isFinite(currAvg)) {
+    els.vmgEvalValue.textContent = "--%";
+    return;
+  }
+  if (Math.abs(prevAvg) < VMG_EVAL_MIN_BASE) {
+    els.vmgEvalValue.textContent = "--%";
+    return;
+  }
+
+  const percent = ((currAvg - prevAvg) / Math.abs(prevAvg)) * 100;
+  els.vmgEvalValue.textContent = formatVmgChangePercent(percent);
 }
 
 function updateVmgEstimate(position) {
@@ -477,6 +1172,9 @@ function updateVmgEstimate(position) {
   vmgEstimate.lastHeadingUnwrapped = headingUnwrapped;
   vmgEstimate.lastSpeed = sample.speed;
 
+  if (Number.isFinite(headingUnwrapped)) {
+    recordVmgEvalSample(sample, heading, headingUnwrapped);
+  }
   if (!Number.isFinite(headingUnwrapped)) return;
   if (!Number.isFinite(vmgEstimate.lastTs)) {
     vmgEstimate.lastTs = sample.ts;
@@ -568,8 +1266,9 @@ function updateVmgEstimate(position) {
 }
 
 function updateVmgGpsState() {
-  if (!els.vmgBar) return;
-  els.vmgBar.classList.toggle("gps-bad", isVmgGpsBad());
+  const target = els.vmgEval || els.vmgBar;
+  if (!target) return;
+  target.classList.toggle("gps-bad", isVmgGpsBad());
 }
 
 function buildImuMappingCandidates() {
@@ -1992,6 +2691,11 @@ function applyKalmanEstimate(result, options = {}) {
   state.bowPosition = bowPosition;
   state.velocity = result.velocity;
   state.speed = result.speed;
+  recordLifterHeadingFromGps(
+    result.velocity,
+    result.speed,
+    result.position?.timestamp || Date.now()
+  );
   if (recordTrack) {
     recordTrackPoints(rawPosition, result.position, bowPosition);
   }
@@ -2037,6 +2741,11 @@ function handlePosition(position) {
     position,
     state.velocity,
     state.bowOffsetMeters
+  );
+  recordLifterHeadingFromGps(
+    state.velocity,
+    state.speed,
+    position.timestamp || Date.now()
   );
   // Raw fallback: track device and bow separately, consistent with Kalman path.
   state.kalmanPosition = null;
@@ -2207,9 +2916,9 @@ function bindEvents() {
     });
   }
 
-  if (els.goVmg) {
-    els.goVmg.addEventListener("click", () => {
-      setView("vmg");
+  if (els.openLifter) {
+    els.openLifter.addEventListener("click", () => {
+      setView("lifter");
     });
   }
 
@@ -2219,6 +2928,46 @@ function bindEvents() {
         setView("home");
       });
     });
+  }
+
+  if (els.lifterWindow) {
+    lifterWindowSeconds = clampLifterWindowSeconds(els.lifterWindow.value);
+    syncLifterWindowUi();
+    lifterBinDurationMs = getLifterBinDurationMs(lifterWindowSeconds);
+    rebuildLifterBins();
+    const onWindowChange = () => {
+      lifterWindowSeconds = clampLifterWindowSeconds(els.lifterWindow.value);
+      syncLifterWindowUi();
+      lifterBinDurationMs = getLifterBinDurationMs(lifterWindowSeconds);
+      rebuildLifterBins();
+      requestLifterRender({ force: true });
+    };
+    els.lifterWindow.addEventListener("input", onWindowChange);
+    els.lifterWindow.addEventListener("change", onWindowChange);
+  }
+
+  if (els.lifterDebugToggle) {
+    syncLifterDebugToggleUi();
+    els.lifterDebugToggle.addEventListener("click", () => {
+      const next = lifterHeadingSource === "debug-wind" ? "gps" : "debug-wind";
+      setLifterHeadingSource(next);
+    });
+  }
+
+  if (els.lifterDebugRefresh) {
+    els.lifterDebugRefresh.addEventListener("click", () => {
+      hardReload();
+    });
+  }
+
+  if (els.lifterDebugSpeed) {
+    lifterDebug.speed = normalizeLifterDebugSpeed(els.lifterDebugSpeed.value);
+    syncLifterDebugSpeedUi();
+    const onSpeedChange = () => {
+      setLifterDebugSpeed(els.lifterDebugSpeed.value);
+    };
+    els.lifterDebugSpeed.addEventListener("input", onSpeedChange);
+    els.lifterDebugSpeed.addEventListener("change", onSpeedChange);
   }
 
   if (els.vmgTackPort || els.vmgTackStarboard) {
@@ -2744,16 +3493,19 @@ function bindEvents() {
   window.addEventListener("hashchange", syncViewFromHash);
 }
 
-function setViewHidden(id, hidden) {
-  const section = document.getElementById(id);
-  if (!section) return;
-  section.setAttribute("aria-hidden", hidden ? "true" : "false");
-}
-
 function setView(view) {
+  const leavingLifter = document.body.classList.contains("lifter-mode") && view !== "lifter";
+  if (leavingLifter) {
+    stopLifterDebugPlayback();
+    if (lifterRenderTimer) {
+      clearTimeout(lifterRenderTimer);
+      lifterRenderTimer = null;
+    }
+  }
   document.body.classList.remove(
     "home-mode",
     "vmg-mode",
+    "lifter-mode",
     "race-mode",
     "coords-mode",
     "location-mode",
@@ -2762,9 +3514,10 @@ function setView(view) {
     "info-mode",
     "track-mode"
   );
-  const sections = [
+  [
     "home-view",
     "vmg-view",
+    "lifter-view",
     "race-view",
     "coords-view",
     "location-view",
@@ -2773,14 +3526,29 @@ function setView(view) {
     "info-view",
     "track-view",
     "setup-view",
-  ];
-  sections.forEach((id) => setViewHidden(id, true));
+  ].forEach((id) => {
+    const section = document.getElementById(id);
+    if (section) {
+      section.setAttribute("aria-hidden", "true");
+    }
+  });
 
   if (view === "home") {
     updateInputs();
     updateImuCalibrationUi();
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
     document.body.classList.add("home-mode");
-    setViewHidden("home-view", false);
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    document.getElementById("home-view").setAttribute("aria-hidden", "false");
     history.replaceState(null, "", "#home");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2788,17 +3556,61 @@ function setView(view) {
     return;
   }
   if (view === "vmg") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
     document.body.classList.add("vmg-mode");
-    setViewHidden("vmg-view", false);
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    document.getElementById("vmg-view").setAttribute("aria-hidden", "false");
     history.replaceState(null, "", "#vmg");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
     setGpsMode("setup");
     return;
   }
+  if (view === "lifter") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.body.classList.add("lifter-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
+    document.getElementById("lifter-view").setAttribute("aria-hidden", "false");
+    history.replaceState(null, "", "#lifter");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    releaseWakeLock();
+    setGpsMode("setup");
+    syncLifterWindowUi();
+    syncLifterDebugToggleUi();
+    startLifterDebugPlayback();
+    rebuildLifterBins();
+    requestLifterRender({ force: true });
+    return;
+  }
   if (view === "race") {
     document.body.classList.add("race-mode");
-    setViewHidden("race-view", false);
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "false");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#race");
     window.scrollTo({ top: 0, behavior: "instant" });
     requestWakeLock();
@@ -2808,8 +3620,17 @@ function setView(view) {
   }
   if (view === "coords") {
     updateInputs();
+    document.body.classList.remove("race-mode");
     document.body.classList.add("coords-mode");
-    setViewHidden("coords-view", false);
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "false");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#coords");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2817,8 +3638,17 @@ function setView(view) {
     return;
   }
   if (view === "location") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
     document.body.classList.add("location-mode");
-    setViewHidden("location-view", false);
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "false");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#location");
     releaseWakeLock();
     setGpsMode("setup", { force: true, highAccuracy: true });
@@ -2827,8 +3657,20 @@ function setView(view) {
   if (view === "settings") {
     updateInputs();
     updateImuCalibrationUi();
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
     document.body.classList.add("settings-mode");
-    setViewHidden("settings-view", false);
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "false");
+    document.getElementById("boat-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#settings");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2837,8 +3679,21 @@ function setView(view) {
   }
   if (view === "boat") {
     updateInputs();
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("settings-mode");
     document.body.classList.add("boat-mode");
-    setViewHidden("boat-view", false);
+    document.body.classList.remove("info-mode");
+    document.body.classList.remove("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("settings-view").setAttribute("aria-hidden", "true");
+    document.getElementById("boat-view").setAttribute("aria-hidden", "false");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#boat");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2846,8 +3701,17 @@ function setView(view) {
     return;
   }
   if (view === "info") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
     document.body.classList.add("info-mode");
-    setViewHidden("info-view", false);
+    document.body.classList.remove("track-mode");
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "false");
+    document.getElementById("track-view").setAttribute("aria-hidden", "true");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#info");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2855,8 +3719,17 @@ function setView(view) {
     return;
   }
   if (view === "track") {
+    document.body.classList.remove("race-mode");
+    document.body.classList.remove("coords-mode");
+    document.body.classList.remove("location-mode");
+    document.body.classList.remove("info-mode");
     document.body.classList.add("track-mode");
-    setViewHidden("track-view", false);
+    document.getElementById("race-view").setAttribute("aria-hidden", "true");
+    document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+    document.getElementById("location-view").setAttribute("aria-hidden", "true");
+    document.getElementById("info-view").setAttribute("aria-hidden", "true");
+    document.getElementById("track-view").setAttribute("aria-hidden", "false");
+    document.getElementById("setup-view").setAttribute("aria-hidden", "true");
     history.replaceState(null, "", "#track");
     window.scrollTo({ top: 0, behavior: "instant" });
     releaseWakeLock();
@@ -2864,7 +3737,17 @@ function setView(view) {
     renderTrack();
     return;
   }
-  setViewHidden("setup-view", false);
+  document.body.classList.remove("race-mode");
+  document.body.classList.remove("coords-mode");
+  document.body.classList.remove("location-mode");
+  document.body.classList.remove("info-mode");
+  document.body.classList.remove("track-mode");
+  document.getElementById("race-view").setAttribute("aria-hidden", "true");
+  document.getElementById("coords-view").setAttribute("aria-hidden", "true");
+  document.getElementById("location-view").setAttribute("aria-hidden", "true");
+  document.getElementById("info-view").setAttribute("aria-hidden", "true");
+  document.getElementById("track-view").setAttribute("aria-hidden", "true");
+  document.getElementById("setup-view").setAttribute("aria-hidden", "false");
   history.replaceState(null, "", "#setup");
   releaseWakeLock();
   setGpsMode("setup");
@@ -2877,6 +3760,10 @@ function syncViewFromHash() {
   }
   if (location.hash === "#vmg") {
     setView("vmg");
+    return;
+  }
+  if (location.hash === "#lifter") {
+    setView("lifter");
     return;
   }
   if (location.hash === "#race") {
@@ -2957,6 +3844,9 @@ updateViewportHeight();
 
 window.addEventListener("resize", () => {
   updateViewportHeight();
+  if (document.body.classList.contains("lifter-mode")) {
+    requestLifterRender({ force: true });
+  }
   if (document.body.classList.contains("track-mode")) {
     renderTrack();
   }
