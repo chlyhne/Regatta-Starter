@@ -971,28 +971,45 @@ function getVmgTwaDegrees() {
 }
 
 function getVmgSample(position) {
-  if (!position || !position.coords) return null;
-  const coords = position.coords;
-  let speed = Number.isFinite(coords.speed) ? coords.speed : null;
-  let heading = Number.isFinite(coords.heading) ? coords.heading : null;
-  if (!Number.isFinite(speed) || !Number.isFinite(heading)) {
-    const previous = vmgEstimate.lastRawPosition;
-    if (previous) {
-      const computed = computeVelocityFromPositions(position, previous);
-      if (!Number.isFinite(speed)) {
-        speed = computed.speed;
-      }
-      if (!Number.isFinite(heading)) {
-        heading = headingFromVelocity(computed);
+  const useKalman =
+    state.useKalman &&
+    state.kalmanPosition &&
+    state.velocity &&
+    Number.isFinite(state.speed);
+  const sourcePosition = useKalman ? state.kalmanPosition : position;
+  if (!sourcePosition || !sourcePosition.coords) return null;
+
+  let speed = null;
+  let heading = null;
+  if (useKalman) {
+    speed = state.speed;
+    heading = headingFromVelocity(state.velocity);
+  } else {
+    const coords = sourcePosition.coords;
+    speed = Number.isFinite(coords.speed) ? coords.speed : null;
+    heading = Number.isFinite(coords.heading) ? coords.heading : null;
+    if (!Number.isFinite(speed) || !Number.isFinite(heading)) {
+      const previous = vmgEstimate.lastRawPosition;
+      if (previous) {
+        const computed = computeVelocityFromPositions(sourcePosition, previous);
+        if (!Number.isFinite(speed)) {
+          speed = computed.speed;
+        }
+        if (!Number.isFinite(heading)) {
+          heading = headingFromVelocity(computed);
+        }
       }
     }
+    vmgEstimate.lastRawPosition = sourcePosition;
   }
-  vmgEstimate.lastRawPosition = position;
+
   if (!Number.isFinite(speed)) return null;
   if (!Number.isFinite(heading)) {
     heading = null;
   }
-  const ts = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+  const ts = Number.isFinite(sourcePosition.timestamp)
+    ? sourcePosition.timestamp
+    : Date.now();
   return { speed, heading, ts };
 }
 
