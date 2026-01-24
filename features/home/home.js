@@ -7,11 +7,16 @@ let homeDeps = {
   startRecording: null,
   stopRecording: null,
   isRecordingEnabled: null,
+  sendDiagnostics: null,
 };
+
+const DIAG_URL_KEY = "racetimer-diag-url";
+const DIAG_TOKEN_KEY = "racetimer-diag-token";
 
 function initHome(deps = {}) {
   homeDeps = { ...homeDeps, ...deps };
   syncRecordingUi();
+  syncSendUi();
 }
 
 function syncRecordingUi() {
@@ -42,6 +47,56 @@ function closeRecordNoteModal() {
   document.body.classList.remove("modal-open");
   if (els.recordNoteModal) {
     els.recordNoteModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function syncSendUi(message) {
+  if (els.sendStatus) {
+    if (message) {
+      els.sendStatus.textContent = message;
+    }
+  }
+}
+
+function getStoredDiagnosticsSettings() {
+  if (typeof sessionStorage === "undefined") return { url: "", token: "" };
+  return {
+    url: sessionStorage.getItem(DIAG_URL_KEY) || "",
+    token: sessionStorage.getItem(DIAG_TOKEN_KEY) || "",
+  };
+}
+
+function setStoredDiagnosticsSettings(url, token) {
+  if (typeof sessionStorage === "undefined") return;
+  if (url) {
+    sessionStorage.setItem(DIAG_URL_KEY, url);
+  } else {
+    sessionStorage.removeItem(DIAG_URL_KEY);
+  }
+  if (token) {
+    sessionStorage.setItem(DIAG_TOKEN_KEY, token);
+  } else {
+    sessionStorage.removeItem(DIAG_TOKEN_KEY);
+  }
+}
+
+function openSendDiagModal() {
+  const stored = getStoredDiagnosticsSettings();
+  if (els.sendDiagUrl) els.sendDiagUrl.value = stored.url;
+  if (els.sendDiagToken) els.sendDiagToken.value = stored.token;
+  document.body.classList.add("modal-open");
+  if (els.sendDiagModal) {
+    els.sendDiagModal.setAttribute("aria-hidden", "false");
+  }
+  if (els.sendDiagUrl) {
+    els.sendDiagUrl.focus();
+  }
+}
+
+function closeSendDiagModal() {
+  document.body.classList.remove("modal-open");
+  if (els.sendDiagModal) {
+    els.sendDiagModal.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -162,6 +217,56 @@ function bindHomeEvents() {
   if (els.recordNoteCancel) {
     els.recordNoteCancel.addEventListener("click", () => {
       closeRecordNoteModal();
+    });
+  }
+
+  if (els.sendDiagnostics) {
+    els.sendDiagnostics.addEventListener("click", () => {
+      openSendDiagModal();
+    });
+  }
+
+  if (els.sendDiagCancel) {
+    els.sendDiagCancel.addEventListener("click", () => {
+      closeSendDiagModal();
+    });
+  }
+
+  if (els.sendDiagConfirm) {
+    els.sendDiagConfirm.addEventListener("click", async () => {
+      if (!homeDeps.sendDiagnostics) return;
+      const url = els.sendDiagUrl ? els.sendDiagUrl.value.trim() : "";
+      const token = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
+      if (!url) {
+        window.alert("Endpoint URL is required.");
+        return;
+      }
+      try {
+        new URL(url);
+      } catch {
+        window.alert("Endpoint URL is invalid.");
+        return;
+      }
+      setStoredDiagnosticsSettings(url, token);
+      if (els.sendDiagConfirm) {
+        els.sendDiagConfirm.disabled = true;
+      }
+      syncSendUi("Sending diagnostics...");
+      const result = await homeDeps.sendDiagnostics({ url, token });
+      if (els.sendDiagConfirm) {
+        els.sendDiagConfirm.disabled = false;
+      }
+      closeSendDiagModal();
+      if (result && result.ok === false) {
+        const message = result.error || "Diagnostics upload failed.";
+        syncSendUi(`Upload failed: ${message}`);
+        return;
+      }
+      const time = new Date().toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      syncSendUi(`Uploaded ${time}`);
     });
   }
 

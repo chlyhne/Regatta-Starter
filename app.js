@@ -78,6 +78,9 @@ import {
   startRecording,
   stopRecording,
   recordSample,
+  flushRecording,
+  getRecordingRecords,
+  getDeviceId,
 } from "./core/recording.js";
 import { BUILD_STAMP } from "./build.js";
 
@@ -178,6 +181,57 @@ async function startRecordingSession(note) {
 
 function stopRecordingSession() {
   stopRecording();
+}
+
+async function gzipNdjson(text) {
+  if (typeof CompressionStream === "undefined") {
+    throw new Error("Compression not supported on this device.");
+  }
+  const blob = new Blob([text], { type: "application/x-ndjson" });
+  const compressedStream = blob.stream().pipeThrough(new CompressionStream("gzip"));
+  return await new Response(compressedStream).blob();
+}
+
+async function sendDiagnostics({ url, token }) {
+  try {
+    await flushRecording();
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    const records = await getRecordingRecords({ sinceMs: cutoff });
+    if (!records.length) {
+      return { ok: false, error: "No data to upload." };
+    }
+    const deviceId = getDeviceId();
+    const uploadMeta = {
+      ts: Date.now(),
+      type: "upload",
+      deviceId,
+      payload: { build: BUILD_STAMP },
+    };
+    const payload = [uploadMeta, ...records]
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0))
+      .map((record) => JSON.stringify(record))
+      .join("\n");
+    const compressed = await gzipNdjson(payload);
+    const headers = {
+      "Content-Type": "application/x-ndjson",
+      "Content-Encoding": "gzip",
+      "X-Device-Id": deviceId,
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: compressed,
+    });
+    if (!response.ok) {
+      return { ok: false, error: `Upload failed (${response.status})` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 function extractPositionPayload(position) {
@@ -1028,6 +1082,7 @@ initHome({
   startRecording: startRecordingSession,
   stopRecording: stopRecordingSession,
   isRecordingEnabled,
+  sendDiagnostics,
 });
 initSettingsView({ saveSettings, setView, updateStartDisplay });
 initStarter({

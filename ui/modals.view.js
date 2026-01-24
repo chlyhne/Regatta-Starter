@@ -51,4 +51,19 @@ export const modalsView = `
     </div>
   </div>
 </section>
+
+<section id="send-diag-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Send diagnostics</h2>
+    <p class="info-text">Uploads the last hour of data.</p>
+    <label for="send-diag-url">Endpoint URL</label>
+    <input id="send-diag-url" type="text" placeholder="https://example.com/upload" />
+    <label for="send-diag-token">Access token (optional)</label>
+    <input id="send-diag-token" type="text" placeholder="token" />
+    <div class="modal-actions">
+      <button id="send-diag-confirm">Send</button>
+      <button id="send-diag-cancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
 `;

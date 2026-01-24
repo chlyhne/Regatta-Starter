@@ -104,6 +104,11 @@ function flushPendingRecords() {
     });
 }
 
+async function flushRecording() {
+  flushPendingRecords();
+  await flushChain;
+}
+
 async function writeRecords(records) {
   if (!records.length) return;
   const db = await openRecordingDb();
@@ -195,10 +200,35 @@ function recordSample(type, payload, timestamp) {
   });
 }
 
+async function getRecordingRecords(options = {}) {
+  const sinceMs = Number.isFinite(options.sinceMs) ? options.sinceMs : null;
+  const db = await openRecordingDb();
+  return await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const index = store.index("ts");
+    const range = sinceMs !== null ? IDBKeyRange.lowerBound(sinceMs) : null;
+    const records = [];
+    const request = range ? index.openCursor(range) : store.openCursor();
+    request.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (!cursor) {
+        resolve(records);
+        return;
+      }
+      records.push(cursor.value);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error || new Error("IndexedDB read failed"));
+  });
+}
+
 export {
   isRecordingEnabled,
   startRecording,
   stopRecording,
   recordSample,
   getDeviceId,
+  flushRecording,
+  getRecordingRecords,
 };
