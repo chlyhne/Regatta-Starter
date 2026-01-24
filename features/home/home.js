@@ -10,7 +10,6 @@ let homeDeps = {
   sendDiagnostics: null,
 };
 
-const DIAG_URL_KEY = "racetimer-diag-url";
 const DIAG_TOKEN_KEY = "racetimer-diag-token";
 
 function initHome(deps = {}) {
@@ -58,21 +57,13 @@ function syncSendUi(message) {
   }
 }
 
-function getStoredDiagnosticsSettings() {
-  if (typeof sessionStorage === "undefined") return { url: "", token: "" };
-  return {
-    url: sessionStorage.getItem(DIAG_URL_KEY) || "",
-    token: sessionStorage.getItem(DIAG_TOKEN_KEY) || "",
-  };
+function getStoredDiagnosticsToken() {
+  if (typeof sessionStorage === "undefined") return "";
+  return sessionStorage.getItem(DIAG_TOKEN_KEY) || "";
 }
 
-function setStoredDiagnosticsSettings(url, token) {
+function setStoredDiagnosticsToken(token) {
   if (typeof sessionStorage === "undefined") return;
-  if (url) {
-    sessionStorage.setItem(DIAG_URL_KEY, url);
-  } else {
-    sessionStorage.removeItem(DIAG_URL_KEY);
-  }
   if (token) {
     sessionStorage.setItem(DIAG_TOKEN_KEY, token);
   } else {
@@ -81,15 +72,14 @@ function setStoredDiagnosticsSettings(url, token) {
 }
 
 function openSendDiagModal() {
-  const stored = getStoredDiagnosticsSettings();
-  if (els.sendDiagUrl) els.sendDiagUrl.value = stored.url;
-  if (els.sendDiagToken) els.sendDiagToken.value = stored.token;
+  const token = getStoredDiagnosticsToken();
+  if (els.sendDiagToken) els.sendDiagToken.value = token;
   document.body.classList.add("modal-open");
   if (els.sendDiagModal) {
     els.sendDiagModal.setAttribute("aria-hidden", "false");
   }
-  if (els.sendDiagUrl) {
-    els.sendDiagUrl.focus();
+  if (els.sendDiagToken) {
+    els.sendDiagToken.focus();
   }
 }
 
@@ -235,24 +225,13 @@ function bindHomeEvents() {
   if (els.sendDiagConfirm) {
     els.sendDiagConfirm.addEventListener("click", async () => {
       if (!homeDeps.sendDiagnostics) return;
-      const url = els.sendDiagUrl ? els.sendDiagUrl.value.trim() : "";
       const token = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
-      if (!url) {
-        window.alert("Endpoint URL is required.");
-        return;
-      }
-      try {
-        new URL(url);
-      } catch {
-        window.alert("Endpoint URL is invalid.");
-        return;
-      }
-      setStoredDiagnosticsSettings(url, token);
+      setStoredDiagnosticsToken(token);
       if (els.sendDiagConfirm) {
         els.sendDiagConfirm.disabled = true;
       }
       syncSendUi("Sending diagnostics...");
-      const result = await homeDeps.sendDiagnostics({ url, token });
+      const result = await homeDeps.sendDiagnostics({ token });
       if (els.sendDiagConfirm) {
         els.sendDiagConfirm.disabled = false;
       }

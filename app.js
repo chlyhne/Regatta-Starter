@@ -85,6 +85,7 @@ import {
 import { BUILD_STAMP } from "./build.js";
 
 const NO_CACHE_KEY = "racetimer-nocache";
+const DIAG_ENDPOINT_URL = "https://racetimer-upload.hummesse.workers.dev";
 const SPEED_HISTORY_WINDOW_MS =
   KALMAN_TUNING.processNoise.speedScale.recentMaxSpeedWindowSeconds * 1000;
 const KALMAN_PREDICT_HZ = 5;
@@ -192,8 +193,12 @@ async function gzipNdjson(text) {
   return await new Response(compressedStream).blob();
 }
 
-async function sendDiagnostics({ url, token }) {
+async function sendDiagnostics({ url, token } = {}) {
   try {
+    const endpoint = url || DIAG_ENDPOINT_URL;
+    if (!endpoint) {
+      return { ok: false, error: "Diagnostics endpoint is not configured." };
+    }
     await flushRecording();
     const cutoff = Date.now() - 60 * 60 * 1000;
     const records = await getRecordingRecords({ sinceMs: cutoff });
@@ -220,7 +225,7 @@ async function sendDiagnostics({ url, token }) {
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
-    const response = await fetch(url, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers,
       body: compressed,
