@@ -323,8 +323,27 @@ function finalizeReplayEvents(events) {
 }
 
 async function readReplayText(response, url) {
-  const isGzip = url.endsWith(".gz") || response.headers.get("Content-Encoding") === "gzip";
-  if (!isGzip) {
+  const gzipHint = url.endsWith(".gz") || response.headers.get("Content-Encoding") === "gzip";
+  if (!gzipHint) {
+    return response.text();
+  }
+  let shouldDecompress = true;
+  if (response.body && typeof response.clone === "function") {
+    try {
+      const probe = response.clone();
+      const reader = probe.body.getReader();
+      const { value } = await reader.read();
+      if (value && value.length >= 2) {
+        shouldDecompress = value[0] === 0x1f && value[1] === 0x8b;
+      } else {
+        shouldDecompress = false;
+      }
+      reader.cancel();
+    } catch {
+      shouldDecompress = true;
+    }
+  }
+  if (!shouldDecompress) {
     return response.text();
   }
   if (typeof DecompressionStream === "undefined" || !response.body) {
