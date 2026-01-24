@@ -8,6 +8,8 @@ let homeDeps = {
   stopRecording: null,
   isRecordingEnabled: null,
   sendDiagnostics: null,
+  getDiagUploadToken: null,
+  setDiagUploadToken: null,
   getReplayState: null,
   loadReplayEntries: null,
   startReplay: null,
@@ -70,7 +72,14 @@ function openSendDiagModal() {
   if (els.sendDiagModal) {
     els.sendDiagModal.setAttribute("aria-hidden", "false");
   }
-  if (els.sendDiagConfirm) {
+  let tokenValue = "";
+  if (els.sendDiagToken) {
+    tokenValue = homeDeps.getDiagUploadToken ? homeDeps.getDiagUploadToken() : "";
+    els.sendDiagToken.value = tokenValue || "";
+  }
+  if (els.sendDiagToken && !tokenValue) {
+    els.sendDiagToken.focus();
+  } else if (els.sendDiagConfirm) {
     els.sendDiagConfirm.focus();
   }
 }
@@ -329,11 +338,15 @@ function bindHomeEvents() {
   if (els.sendDiagConfirm) {
     els.sendDiagConfirm.addEventListener("click", async () => {
       if (!homeDeps.sendDiagnostics) return;
+      const token = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
+      if (homeDeps.setDiagUploadToken) {
+        homeDeps.setDiagUploadToken(token);
+      }
       if (els.sendDiagConfirm) {
         els.sendDiagConfirm.disabled = true;
       }
       syncSendUi("Sending diagnostics...");
-      const result = await homeDeps.sendDiagnostics();
+      const result = await homeDeps.sendDiagnostics({ token });
       if (els.sendDiagConfirm) {
         els.sendDiagConfirm.disabled = false;
       }
@@ -348,6 +361,14 @@ function bindHomeEvents() {
         minute: "2-digit",
       });
       syncSendUi(`Uploaded ${time}`);
+    });
+  }
+
+  if (els.sendDiagToken) {
+    els.sendDiagToken.addEventListener("change", () => {
+      if (!homeDeps.setDiagUploadToken) return;
+      const value = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
+      homeDeps.setDiagUploadToken(value);
     });
   }
 

@@ -16,3 +16,66 @@ meters relative to that origin.
 This is implemented with helpers in \texttt{geo.js} (\texttt{toMeters}, \texttt{fromMeters}).
 Over the distances we care about at a start line, this approximation is accurate enough and
 avoids complicated geodesy inside the filter.
+
+\subsection{Diagnostics recording pipeline}
+
+This subsection explains how the app captures raw sensor streams for diagnostics without
+interfering with the on-water workflow.
+
+Recording is user-initiated and begins with a short note so a session can be identified
+later. Once recording starts, the app immediately switches GPS to high accuracy for the
+duration of the session, because both the Kalman filter and later analysis depend on the
+uncertainty fields that are only meaningful at that setting. The recorder does not attempt
+to synchronize sensors into frames; instead, each GPS or IMU event is stored with its own
+timestamps. For GPS this includes both the GPS-reported time and the device wall clock,
+which is necessary for later alignment to higher-precision RTK data. For IMU data, the
+raw rotation rates, acceleration, and acceleration including gravity are stored alongside
+the mapping used for yaw extraction, so the reconstruction path can be audited.
+
+Storage is implemented in \texttt{core/recording.js} using an IndexedDB store named
+\texttt{racetimer-recording}. Each record includes a device ID, a session ID, a timestamp
+used for ordering, and a typed payload. A short in-memory queue batches writes to avoid
+per-event overhead, and a prune pass keeps roughly the last hour of data. The result is a
+ring buffer that is offline-friendly yet detailed enough for later analysis.
+
+\subsection{Record types and upload format}
+
+This subsection describes what is written to disk and how those records are packaged for
+upload.
+
+At session start a \texttt{meta} record stores the user note, settings snapshot, device
+information, and build stamp. As the session runs, the app writes \texttt{gps} records
+containing the full coordinate payload plus both GPS and device time, \texttt{imu} records
+containing the raw motion samples, \texttt{kalman} records containing the filter state, and
+\texttt{derived} records containing the processed boat state (position, velocity, speed,
+heading). This mix allows offline analysis to compare raw inputs against what the onboard
+filter produced without recomputing everything from scratch.
+
+When the user presses the send button, the app flushes pending writes, reads the last hour
+from IndexedDB, prepends an \texttt{upload} record with a build stamp, and sorts by timestamp.
+The payload is serialized as NDJSON so each record remains independent, then compressed with
+gzip before posting to the diagnostics endpoint. The line-oriented format keeps the payload
+streamable and lets the server store the data without parsing it into a larger schema. If
+the endpoint expects an upload key, the app includes it as a bearer token so only authorized
+clients can post data.
+
+\subsection{Replay pipeline and timing model}
+
+This subsection explains how recorded sessions are fed back into the app so algorithms
+see the same inputs as they would on the water.
+
+Replay uses a manifest file (\texttt{replay/manifest.json}) to list locally available data
+files. When a replay session starts, the app stops real GPS/IMU listeners, clears state,
+and inspects the recording to see whether raw GPS and IMU streams are present. If they are,
+those records drive the replay; if not, the system falls back to \texttt{derived} samples.
+Each record carries a device-time offset from the start of the file, and optional sensor
+times (GPS time or motion-event time) are converted into matching offsets so the original
+relative timing is preserved.
+
+During playback, the app advances a virtual replay clock and dispatches each record through
+the same entry points used by live sensors (\texttt{handlePosition} for GPS and the IMU
+processing pipeline for motion). This means the Kalman filter, heading logic, and plots
+cannot distinguish replay from live data. The replay speed simply scales the virtual clock,
+and time-based components read that clock rather than the system wall clock, ensuring that
+filter time steps remain consistent even at higher playback speeds. To keep the UI responsive,
+the replay loop processes events in bounded batches per tick.

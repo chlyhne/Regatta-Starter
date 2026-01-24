@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
 
@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   bowOffsetMeters: 0,
   boatLengthMeters: 0,
   imuCalibration: null,
+  diagUploadToken: "",
   start: {
     mode: "countdown",
     countdownSeconds: 300,
@@ -159,6 +160,7 @@ function normalizeSettings(raw) {
     bowOffsetMeters: Math.max(0, Number.parseFloat(raw?.bowOffsetMeters) || 0),
     boatLengthMeters: Math.max(0, Number.parseFloat(raw?.boatLengthMeters) || 0),
     imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
+    diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
     start: normalizeStart(raw?.start),
   };
 }
@@ -210,6 +212,10 @@ function migrateSettings(raw) {
   if (version < 3) {
     migrated.headingSourceByMode = { ...DEFAULT_HEADING_SOURCE_BY_MODE };
     migrated.version = 3;
+  }
+  if (version < 4) {
+    migrated.diagUploadToken = "";
+    migrated.version = 4;
   }
   return migrated;
 }

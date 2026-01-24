@@ -119,6 +119,7 @@ const els = {
   sendDiagModal: document.getElementById("send-diag-modal"),
   sendDiagConfirm: document.getElementById("send-diag-confirm"),
   sendDiagCancel: document.getElementById("send-diag-cancel"),
+  sendDiagToken: document.getElementById("send-diag-token"),
   recordNoteModal: document.getElementById("record-note-modal"),
   recordNoteInput: document.getElementById("record-note"),
   recordNoteStart: document.getElementById("record-note-start"),

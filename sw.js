@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v145";
+const CACHE_NAME = "racetimer-v147";
 const ASSETS = [
   "./",
   "./index.html",
@@ -63,6 +63,7 @@ const ASSETS = [
   "./docs/plots/gain-q-length.pdf",
   "./docs/plots/gain-speed-scale.pdf",
   "./docs/plots/gain-gravity-alpha.pdf",
+  "./replay/2026-01-24T22-00-29-861Z.ndjson.gz",
 ];
 
 self.addEventListener("message", (event) => {

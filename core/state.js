@@ -38,6 +38,7 @@ const state = {
   useKalman: true,
   headingSourceByMode: { vmg: "kalman", lifter: "kalman" },
   imuCalibration: null,
+  diagUploadToken: "",
   imuEnabled: false,
   replay: {
     active: false,

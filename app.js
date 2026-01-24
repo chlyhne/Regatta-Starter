@@ -237,13 +237,15 @@ async function sendDiagnostics({ url, token } = {}) {
       .map((record) => JSON.stringify(record))
       .join("\n");
     const compressed = await gzipNdjson(payload);
+    const resolvedToken =
+      typeof token === "string" ? token.trim() : (state.diagUploadToken || "").trim();
     const headers = {
       "Content-Type": "application/x-ndjson",
       "Content-Encoding": "gzip",
       "X-Device-Id": deviceId,
     };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+    if (resolvedToken) {
+      headers["Authorization"] = `Bearer ${resolvedToken}`;
     }
     const response = await fetch(endpoint, {
       method: "POST",
@@ -980,6 +982,17 @@ function setHeadingSourcePreference(mode, source) {
   }
 }
 
+function getDiagUploadToken() {
+  return state.diagUploadToken || "";
+}
+
+function setDiagUploadToken(value) {
+  const next = typeof value === "string" ? value.trim() : "";
+  if (state.diagUploadToken === next) return;
+  state.diagUploadToken = next;
+  saveSettings();
+}
+
 function loadSettings() {
   const settings = loadSettingsFromStorage();
   state.line = settings.line;
@@ -993,6 +1006,7 @@ function loadSettings() {
   state.bowOffsetMeters = settings.bowOffsetMeters;
   state.boatLengthMeters = settings.boatLengthMeters;
   state.imuCalibration = settings.imuCalibration || null;
+  state.diagUploadToken = settings.diagUploadToken || "";
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
   state.speedUnit = settings.speedUnit;
@@ -1015,6 +1029,7 @@ function saveSettings() {
     bowOffsetMeters: state.bowOffsetMeters,
     boatLengthMeters: state.boatLengthMeters,
     imuCalibration: state.imuCalibration,
+    diagUploadToken: state.diagUploadToken,
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,
     speedUnit: state.speedUnit,
@@ -1310,6 +1325,8 @@ initHome({
   stopRecording: stopRecordingSession,
   isRecordingEnabled,
   sendDiagnostics,
+  getDiagUploadToken,
+  setDiagUploadToken,
   getReplayState,
   loadReplayEntries,
   startReplay,
