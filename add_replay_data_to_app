@@ -118,3 +118,5 @@ PY
 
 echo "Added replay file: $dest"
 echo "Updated replay/manifest.json and sw.js"
+
+git add "replay/$base" replay/manifest.json sw.js >/dev/null 2>&1 || true
