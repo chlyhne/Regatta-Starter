@@ -2,14 +2,11 @@ import { state } from "./state.js";
 import { toMeters, fromMeters } from "./geo.js";
 import { computeVelocityFromHeading } from "./velocity.js";
 import { KALMAN_TUNING } from "./tuning.js";
+import { clamp } from "./common.js";
 
 // State vector layout: [x, y, vx, vy] in meters and meters/second, relative to a local origin.
 // Axes follow the local tangent plane: x = east, y = north (see geo.js).
 // We keep the math explicit (no linear algebra helpers) so every step stays inspectable.
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
 
 function clampDtSeconds(dtRaw) {
   // Clamp large dt spikes so a single stale GPS fix cannot explode covariance.

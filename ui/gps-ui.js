@@ -1,7 +1,7 @@
-import { state } from "./state.js";
-import { els } from "../ui/dom.js";
-import { toMeters } from "./geo.js";
-import { formatDistanceWithUnit } from "./format.js";
+import { state } from "../core/state.js";
+import { els } from "./dom.js";
+import { toMeters } from "../core/geo.js";
+import { formatDistanceWithUnit } from "../core/format.js";
 import { BUILD_STAMP } from "../build.js";
 
 function updateGPSDisplay() {

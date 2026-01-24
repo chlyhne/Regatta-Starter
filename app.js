@@ -9,7 +9,7 @@ import { unlockAudio } from "./core/audio.js";
 import { applyForwardOffset, toRadians } from "./core/geo.js";
 import { applyKalmanFilter, applyImuYawRate, predictKalmanState } from "./core/kalman.js";
 import { recordTrackPoints, renderTrack } from "./features/starter/track.js";
-import { updateGPSDisplay, updateDebugControls } from "./core/gps-ui.js";
+import { updateGPSDisplay, updateDebugControls } from "./ui/gps-ui.js";
 import {
   updateStatusUnitLabels,
   updateRaceMetricLabels,
@@ -104,6 +104,16 @@ function createDebugPosition() {
     },
     timestamp: Date.now(),
   };
+}
+
+function markGpsUnavailable() {
+  const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
+  if (!icons.length) return;
+  icons.forEach((icon) => {
+    icon.classList.add("bad");
+    icon.classList.remove("ok", "warn");
+    icon.title = "Geolocation unavailable";
+  });
 }
 
 function readDebugFlagFromUrl() {
@@ -704,7 +714,12 @@ function setDebugGpsEnabled(enabled) {
   } else {
     stopDebugGps();
     resetPositionState();
-    startRealGps(handlePosition, handlePositionError, getGpsOptionsForMode(state.gpsMode));
+    startRealGps(
+      handlePosition,
+      handlePositionError,
+      getGpsOptionsForMode(state.gpsMode),
+      markGpsUnavailable
+    );
   }
   updateDebugControls();
 }
@@ -722,7 +737,7 @@ function setGpsMode(mode, options = {}) {
     return;
   }
   const gpsOptions = highAccuracy ? GPS_OPTIONS_RACE : getGpsOptionsForMode(state.gpsMode);
-  startRealGps(handlePosition, handlePositionError, gpsOptions);
+  startRealGps(handlePosition, handlePositionError, gpsOptions, markGpsUnavailable);
 }
 
 function applyKalmanEstimate(result, options = {}) {
@@ -799,7 +814,7 @@ function handlePosition(position) {
 }
 
 function handlePositionError(err) {
-  const icons = [els.gpsIcon, els.vmgGpsIcon].filter(Boolean);
+  const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   icons.forEach((icon) => {
     icon.classList.add("bad");
@@ -807,7 +822,7 @@ function handlePositionError(err) {
     icon.title = `GPS error: ${err.message}`;
   });
   if (!state.debugGpsEnabled && err && (err.code === 2 || err.code === 3)) {
-    scheduleGpsRetry(handlePosition, handlePositionError);
+    scheduleGpsRetry(handlePosition, handlePositionError, markGpsUnavailable);
   }
 }
 
@@ -845,7 +860,7 @@ function tick() {
     renderTrack();
   }
   if (isGpsStale()) {
-    scheduleGpsRetry(handlePosition, handlePositionError);
+    scheduleGpsRetry(handlePosition, handlePositionError, markGpsUnavailable);
   }
   requestAnimationFrame(() => {
     setTimeout(tick, 1000);

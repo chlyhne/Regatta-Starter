@@ -13,7 +13,7 @@ import {
   updateRaceHintUnits,
   updateLineProjection,
 } from "../starter/race.js";
-import { updateGPSDisplay } from "../../core/gps-ui.js";
+import { updateGPSDisplay } from "../../ui/gps-ui.js";
 import { trimTrailingZeros } from "../../core/common.js";
 
 let settingsDeps = {

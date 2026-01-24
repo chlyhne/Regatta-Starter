@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v139";
+const CACHE_NAME = "racetimer-v140";
 const ASSETS = [
   "./",
   "./index.html",
@@ -22,10 +22,11 @@ const ASSETS = [
   "./core/audio.js",
   "./core/format.js",
   "./core/geo.js",
-  "./core/gps-ui.js",
+  "./core/units.js",
   "./core/gps-watch.js",
   "./core/velocity.js",
   "./core/kalman.js",
+  "./ui/gps-ui.js",
   "./features/starter/starter.js",
   "./features/starter/race.js",
   "./features/starter/race-fit.js",

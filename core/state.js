@@ -1,3 +1,5 @@
+import { SPEED_UNITS, DISTANCE_UNITS } from "./units.js";
+
 const EARTH_RADIUS = 6371000;
 const DEBUG_GPS_DEFAULT = false;
 const DEBUG_COORDS = { lat: 55.0, lon: 12.0 };
@@ -15,16 +17,6 @@ const TRACK_WINDOW_MS = 3 * 60 * 1000;
 const GPS_RETRY_DELAY_MS = 2000;
 const GPS_STALE_MS = 15000;
 const LINES_KEY = "racetimer-lines";
-const SPEED_UNITS = {
-  ms: { factor: 1, label: "m/s" },
-  kn: { factor: 1.943844, label: "kn" },
-  mph: { factor: 2.236936, label: "mph" },
-};
-const DISTANCE_UNITS = {
-  m: { factor: 1, label: "m" },
-  ft: { factor: 3.28084, label: "ft" },
-  yd: { factor: 1.093613, label: "yd" },
-};
 
 const hemisphereGroups = {};
 

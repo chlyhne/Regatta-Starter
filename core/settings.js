@@ -1,3 +1,10 @@
+import { clamp } from "./common.js";
+import {
+  normalizeTimeFormat,
+  normalizeSpeedUnit,
+  normalizeDistanceUnit,
+} from "./units.js";
+
 const STORAGE_KEY = "racetimer-settings";
 const SETTINGS_VERSION = 3;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
@@ -33,10 +40,6 @@ const DEFAULT_SETTINGS = {
   },
 };
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
 function toNumberOrNull(value) {
   const num = Number.parseFloat(value);
   return Number.isFinite(num) ? num : null;
@@ -67,20 +70,6 @@ function normalizeLineMeta(meta) {
 function normalizeCoordsFormat(format) {
   if (format === "dd" || format === "ddm" || format === "dms") return format;
   return DEFAULT_SETTINGS.coordsFormat;
-}
-
-function normalizeTimeFormat(format) {
-  return format === "12h" ? "12h" : "24h";
-}
-
-function normalizeSpeedUnit(unit) {
-  if (unit === "kn" || unit === "mph") return unit;
-  return "ms";
-}
-
-function normalizeDistanceUnit(unit) {
-  if (unit === "ft" || unit === "yd") return unit;
-  return "m";
 }
 
 function normalizeHeadingSource(source) {

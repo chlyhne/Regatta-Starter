@@ -1,5 +1,4 @@
 import { state, GPS_RETRY_DELAY_MS, GPS_STALE_MS } from "./state.js";
-import { els } from "../ui/dom.js";
 
 const GPS_OPTIONS_RACE = {
   enableHighAccuracy: true,
@@ -45,14 +44,18 @@ function startDebugGps(handlePosition, createDebugPosition) {
   }, 1000);
 }
 
-function startRealGps(handlePosition, handlePositionError, options = GPS_OPTIONS_SETUP) {
+function startRealGps(
+  handlePosition,
+  handlePositionError,
+  options = GPS_OPTIONS_SETUP,
+  onUnavailable
+) {
   stopDebugGps();
   if (!navigator.geolocation) {
-    if (els.gpsIcon) {
-      els.gpsIcon.classList.add("bad");
-      els.gpsIcon.title = "Geolocation unavailable";
+    if (typeof onUnavailable === "function") {
+      onUnavailable();
     }
-    return;
+    return false;
   }
   if (state.geoWatchId !== null) {
     navigator.geolocation.clearWatch(state.geoWatchId);
@@ -63,6 +66,7 @@ function startRealGps(handlePosition, handlePositionError, options = GPS_OPTIONS
     handlePositionError,
     options
   );
+  return true;
 }
 
 function isGpsStale() {
@@ -72,13 +76,13 @@ function isGpsStale() {
   return Date.now() - state.lastGpsFixAt > GPS_STALE_MS;
 }
 
-function scheduleGpsRetry(handlePosition, handlePositionError) {
+function scheduleGpsRetry(handlePosition, handlePositionError, onUnavailable) {
   if (state.debugGpsEnabled) return;
   if (state.gpsRetryTimer) return;
   state.gpsRetryTimer = setTimeout(() => {
     state.gpsRetryTimer = null;
     if (state.debugGpsEnabled) return;
-    startRealGps(handlePosition, handlePositionError, GPS_OPTIONS_RACE);
+    startRealGps(handlePosition, handlePositionError, GPS_OPTIONS_RACE, onUnavailable);
   }, GPS_RETRY_DELAY_MS);
 }
 

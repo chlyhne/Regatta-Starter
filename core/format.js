@@ -1,21 +1,14 @@
-import { state, SPEED_UNITS, DISTANCE_UNITS } from "./state.js";
+import { state } from "./state.js";
+import {
+  SPEED_UNITS,
+  DISTANCE_UNITS,
+  normalizeTimeFormat,
+  normalizeSpeedUnit,
+  normalizeDistanceUnit,
+} from "./units.js";
 
 function formatUnitLabel(label) {
   return `[${String(label).toLowerCase()}]`;
-}
-
-function normalizeTimeFormat(format) {
-  return format === "12h" ? "12h" : "24h";
-}
-
-function normalizeSpeedUnit(unit) {
-  if (unit === "kn" || unit === "mph") return unit;
-  return "ms";
-}
-
-function normalizeDistanceUnit(unit) {
-  if (unit === "ft" || unit === "yd") return unit;
-  return "m";
 }
 
 function getSpeedUnitMeta() {
