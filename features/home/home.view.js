@@ -77,7 +77,7 @@ export const homeView = `
     </div>
   </section>
 
-  <section class="panel debug-only">
+  <section class="panel">
     <h2>Replay</h2>
     <div class="row stack">
       <button id="replay-open" type="button">Replay data</button>
