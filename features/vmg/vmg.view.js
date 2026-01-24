@@ -1,6 +1,6 @@
 export const vmgView = `
 <section id="vmg-view" class="vmg-view" aria-hidden="true">
-  <div class="vmg-shell">
+  <div class="mode-shell">
     <header class="page-head">
       <div class="head-title">
         <h1 class="brand-mark brand-light">

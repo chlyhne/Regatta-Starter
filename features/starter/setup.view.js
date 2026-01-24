@@ -1,6 +1,6 @@
 export const setupView = `
-<main id="setup-view" class="shell" aria-hidden="true">
-  <header class="hero page-head">
+<main id="setup-view" class="mode-shell" aria-hidden="true">
+  <header class="page-head">
     <div class="head-title">
       <h1 class="brand-mark brand-light">
         <span class="brand-label">Race</span><span class="brand-accent">Starter</span>

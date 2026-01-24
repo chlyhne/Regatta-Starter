@@ -1,6 +1,6 @@
 export const lifterView = `
 <section id="lifter-view" class="lifter-view" aria-hidden="true">
-  <div class="vmg-shell">
+  <div class="mode-shell">
     <header class="page-head">
       <div class="head-title">
         <h1 class="brand-mark brand-light">

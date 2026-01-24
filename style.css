@@ -9,6 +9,10 @@
   --danger: #000000;
   --shadow: rgba(0, 0, 0, 0.12);
   --start-control-height: 3.2rem;
+  --mode-edge-padding: 14px;
+  --mode-section-padding: 16px;
+  --mode-section-padding-block: 20px;
+  --mode-divider-gap: 8px;
   --app-height: 100vh;
   font-size: 16px;
 }
@@ -70,7 +74,7 @@ body {
   display: none;
 }
 
-.home-mode #setup-view.shell {
+.home-mode #setup-view {
   display: none;
 }
 
@@ -88,15 +92,15 @@ body {
   display: flex;
 }
 
-.vmg-mode #setup-view.shell,
-.lifter-mode #setup-view.shell,
-.race-mode #setup-view.shell,
-.coords-mode #setup-view.shell,
-.location-mode #setup-view.shell,
-.settings-mode #setup-view.shell,
-.boat-mode #setup-view.shell,
-.info-mode #setup-view.shell,
-.track-mode #setup-view.shell {
+.vmg-mode #setup-view,
+.lifter-mode #setup-view,
+.race-mode #setup-view,
+.coords-mode #setup-view,
+.location-mode #setup-view,
+.settings-mode #setup-view,
+.boat-mode #setup-view,
+.info-mode #setup-view,
+.track-mode #setup-view {
   display: none;
 }
 
@@ -280,7 +284,8 @@ body {
   overscroll-behavior: none;
 }
 
-.modal-open .shell {
+.modal-open .shell,
+.modal-open .mode-shell {
   pointer-events: none;
 }
 
@@ -292,22 +297,9 @@ body {
   overscroll-behavior: none;
 }
 
-.imu-calibration-open .shell {
+.imu-calibration-open .shell,
+.imu-calibration-open .mode-shell {
   pointer-events: none;
-}
-
-#setup-view.shell {
-  max-width: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  min-height: var(--app-height);
-}
-
-#setup-view.shell > * {
-  padding: 20px;
 }
 
 #home-view.shell > * {
@@ -332,7 +324,7 @@ body {
   font-size: 1rem;
 }
 
-.vmg-shell {
+.mode-shell {
   width: 100%;
   max-width: none;
   margin: 0;
@@ -340,15 +332,6 @@ body {
   flex-direction: column;
   gap: 0;
   min-height: var(--app-height);
-}
-
-.vmg-shell > * {
-  padding: 20px;
-  border-bottom: 2px solid #000000;
-}
-
-.vmg-shell > *:last-child {
-  border-bottom: none;
 }
 
 .vmg-panel {
@@ -757,12 +740,6 @@ body {
   border: 2px solid #000000;
 }
 
-#setup-view .hero {
-  border: none;
-  border-radius: 0;
-  padding: 0;
-}
-
 #home-view .hero {
   border: none;
   border-radius: 0;
@@ -1050,24 +1027,39 @@ h1 {
   border: 2px solid #000000;
 }
 
-#setup-view .panel {
-  border: none;
-  border-radius: 0;
-  padding: 0;
-}
-
 #home-view .panel {
   border: none;
   border-radius: 0;
   padding: 0;
 }
 
-#setup-view.shell > * {
-  border-bottom: 2px solid #000000;
+.mode-shell > .panel {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: var(--mode-section-padding-block) var(--mode-section-padding);
+  padding-bottom: calc(var(--mode-section-padding-block) + var(--mode-divider-gap));
 }
 
-#setup-view.shell > *:last-child {
-  border-bottom: none;
+.mode-shell > * {
+  padding: var(--mode-section-padding-block) var(--mode-section-padding);
+  padding-bottom: calc(var(--mode-section-padding-block) + var(--mode-divider-gap));
+  margin-inline: var(--mode-edge-padding);
+  position: relative;
+}
+
+.mode-shell > *::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--mode-edge-padding));
+  right: calc(-1 * var(--mode-edge-padding));
+  bottom: 0;
+  height: 2px;
+  background: #000000;
+}
+
+.mode-shell > *:last-child::after {
+  display: none;
 }
 
 .card .value {
@@ -1895,6 +1887,10 @@ button:active {
 @media (max-width: 540px) {
   :root {
     --start-control-height: 2.8rem;
+    --mode-edge-padding: 12px;
+    --mode-section-padding: 14px;
+    --mode-section-padding-block: 16px;
+    --mode-divider-gap: 6px;
   }
 
   .value {
@@ -1922,22 +1918,11 @@ button:active {
     flex-wrap: nowrap;
   }
 
-  .vmg-view .head-bar {
-    flex-wrap: wrap;
-  }
-
-  .vmg-view .head-right {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
   .race-quad {
     padding: 12px;
   }
 
-  #setup-view.shell > *,
-  #home-view.shell > *,
-  .vmg-shell > * {
+  #home-view.shell > * {
     padding: 16px;
   }
 
@@ -1975,9 +1960,11 @@ button:active {
 }
 
 @supports not (-webkit-touch-callout: none) {
-  #setup-view.shell > *,
-  #home-view.shell > *,
-  .vmg-shell > * {
+  :root {
+    --mode-section-padding-block: 24px;
+  }
+
+  #home-view.shell > * {
     padding-block: 24px;
   }
 
