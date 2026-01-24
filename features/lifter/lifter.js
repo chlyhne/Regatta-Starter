@@ -579,9 +579,21 @@ function isDebugHeadingSource() {
   return lifterHeadingSource === "debug-wind";
 }
 
+function getLifterSettingsSnapshot() {
+  return {
+    windowSeconds: lifterWindowSeconds,
+    headingSource: lifterHeadingSource,
+    debug: {
+      enabled: lifterDebug.enabled,
+      speed: lifterDebug.speed,
+    },
+  };
+}
+
 export {
   initLifter,
   bindLifterEvents,
+  getLifterSettingsSnapshot,
   recordLifterHeadingFromPosition,
   requestLifterRender,
   setLifterHeadingSource,

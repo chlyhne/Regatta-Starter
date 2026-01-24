@@ -66,5 +66,13 @@ export const homeView = `
       </button>
     </div>
   </section>
+
+  <section class="panel">
+    <h2>Recording</h2>
+    <div class="row stack">
+      <button id="record-toggle" type="button">Record data</button>
+      <div id="record-status" class="hint">Recording off</div>
+    </div>
+  </section>
 </section>
 `;

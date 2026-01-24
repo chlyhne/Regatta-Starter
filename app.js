@@ -38,6 +38,7 @@ import { getHeadingSourcePreference, normalizeHeadingSource } from "./core/headi
 import {
   applyVmgImuSample,
   bindVmgEvents,
+  getVmgSettingsSnapshot,
   initVmg,
   resetVmgEstimator,
   resetVmgImuState,
@@ -48,13 +49,14 @@ import {
 } from "./features/vmg/vmg.js";
 import {
   bindLifterEvents,
+  getLifterSettingsSnapshot,
   initLifter,
   isDebugHeadingSource,
   recordLifterHeadingFromPosition,
   requestLifterRender,
   setLifterHeadingSource,
 } from "./features/lifter/lifter.js";
-import { clamp } from "./core/common.js";
+import { clamp, headingFromVelocity } from "./core/common.js";
 import {
   initStarter,
   initStarterUi,
@@ -71,6 +73,13 @@ import {
   syncSettingsInputs,
 } from "./features/settings/settings-view.js";
 import { initNavigation, setView, syncViewFromHash } from "./ui/navigation.js";
+import {
+  isRecordingEnabled,
+  startRecording,
+  stopRecording,
+  recordSample,
+} from "./core/recording.js";
+import { BUILD_STAMP } from "./build.js";
 
 const NO_CACHE_KEY = "racetimer-nocache";
 const SPEED_HISTORY_WINDOW_MS =
@@ -114,6 +123,117 @@ function markGpsUnavailable() {
     icon.classList.remove("ok", "warn");
     icon.title = "Geolocation unavailable";
   });
+}
+
+function getDeviceInfoSnapshot() {
+  return {
+    userAgent: navigator.userAgent || "",
+    platform: navigator.platform || "",
+    language: navigator.language || "",
+    hardwareConcurrency: navigator.hardwareConcurrency || null,
+    deviceMemory: navigator.deviceMemory || null,
+    screen: {
+      width: window.screen?.width || null,
+      height: window.screen?.height || null,
+      availWidth: window.screen?.availWidth || null,
+      availHeight: window.screen?.availHeight || null,
+      pixelRatio: window.devicePixelRatio || 1,
+    },
+  };
+}
+
+function getSettingsSnapshot() {
+  return {
+    line: {
+      a: { ...state.line.a },
+      b: { ...state.line.b },
+    },
+    lineMeta: {
+      name: state.lineName,
+      sourceId: state.lineSourceId,
+    },
+    coordsFormat: state.coordsFormat,
+    headingSourceByMode: state.headingSourceByMode,
+    soundEnabled: state.soundEnabled,
+    timeFormat: state.timeFormat,
+    speedUnit: state.speedUnit,
+    distanceUnit: state.distanceUnit,
+    bowOffsetMeters: state.bowOffsetMeters,
+    boatLengthMeters: state.boatLengthMeters,
+    imuCalibration: state.imuCalibration,
+    start: { ...state.start },
+    vmg: getVmgSettingsSnapshot(),
+    lifter: getLifterSettingsSnapshot(),
+  };
+}
+
+async function startRecordingSession(note) {
+  return startRecording({
+    note: note || "",
+    settings: getSettingsSnapshot(),
+    device: getDeviceInfoSnapshot(),
+    app: { build: BUILD_STAMP },
+  });
+}
+
+function stopRecordingSession() {
+  stopRecording();
+}
+
+function extractPositionPayload(position) {
+  if (!position || !position.coords) return null;
+  const coords = position.coords;
+  return {
+    lat: Number.isFinite(coords.latitude) ? coords.latitude : null,
+    lon: Number.isFinite(coords.longitude) ? coords.longitude : null,
+    accuracy: Number.isFinite(coords.accuracy) ? coords.accuracy : null,
+    speed: Number.isFinite(coords.speed) ? coords.speed : null,
+    heading: Number.isFinite(coords.heading) ? coords.heading : null,
+    altitude: Number.isFinite(coords.altitude) ? coords.altitude : null,
+  };
+}
+
+function recordGpsSample(position) {
+  if (!isRecordingEnabled()) return;
+  const payload = extractPositionPayload(position);
+  if (!payload) return;
+  const ts = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+  recordSample("gps", payload, ts);
+}
+
+function recordKalmanSample(source, timestamp) {
+  if (!isRecordingEnabled()) return;
+  if (!state.kalman) return;
+  const payload = {
+    source,
+    x: Array.isArray(state.kalman.x) ? state.kalman.x.slice() : null,
+    P: Array.isArray(state.kalman.P) ? state.kalman.P.slice() : null,
+    headingRad: Number.isFinite(state.kalman.headingRad) ? state.kalman.headingRad : null,
+    accuracy: Number.isFinite(state.kalman.accuracy) ? state.kalman.accuracy : null,
+    origin: state.kalman.origin || null,
+  };
+  recordSample("kalman", payload, timestamp);
+}
+
+function recordDerivedSample(source, timestamp) {
+  if (!isRecordingEnabled()) return;
+  const position = extractPositionPayload(state.position);
+  if (!position) return;
+  const bow = extractPositionPayload(state.bowPosition);
+  const velocity =
+    state.velocity && Number.isFinite(state.velocity.x) && Number.isFinite(state.velocity.y)
+      ? { x: state.velocity.x, y: state.velocity.y }
+      : null;
+  const heading = velocity ? headingFromVelocity(velocity) : null;
+  const payload = {
+    source,
+    position,
+    bowPosition: bow,
+    velocity,
+    speed: Number.isFinite(state.speed) ? state.speed : null,
+    heading,
+  };
+  recordSample("derived", payload, timestamp);
 }
 
 function readDebugFlagFromUrl() {
@@ -324,6 +444,30 @@ function handleDeviceMotion(event) {
   if (dt <= 0) return;
   applyImuYawRate(yawRate, dt);
   applyVmgImuSample(yawRate, timestamp);
+  if (isRecordingEnabled()) {
+    recordSample(
+      "imu",
+      {
+        rotationDeg: {
+          alpha: Number.isFinite(sample.rotation.alpha) ? sample.rotation.alpha : null,
+          beta: Number.isFinite(sample.rotation.beta) ? sample.rotation.beta : null,
+          gamma: Number.isFinite(sample.rotation.gamma) ? sample.rotation.gamma : null,
+        },
+        gravity: sample.gravity
+          ? {
+              x: Number.isFinite(sample.gravity.x) ? sample.gravity.x : null,
+              y: Number.isFinite(sample.gravity.y) ? sample.gravity.y : null,
+              z: Number.isFinite(sample.gravity.z) ? sample.gravity.z : null,
+            }
+          : null,
+        yawRateRad: Number.isFinite(yawRate) ? yawRate : null,
+        dtSeconds: Number.isFinite(dtRaw) ? dtRaw : null,
+        eventTimeMs: Number.isFinite(event.timeStamp) ? event.timeStamp : null,
+        mapping: getImuMapping(),
+      },
+      Date.now()
+    );
+  }
 }
 
 async function requestImuPermission() {
@@ -740,6 +884,7 @@ function applyKalmanEstimate(result, options = {}) {
   if (!result) return;
   const rawPosition = options.rawPosition || null;
   const recordTrack = options.recordTrack !== false;
+  const source = options.source || "update";
   // Keep device position/velocity as the canonical state; compute bow separately.
   const bowPosition = applyForwardOffset(
     result.position,
@@ -757,6 +902,9 @@ function applyKalmanEstimate(result, options = {}) {
   }
   updateGPSDisplay();
   updateLineProjection();
+  const ts = result.position?.timestamp || Date.now();
+  recordKalmanSample(source, ts);
+  recordDerivedSample(source, ts);
 }
 
 function startKalmanPredictionLoop() {
@@ -768,16 +916,17 @@ function startKalmanPredictionLoop() {
     const ts = prediction.position?.timestamp || Date.now();
     if (ts === lastKalmanPredictionTs) return;
     lastKalmanPredictionTs = ts;
-    applyKalmanEstimate(prediction);
+    applyKalmanEstimate(prediction, { source: "predict" });
   }, KALMAN_PREDICT_INTERVAL_MS);
 }
 
 function handlePosition(position) {
+  recordGpsSample(position);
   const filtered = applyKalmanFilter(position);
   state.lastGpsFixAt = position.timestamp || Date.now();
   clearGpsRetryTimer();
   if (filtered) {
-    applyKalmanEstimate(filtered, { rawPosition: position });
+    applyKalmanEstimate(filtered, { rawPosition: position, source: "update" });
     recordSpeedSample(filtered.speed, position.timestamp || Date.now());
     state.lastPosition = state.position;
     updateVmgEstimate(state.position);
@@ -807,6 +956,7 @@ function handlePosition(position) {
   updateGPSDisplay();
   updateLineProjection();
   updateVmgEstimate(position);
+  recordDerivedSample("gps", position.timestamp || Date.now());
 }
 
 function handlePositionError(err) {
@@ -871,7 +1021,14 @@ loadSavedLines();
 syncLineNameWithSavedLines();
 updateInputs();
 updateRaceMetricLabels();
-initHome({ setView, hardReload, getNoCacheQuery });
+initHome({
+  setView,
+  hardReload,
+  getNoCacheQuery,
+  startRecording: startRecordingSession,
+  stopRecording: stopRecordingSession,
+  isRecordingEnabled,
+});
 initSettingsView({ saveSettings, setView, updateStartDisplay });
 initStarter({
   saveSettings,

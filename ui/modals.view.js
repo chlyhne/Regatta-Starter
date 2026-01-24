@@ -36,4 +36,19 @@ export const modalsView = `
     </div>
   </div>
 </section>
+
+<section id="record-note-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Recording note</h2>
+    <textarea
+      id="record-note"
+      rows="4"
+      placeholder="Optional note about this session"
+    ></textarea>
+    <div class="modal-actions">
+      <button id="record-note-start">Start recording</button>
+      <button id="record-note-cancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
 `;

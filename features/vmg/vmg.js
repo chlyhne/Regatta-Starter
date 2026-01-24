@@ -848,9 +848,21 @@ function applyVmgImuSample(yawRateRad, timestamp) {
   applyVmgImuYawRate(yawRateRad, vmgDt);
 }
 
+function getVmgSettingsSnapshot() {
+  return {
+    windowSeconds: vmgPlotWindowSeconds,
+    mode: vmgMode,
+    tack: vmgTack,
+    twaUpDeg: getVmgTwaDegrees(),
+    twaDownDeg: getVmgDownTwaDegrees(),
+    imuEnabled: state.imuEnabled,
+  };
+}
+
 export {
   initVmg,
   bindVmgEvents,
+  getVmgSettingsSnapshot,
   updateVmgEstimate,
   updateVmgGpsState,
   requestVmgPlotRender,

@@ -184,6 +184,10 @@ body {
   display: flex;
 }
 
+.modal-open #record-note-modal {
+  display: flex;
+}
+
 .imu-calibration-open #imu-calibration-modal {
   display: flex;
 }

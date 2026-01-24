@@ -4,10 +4,45 @@ let homeDeps = {
   setView: null,
   hardReload: null,
   getNoCacheQuery: null,
+  startRecording: null,
+  stopRecording: null,
+  isRecordingEnabled: null,
 };
 
 function initHome(deps = {}) {
   homeDeps = { ...homeDeps, ...deps };
+  syncRecordingUi();
+}
+
+function syncRecordingUi() {
+  const active = homeDeps.isRecordingEnabled ? homeDeps.isRecordingEnabled() : false;
+  if (els.recordToggle) {
+    els.recordToggle.textContent = active ? "Stop recording" : "Record data";
+    els.recordToggle.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+  if (els.recordStatus) {
+    els.recordStatus.textContent = active ? "Recording on" : "Recording off";
+  }
+}
+
+function openRecordNoteModal() {
+  if (els.recordNoteInput) {
+    els.recordNoteInput.value = "";
+  }
+  document.body.classList.add("modal-open");
+  if (els.recordNoteModal) {
+    els.recordNoteModal.setAttribute("aria-hidden", "false");
+  }
+  if (els.recordNoteInput) {
+    els.recordNoteInput.focus();
+  }
+}
+
+function closeRecordNoteModal() {
+  document.body.classList.remove("modal-open");
+  if (els.recordNoteModal) {
+    els.recordNoteModal.setAttribute("aria-hidden", "true");
+  }
 }
 
 function bindHomeEvents() {
@@ -91,6 +126,42 @@ function bindHomeEvents() {
       if (homeDeps.setView) {
         homeDeps.setView("track");
       }
+    });
+  }
+
+  if (els.recordToggle) {
+    els.recordToggle.addEventListener("click", () => {
+      const active = homeDeps.isRecordingEnabled ? homeDeps.isRecordingEnabled() : false;
+      if (active) {
+        if (homeDeps.stopRecording) {
+          homeDeps.stopRecording();
+        }
+        syncRecordingUi();
+        return;
+      }
+      openRecordNoteModal();
+    });
+  }
+
+  if (els.recordNoteStart) {
+    els.recordNoteStart.addEventListener("click", async () => {
+      const note = els.recordNoteInput ? els.recordNoteInput.value.trim() : "";
+      if (homeDeps.startRecording) {
+        const result = await homeDeps.startRecording(note);
+        if (result && result.ok === false) {
+          window.alert(result.error || "Recording could not start.");
+          closeRecordNoteModal();
+          return;
+        }
+      }
+      closeRecordNoteModal();
+      syncRecordingUi();
+    });
+  }
+
+  if (els.recordNoteCancel) {
+    els.recordNoteCancel.addEventListener("click", () => {
+      closeRecordNoteModal();
     });
   }
 
