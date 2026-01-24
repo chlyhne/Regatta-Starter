@@ -10,8 +10,6 @@ let homeDeps = {
   sendDiagnostics: null,
 };
 
-const DIAG_TOKEN_KEY = "racetimer-diag-token";
-
 function initHome(deps = {}) {
   homeDeps = { ...homeDeps, ...deps };
   syncRecordingUi();
@@ -57,29 +55,13 @@ function syncSendUi(message) {
   }
 }
 
-function getStoredDiagnosticsToken() {
-  if (typeof sessionStorage === "undefined") return "";
-  return sessionStorage.getItem(DIAG_TOKEN_KEY) || "";
-}
-
-function setStoredDiagnosticsToken(token) {
-  if (typeof sessionStorage === "undefined") return;
-  if (token) {
-    sessionStorage.setItem(DIAG_TOKEN_KEY, token);
-  } else {
-    sessionStorage.removeItem(DIAG_TOKEN_KEY);
-  }
-}
-
 function openSendDiagModal() {
-  const token = getStoredDiagnosticsToken();
-  if (els.sendDiagToken) els.sendDiagToken.value = token;
   document.body.classList.add("modal-open");
   if (els.sendDiagModal) {
     els.sendDiagModal.setAttribute("aria-hidden", "false");
   }
-  if (els.sendDiagToken) {
-    els.sendDiagToken.focus();
+  if (els.sendDiagConfirm) {
+    els.sendDiagConfirm.focus();
   }
 }
 
@@ -225,13 +207,11 @@ function bindHomeEvents() {
   if (els.sendDiagConfirm) {
     els.sendDiagConfirm.addEventListener("click", async () => {
       if (!homeDeps.sendDiagnostics) return;
-      const token = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
-      setStoredDiagnosticsToken(token);
       if (els.sendDiagConfirm) {
         els.sendDiagConfirm.disabled = true;
       }
       syncSendUi("Sending diagnostics...");
-      const result = await homeDeps.sendDiagnostics({ token });
+      const result = await homeDeps.sendDiagnostics();
       if (els.sendDiagConfirm) {
         els.sendDiagConfirm.disabled = false;
       }

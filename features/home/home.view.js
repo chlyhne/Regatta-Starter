@@ -72,7 +72,7 @@ export const homeView = `
     <div class="row stack">
       <button id="record-toggle" type="button">Record data</button>
       <div id="record-status" class="hint">Recording off</div>
-      <button id="send-diagnostics" type="button">Send diagnostics</button>
+      <button id="send-diagnostics" class="ghost" type="button">Send diagnostics</button>
       <div id="send-status" class="hint">No upload yet</div>
     </div>
   </section>

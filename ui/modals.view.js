@@ -56,8 +56,6 @@ export const modalsView = `
   <div class="modal-panel">
     <h2>Send diagnostics</h2>
     <p class="info-text">Uploads the last hour of data to the diagnostics endpoint.</p>
-    <label for="send-diag-token">Access token (optional)</label>
-    <input id="send-diag-token" type="text" placeholder="token" />
     <div class="modal-actions">
       <button id="send-diag-confirm">Send</button>
       <button id="send-diag-cancel" class="ghost">Cancel</button>
