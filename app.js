@@ -439,7 +439,22 @@ function applyReplayEvent(sample, playback = {}) {
 
 function readDebugFlagFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const raw = params.get("debug");
+  let raw = params.get("debug");
+  if (raw === null) {
+    const hash = window.location.hash || "";
+    const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
+    let query = "";
+    if (trimmed.includes("?")) {
+      query = trimmed.split("?")[1];
+    } else if (trimmed.includes("&")) {
+      query = trimmed.split("&").slice(1).join("&");
+    } else if (trimmed.startsWith("debug=")) {
+      query = trimmed;
+    }
+    if (query) {
+      raw = new URLSearchParams(query).get("debug");
+    }
+  }
   if (raw === null) return null;
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
