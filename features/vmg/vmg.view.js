@@ -139,10 +139,6 @@ export const vmgView = `
           <span class="check-label">Device motion sensor</span>
           <span class="check-box" aria-hidden="true"></span>
         </button>
-        <div id="vmg-imu-warning" class="hint" hidden>
-          Device motion sensor needs the phone mounted rigidly to the boat, or it will give worse
-          estimates.
-        </div>
       </div>
       <div class="vmg-settings-group">
         <div class="vmg-twa-head">

@@ -387,10 +387,6 @@ async function setImuEnabled(enabled) {
     }
     return;
   }
-  const confirmed = window.confirm(
-    "IMU requires the device to be fixed firmly to the boat. Heading becomes more precise and responsive. Enable IMU?"
-  );
-  if (!confirmed) return;
   const started = await startImu();
   if (!started) {
     window.alert("IMU permission was not granted on this device.");

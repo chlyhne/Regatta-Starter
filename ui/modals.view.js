@@ -16,8 +16,8 @@ export const modalsView = `
   <div class="modal-panel">
     <h2>Device motion sensor</h2>
     <p class="info-text">
-      Device motion sensor needs the phone mounted rigidly to the boat, or it will give worse
-      estimates.
+      Mounted rigidly to the boat, the estimate gets much better. If it is not mounted, the
+      estimate gets much worse.
     </p>
     <div class="row stack">
       <button id="close-vmg-imu">Got it</button>

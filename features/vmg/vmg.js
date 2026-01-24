@@ -635,9 +635,6 @@ function updateVmgImuToggle() {
   if (els.vmgImuToggle) {
     els.vmgImuToggle.setAttribute("aria-pressed", state.imuEnabled ? "true" : "false");
   }
-  if (els.vmgImuWarning) {
-    els.vmgImuWarning.hidden = !state.imuEnabled;
-  }
 }
 
 function setVmgImuWarningOpen(open) {
