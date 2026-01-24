@@ -7,6 +7,7 @@ const REPLAY_SPEED_MIN = 0.5;
 const REPLAY_SPEED_MAX = 4;
 const REPLAY_SPEED_STEP = 0.5;
 const REPLAY_TICK_MS = 200;
+const REPLAY_MAX_EVENTS_PER_TICK = 500;
 
 let replayEntries = null;
 let replayEvents = [];
@@ -121,6 +122,7 @@ function parseNdjson(text) {
 }
 
 function toNumber(value) {
+  if (value === null || value === undefined) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 }
@@ -128,8 +130,8 @@ function toNumber(value) {
 function normalizeCoords(payload) {
   if (!payload) return null;
   const coords = payload.coords && typeof payload.coords === "object" ? payload.coords : payload;
-  const lat = Number(coords.latitude ?? coords.lat);
-  const lon = Number(coords.longitude ?? coords.lon);
+  const lat = toNumber(coords.latitude ?? coords.lat);
+  const lon = toNumber(coords.longitude ?? coords.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   return {
     latitude: lat,
@@ -363,6 +365,7 @@ function tickReplay() {
   const now = Date.now();
   const elapsedMs = getReplayElapsedMs(now);
   state.replay.clockNow = replayBaseTimeMs + elapsedMs;
+  let processed = 0;
   while (replayCursor < replayEvents.length) {
     const sample = replayEvents[replayCursor];
     if (!sample || sample.offsetMs > elapsedMs) break;
@@ -381,6 +384,10 @@ function tickReplay() {
       });
     }
     replayCursor += 1;
+    processed += 1;
+    if (processed >= REPLAY_MAX_EVENTS_PER_TICK) {
+      break;
+    }
   }
   if (replayCursor >= replayEvents.length) {
     stopReplay();

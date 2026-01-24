@@ -15,17 +15,7 @@ import {
   updateRaceMetricLabels,
   updateLineProjection,
 } from "./features/starter/race.js";
-import {
-  GPS_OPTIONS_RACE,
-  getGpsOptionsForMode,
-  clearGpsRetryTimer,
-  stopDebugGps,
-  stopRealGps,
-  startDebugGps,
-  startRealGps,
-  isGpsStale,
-  scheduleGpsRetry,
-} from "./core/gps-watch.js";
+import * as gpsWatch from "./core/gps-watch.js";
 import {
   computeVelocityFromHeading,
   computeVelocityFromPositions,
@@ -103,6 +93,18 @@ const KALMAN_PREDICT_HZ = 5;
 const KALMAN_PREDICT_INTERVAL_MS = Math.round(1000 / KALMAN_PREDICT_HZ);
 const IMU_MAPPING_DEFAULT = { axes: ["alpha", "beta", "gamma"], signs: [1, 1, 1] };
 const IMU_MAPPING_CANDIDATES = buildImuMappingCandidates();
+const {
+  GPS_OPTIONS_RACE,
+  getGpsOptionsForMode,
+  clearGpsRetryTimer,
+  stopDebugGps,
+  startDebugGps,
+  startRealGps,
+  isGpsStale,
+  scheduleGpsRetry,
+} = gpsWatch;
+const stopRealGps =
+  typeof gpsWatch.stopRealGps === "function" ? gpsWatch.stopRealGps : () => {};
 let kalmanPredictTimer = null;
 let lastKalmanPredictionTs = 0;
 let imuListening = false;
@@ -323,22 +325,28 @@ function recordDerivedSample(source, timestamp) {
   recordSample("derived", payload, timestamp);
 }
 
+function toFiniteNumber(value) {
+  if (value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 function buildReplayPosition(coords, timestamp) {
   if (!coords) return null;
-  const lat = Number(coords.latitude ?? coords.lat);
-  const lon = Number(coords.longitude ?? coords.lon);
+  const lat = toFiniteNumber(coords.latitude ?? coords.lat);
+  const lon = toFiniteNumber(coords.longitude ?? coords.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const position = {
     coords: {
       latitude: lat,
       longitude: lon,
-      accuracy: Number.isFinite(coords.accuracy) ? coords.accuracy : null,
-      speed: Number.isFinite(coords.speed) ? coords.speed : null,
-      heading: Number.isFinite(coords.heading) ? coords.heading : null,
-      altitude: Number.isFinite(coords.altitude) ? coords.altitude : null,
-      altitudeAccuracy: Number.isFinite(coords.altitudeAccuracy) ? coords.altitudeAccuracy : null,
-      speedAccuracy: Number.isFinite(coords.speedAccuracy) ? coords.speedAccuracy : null,
-      headingAccuracy: Number.isFinite(coords.headingAccuracy) ? coords.headingAccuracy : null,
+      accuracy: toFiniteNumber(coords.accuracy),
+      speed: toFiniteNumber(coords.speed),
+      heading: toFiniteNumber(coords.heading),
+      altitude: toFiniteNumber(coords.altitude),
+      altitudeAccuracy: toFiniteNumber(coords.altitudeAccuracy),
+      speedAccuracy: toFiniteNumber(coords.speedAccuracy),
+      headingAccuracy: toFiniteNumber(coords.headingAccuracy),
     },
     timestamp,
   };
@@ -1065,6 +1073,7 @@ function prepareReplaySession(info = {}) {
     stopImu();
   }
   state.imuEnabled = Boolean(info.hasImu);
+  resetImuState();
   resetPositionState();
   resetLifterHistory();
   requestLifterRender({ force: true });
