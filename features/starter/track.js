@@ -1,7 +1,7 @@
-import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "./state.js";
-import { els } from "./dom.js";
-import { toMeters } from "./geo.js";
-import { getKalmanProcessPositionCovariance } from "./kalman.js";
+import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "../../core/state.js";
+import { els } from "../../ui/dom.js";
+import { toMeters } from "../../core/geo.js";
+import { getKalmanProcessPositionCovariance } from "../../core/kalman.js";
 
 const TRACK_PADDING = 16;
 const MIN_SCALE = 0.05;

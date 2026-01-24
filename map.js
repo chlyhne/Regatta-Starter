@@ -1,5 +1,5 @@
-import { loadSettings as loadSettingsFromStorage, saveSettings as saveSettingsToStorage } from "./settings.js";
-import { toMeters, fromMeters } from "./geo.js";
+import { loadSettings as loadSettingsFromStorage, saveSettings as saveSettingsToStorage } from "./core/settings.js";
+import { toMeters, fromMeters } from "./core/geo.js";
 
 const NO_CACHE_KEY = "racetimer-nocache";
 

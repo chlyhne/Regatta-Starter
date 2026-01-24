@@ -1,4 +1,4 @@
-import { els } from "./dom.js";
+import { els } from "../../ui/dom.js";
 
 function fitRaceValues() {
   const values = [els.raceProjDirect, els.raceProjClosing].filter(Boolean);

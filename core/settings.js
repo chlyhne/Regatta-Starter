@@ -1,6 +1,7 @@
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
+const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
 
 const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
@@ -15,6 +16,7 @@ const DEFAULT_SETTINGS = {
   coordsFormat: "dd",
   debugGpsEnabled: false,
   useKalman: true,
+  headingSourceByMode: { ...DEFAULT_HEADING_SOURCE_BY_MODE },
   soundEnabled: true,
   timeFormat: "24h",
   speedUnit: "kn",
@@ -79,6 +81,19 @@ function normalizeSpeedUnit(unit) {
 function normalizeDistanceUnit(unit) {
   if (unit === "ft" || unit === "yd") return unit;
   return "m";
+}
+
+function normalizeHeadingSource(source) {
+  if (source === "gps") return "gps";
+  return "kalman";
+}
+
+function normalizeHeadingSourceByMode(sourceByMode) {
+  const value = sourceByMode && typeof sourceByMode === "object" ? sourceByMode : {};
+  return {
+    vmg: normalizeHeadingSource(value.vmg),
+    lifter: normalizeHeadingSource(value.lifter),
+  };
 }
 
 function normalizeImuCalibration(calibration) {
@@ -147,6 +162,7 @@ function normalizeSettings(raw) {
     coordsFormat: normalizeCoordsFormat(raw?.coordsFormat),
     debugGpsEnabled: Boolean(raw?.debugGpsEnabled),
     useKalman: Boolean(raw?.useKalman),
+    headingSourceByMode: normalizeHeadingSourceByMode(raw?.headingSourceByMode),
     soundEnabled: raw?.soundEnabled !== undefined ? Boolean(raw.soundEnabled) : true,
     timeFormat: normalizeTimeFormat(raw?.timeFormat),
     speedUnit: normalizeSpeedUnit(raw?.speedUnit),
@@ -174,6 +190,12 @@ function mergeSettings(base, patch) {
   if (patch?.start) {
     merged.start = { ...base.start, ...patch.start };
   }
+  if (patch?.headingSourceByMode) {
+    merged.headingSourceByMode = {
+      ...base.headingSourceByMode,
+      ...patch.headingSourceByMode,
+    };
+  }
   return merged;
 }
 
@@ -195,6 +217,10 @@ function migrateSettings(raw) {
   if (version < 2) {
     migrated.imuCalibration = null;
     migrated.version = 2;
+  }
+  if (version < 3) {
+    migrated.headingSourceByMode = { ...DEFAULT_HEADING_SOURCE_BY_MODE };
+    migrated.version = 3;
   }
   return migrated;
 }

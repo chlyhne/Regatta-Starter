@@ -1,0 +1,43 @@
+% !TeX root = master.tex
+
+\section{RaceLifter (headers and lifts)}
+
+This section explains how RaceLifter turns heading samples into a stable lift/shift view.
+The aim is to show how much the heading has moved relative to a recent mean, without the
+plot jumping around when the window size changes or when a new sample lands.
+
+\subsection{Heading bins and mean}
+
+This subsection describes how samples are binned in time and how the mean heading is
+computed.
+
+RaceLifter collects heading samples from the selected source (boat model or GPS) whenever
+speed exceeds a small threshold (about \(0.5\,\mathrm{m/s}\)), so drifting or stationary
+noise does not dominate the plot. Samples are assigned to time bins based on timestamp,
+with the bin duration determined by the current window length. Each bin stores a circular
+mean of its samples so headings that straddle \(0^\circ\) do not average incorrectly.
+
+The mean heading used to center the plot is computed from the oldest bins in the current
+window, explicitly excluding the active bin at the top. This keeps the reference stable:
+new samples only affect the active bin until it is closed, and the plot only recenters
+when the window is re-binned.
+
+\subsection{Scaling and bar rendering}
+
+This subsection explains the visual rules that keep the bar plot legible and stable.
+
+Each bin is drawn as a horizontal bar whose length is the signed deviation from the mean.
+The scale is symmetric and rounded to fixed step sizes, so the dashed grid aligns with
+clean increments and does not jitter as the data shifts. The active bin is clipped to the
+current scale so a transient spike does not rescale the entire plot, and only a window
+change triggers a full rescale across all bars.
+
+\subsection{Debug playback}
+
+This subsection outlines how the debug mode feeds the same plotting pipeline.
+
+When debug mode is enabled, RaceLifter reads heading values from
+\texttt{debug\_wind\_data.csv} and replays them as if they were live measurements. The
+replay speed slider adjusts the playback time base, and the render rate is capped to the
+same per-second cadence used for live data so the UI remains stable. This makes it
+possible to tune the plot behavior and scaling without being on the water.

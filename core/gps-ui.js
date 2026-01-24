@@ -1,8 +1,8 @@
 import { state } from "./state.js";
-import { els } from "./dom.js";
+import { els } from "../ui/dom.js";
 import { toMeters } from "./geo.js";
 import { formatDistanceWithUnit } from "./format.js";
-import { BUILD_STAMP } from "./build.js";
+import { BUILD_STAMP } from "../build.js";
 
 function updateGPSDisplay() {
   const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);

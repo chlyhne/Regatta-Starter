@@ -1,5 +1,5 @@
 import { state, GPS_RETRY_DELAY_MS, GPS_STALE_MS } from "./state.js";
-import { els } from "./dom.js";
+import { els } from "../ui/dom.js";
 
 const GPS_OPTIONS_RACE = {
   enableHighAccuracy: true,

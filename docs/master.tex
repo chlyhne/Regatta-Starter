@@ -28,10 +28,16 @@ line decisions depend more on stable estimates than on raw precision.
 \input{tuning.tex}
 \clearpage
 \part{RaceVMG}
-\noindent This part covers RaceVMG (VMG Hunter): how we estimate the local speed--heading
-trade-off upwind (without a wind sensor), what we can and cannot infer from GPS alone,
-and how that estimate is presented in a way that makes steering decisions feel natural.
+\noindent This part covers RaceVMG (VMG evaluator): how we compare successive time windows,
+how the assumed TWA and tack define a wind axis for beating or running, how reaching uses
+a mean heading instead, and how the resulting change is presented in the VMG bar plot.
 \input{racevmg.tex}
+\clearpage
+\part{RaceLifter}
+\noindent This part covers RaceLifter: how we bin headings over time, how the mean and
+scaling are computed so the plot stays stable while the window changes, and how the
+debug playback path feeds the same plot logic.
+\input{racelifter.tex}
 \clearpage
 \appendix
 \input{appendix.tex}

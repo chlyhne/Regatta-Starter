@@ -1,19 +1,18 @@
-import { state } from "./state.js";
-import { els } from "./dom.js";
-import { toMeters } from "./geo.js";
+import { state } from "../../core/state.js";
+import { els } from "../../ui/dom.js";
+import { toMeters } from "../../core/geo.js";
 import { fitRaceText } from "./race-fit.js";
 import {
   formatUnitLabel,
   getDistanceUnitMeta,
   getSpeedUnitMeta,
   formatDistanceWithUnit,
-  formatRate,
   formatDistanceValue,
   formatOverUnder,
   formatRaceDelta,
   formatRaceTimeDelta,
-} from "./format.js";
-import { saveSettings as saveSettingsToStorage } from "./settings.js";
+} from "../../core/format.js";
+import { saveSettings as saveSettingsToStorage } from "../../core/settings.js";
 
 function hasLine() {
   return (
@@ -22,13 +21,6 @@ function hasLine() {
     Number.isFinite(state.line.b.lat) &&
     Number.isFinite(state.line.b.lon)
   );
-}
-
-function updateLineStatus() {
-  const valid = hasLine();
-  if (els.lineStatus) {
-    els.lineStatus.textContent = valid ? "" : "NO LINE";
-  }
 }
 
 function computeTimeDeltaFromRate(projectedDistance, rate) {
@@ -403,22 +395,6 @@ function isFalseStart(signedDistance) {
 function updateLineProjection() {
   const hasStartTime = Number.isFinite(state.start.startTs);
   if (!hasLine()) {
-    if (els.projDirect) {
-      els.projDirect.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
-    }
-    if (els.distDirect) {
-      els.distDirect.textContent = `Distance to line -- ${formatUnitLabel(
-        getDistanceUnitMeta().label
-      )}`;
-    }
-    if (els.projClosing) {
-      els.projClosing.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
-    }
-    if (els.closingRate) {
-      els.closingRate.textContent = `Closing rate -- ${formatUnitLabel(
-        getSpeedUnitMeta().label
-      )}`;
-    }
     setRaceStatusText("NO LINE");
     updateRaceHintUnits();
     const missingLineText = "NO LINE";
@@ -450,22 +426,6 @@ function updateLineProjection() {
   }
 
   if (!state.position) {
-    if (els.projDirect) {
-      els.projDirect.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
-    }
-    if (els.distDirect) {
-      els.distDirect.textContent = `Distance to line -- ${formatUnitLabel(
-        getDistanceUnitMeta().label
-      )}`;
-    }
-    if (els.projClosing) {
-      els.projClosing.textContent = `-- ${formatUnitLabel(getDistanceUnitMeta().label)}`;
-    }
-    if (els.closingRate) {
-      els.closingRate.textContent = `Closing rate -- ${formatUnitLabel(
-        getSpeedUnitMeta().label
-      )}`;
-    }
     if (!hasStartTime) {
       setRaceStatusText("NO TIME");
     } else {
@@ -501,9 +461,6 @@ function updateLineProjection() {
 
   const geometry = getLineGeometry();
   if (!geometry) {
-    if (els.lineStatus) {
-      els.lineStatus.textContent = "Line too short";
-    }
     const startDirectionEl = getStartDirectionElement();
     if (startDirectionEl) {
       startDirectionEl.textContent = "Line too short";
@@ -513,9 +470,6 @@ function updateLineProjection() {
   const deviceMeters = toMetersFromPosition(state.position, geometry.origin);
   if (!deviceMeters) {
     return;
-  }
-  if (els.lineStatus) {
-    els.lineStatus.textContent = "";
   }
 
   const { normal, lineLen, pointA, pointB } = geometry;
@@ -585,16 +539,6 @@ function updateLineProjection() {
     setRaceStatusText("NO TIME");
   }
 
-  if (els.projDirect) els.projDirect.textContent = formatOverUnder(projectedDirect);
-  if (els.distDirect) {
-    els.distDirect.textContent = `Distance to line ${formatDistanceWithUnit(
-      distanceToSegmentActual
-    )}`;
-  }
-  if (els.projClosing) els.projClosing.textContent = formatOverUnder(projectedClosing);
-  if (els.closingRate) {
-    els.closingRate.textContent = `Closing rate ${formatRate(closingRate)}`;
-  }
   if (hasStartTime) {
     const raceValues = getRaceMetricValues(
       projectedDirect,
@@ -679,7 +623,6 @@ function updateLineProjection() {
 
 export {
   hasLine,
-  updateLineStatus,
   updateStatusUnitLabels,
   updateRaceHintUnits,
   updateRaceMetricLabels,

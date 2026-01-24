@@ -184,6 +184,10 @@ body {
   display: flex;
 }
 
+.vmg-imu-open #vmg-imu-modal {
+  display: flex;
+}
+
 .modal {
   display: none;
   position: fixed;
@@ -398,100 +402,181 @@ body {
   letter-spacing: 0.04em;
 }
 
-
-.vmg-bar-wrap {
-  padding: 0.25in 0;
+.vmg-controls {
+  display: grid;
+  gap: 10px;
 }
 
-.vmg-bar {
-  --vmg-position: 50%;
-  --vmg-confidence: 28%;
-  --vmg-bar-height: 1.5in;
-  --vmg-dot-width: 0.12in;
-  --vmg-center-mark-width: var(--vmg-dot-width);
-  --vmg-center-mark-overshoot: 0.2in;
-  position: relative;
-  height: var(--vmg-bar-height);
-  background: #ffffff;
-  border: 2px solid #000000;
-  border-radius: 0;
-  overflow: visible;
-}
-
-.vmg-bar.gps-bad {
-  filter: grayscale(1);
-  opacity: 0.35;
-}
-
-.vmg-interval {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--vmg-position) - (var(--vmg-confidence) / 2));
-  width: var(--vmg-confidence);
-  background: #000000;
-  opacity: 0.15;
-  border-radius: 0;
-  z-index: 0;
-}
-
-.vmg-bar::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: calc(-1 * var(--vmg-center-mark-overshoot));
-  height: calc(var(--vmg-bar-height) + (2 * var(--vmg-center-mark-overshoot)));
-  width: var(--vmg-center-mark-width);
-  transform: translateX(-50%);
-  background: #000000;
-  z-index: 1;
-}
-
-.vmg-dot {
-  position: absolute;
-  top: 0;
-  left: var(--vmg-position);
-  transform: translateX(-50%);
-  width: var(--vmg-dot-width);
-  height: 100%;
-  border-radius: 0;
-  background: #000000;
-  border: none;
-  z-index: 2;
-}
-
-.vmg-scale {
+.vmg-control-head {
   display: flex;
   justify-content: space-between;
-  font-size: 1rem;
-  letter-spacing: 0.08em;
-  font-weight: 700;
+  align-items: baseline;
+  gap: 12px;
 }
 
-.vmg-scale-left,
-.vmg-scale-right {
+.vmg-window-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.vmg-window-slider {
+  width: 100%;
+  background: transparent;
+  margin: 8px 0 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.vmg-window-slider:focus {
+  outline: none;
+}
+
+.vmg-window-slider::-webkit-slider-runnable-track {
+  height: 14px;
+  background: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 999px;
+}
+
+.vmg-window-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #000000;
+  border: 2px solid #000000;
+  margin-top: -10px;
+}
+
+.vmg-window-slider::-moz-range-track {
+  height: 14px;
+  background: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 999px;
+}
+
+.vmg-window-slider::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #000000;
+  border: 2px solid #000000;
+}
+
+.vmg-plot {
+  width: 100%;
+  height: 65vh;
+  border: 2px solid #000000;
+  background: #ffffff;
+}
+
+.vmg-plot canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.vmg-plot.gps-bad {
+  opacity: 0.4;
+}
+
+.vmg-settings-view,
+.lifter-settings-view {
+  display: none;
+  position: fixed;
+  inset: 0;
+  padding: 24px;
+  background: #ffffff;
+  color: #000000;
+  z-index: 900;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.vmg-settings-open {
+  overflow: hidden;
+}
+
+.lifter-settings-open {
+  overflow: hidden;
+}
+
+.vmg-settings-open .vmg-settings-view,
+.lifter-settings-open .lifter-settings-view {
+  display: flex;
+}
+
+.vmg-settings-panel,
+.lifter-settings-panel {
+  border: 3px solid #000000;
+  border-radius: 24px;
+  padding: 24px;
+  max-width: 560px;
+  width: 100%;
+  display: grid;
+  gap: 16px;
+}
+
+.vmg-settings-panel h2,
+.lifter-settings-panel h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.vmg-settings-group,
+.lifter-settings-group {
+  display: grid;
+  gap: 12px;
+}
+
+.check-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 16px;
+  border: 2px solid #000000;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.check-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.check-box {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #000000;
+  border-radius: 4px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
-.vmg-scale-left::before {
+.check-toggle[aria-pressed="true"] .check-box::after {
   content: "";
-  width: 0;
-  height: 0;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-right: 12px solid #000000;
+  width: 8px;
+  height: 14px;
+  border-right: 3px solid #000000;
+  border-bottom: 3px solid #000000;
+  transform: rotate(45deg);
+  margin-top: -2px;
 }
 
-.vmg-scale-right::after {
-  content: "";
-  width: 0;
-  height: 0;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-left: 12px solid #000000;
-}
 
 .vmg-twa-head {
   display: flex;
@@ -557,6 +642,19 @@ body {
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.08em;
+}
+
+.heading-source-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.heading-source-label {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .lifter-controls {
@@ -770,6 +868,16 @@ body {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
+}
+
+#open-vmg-settings,
+#open-lifter-settings {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  touch-action: manipulation;
 }
 
 .icon-btn .icon-gear {
@@ -1023,12 +1131,6 @@ label {
   font-weight: 600;
   color: #000000;
   line-height: 1;
-}
-
-#current-time {
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin-left: 8px;
 }
 
 input[type="number"],
@@ -1349,6 +1451,13 @@ button:active {
   margin-bottom: 13px;
 }
 
+.vmg-mode-toggle {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vmg-tack-toggle {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .start-toggle .race-toggle-btn {
   border: none;
   border-radius: 0;
@@ -1538,13 +1647,6 @@ button:active {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-}
-
-.race-hint-unit {
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
-  text-transform: none;
-  font-weight: 600;
 }
 
 .race-value.race-value-over {
@@ -1818,6 +1920,15 @@ button:active {
 
   .head-bar {
     flex-wrap: nowrap;
+  }
+
+  .vmg-view .head-bar {
+    flex-wrap: wrap;
+  }
+
+  .vmg-view .head-right {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .race-quad {

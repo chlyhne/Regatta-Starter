@@ -1,109 +1,75 @@
 % !TeX root = master.tex
 
-\section{VMG Hunter (RaceVMG)}
+\section{RaceVMG (VMG evaluator)}
 
-VMG Hunter works without a wind sensor. We start with the upwind case and assume the
-boat is sailing in a narrow range of true wind angles (TWA), roughly \(35^\circ\) to
-\(50^\circ\). The user selects an approximate TWA, and the app estimates whether a small
-change in heading should be a \emph{bear away} or a \emph{head up}.
+This section describes how RaceVMG turns a stream of heading and speed samples into a
+simple, stable evaluation: is the most recent window better or worse than the one just
+before it, and by how much. The goal is not to estimate true wind, but to provide a
+consistent reference so changes in trim or steering show up as a clear percentage.
 
-\subsection{Speed--heading trade-off}
+\subsection{Modes, wind axis, and sign}
 
-This subsection derives a break-even slope that converts speed changes into an equivalent
-heading change at the selected TWA, giving a left/right steering decision rule.
+This subsection explains how the mode and tack selections define the reference direction
+used to compute VMG.
 
-For a given TWA \(\psi\), the upwind velocity made good is:
+RaceVMG does not estimate wind direction directly. Instead, it constructs a wind axis
+from the older of the two evaluation windows. We take the time-weighted mean heading in
+that older window and then apply a simple mode rule. In beating mode we assume an upwind
+TWA and offset the mean by \(\pm\)TWA depending on tack (port is negative, starboard is
+positive). In running mode we use a downwind TWA slider and apply the same tack offset.
+In reaching mode we assume no TWA and use the mean heading itself as the reference axis.
+
+The VMG at any moment is the component of speed along that axis:
 \[
-\mathrm{VMG}(\psi) = v(\psi)\cos\psi
+\mathrm{VMG} = v\cos\Delta\psi
 \]
+where \(\Delta\psi\) is the angular difference between heading and the chosen axis. For
+running, VMG is expected to be negative because the axis points downwind. To keep the
+readout intuitive (more running is better), we flip the sign when computing the change so
+a more negative VMG counts as an improvement.
 
-For a small change \(d\psi\), the first-order change is:
+\subsection{Windowed comparison and percent change}
+
+This subsection describes how two adjacent windows are compared to produce a percent
+change.
+
+We maintain a rolling history of heading and speed samples and compare two windows of
+length \(W\). For beating and running, \(W\) is a fixed \(30\,\mathrm{s}\) so the feedback
+feels immediate. For reaching, the window length follows half of the selected plot window
+so slower changes remain visible without amplifying noise. Because GPS samples are not
+uniformly spaced, we compute window averages with time-weighted linear interpolation
+between samples rather than assuming fixed-rate data.
+
+Let \(\overline{V}_\text{prev}\) and \(\overline{V}_\text{curr}\) be the average VMG values
+in the older and newer windows after the running-mode sign correction. The VMG change is
+reported as a percentage:
 \[
-\frac{d}{d\psi}\mathrm{VMG} =
-\frac{dv}{d\psi}\cos\psi - v\sin\psi
+\Delta_\% = \frac{\overline{V}_\text{curr} - \overline{V}_\text{prev}}{|\overline{V}_\text{prev}|}\times 100
 \]
+We suppress the output if the baseline is too small and clamp the displayed value to a
+reasonable range so outliers do not dominate the plot.
 
-At the break-even point (no VMG gain or loss), this derivative is zero:
-\[
-\frac{dv}{d\psi} = v\tan\psi
-\]
+\subsection{Plot bins and baseline}
 
-This is the trade-off slope between speed and heading. We estimate
-\(\frac{dv}{d\psi}\) from recent data and compare it to the break-even slope. If the
-estimated slope is greater than the break-even slope, bearing away is faster; if it is
-smaller, heading up is faster.
+This subsection explains how the VMG change history becomes the vertical bar plot.
 
-Because our heading samples are handled in degrees in the UI and estimator, the
-comparison uses:
-\[
-\frac{dv}{d(\mathrm{deg})} = v\tan\psi \cdot \frac{\pi}{180}
-\]
+The plot window is user-selected from one to five minutes and is divided into a fixed
+number of time bins (30). Each computed \(\Delta_\%\) value is added to the current bin
+based on its timestamp, and the bin value is the mean of all samples it contains. The
+baseline for centering the plot is the mean of the oldest half of the bins, which keeps
+the reference stable and avoids bias from the active bin that is still accumulating
+samples. The plot is scaled symmetrically, rounded to fixed step sizes so the grid feels
+stable, and the active bin is clipped to the current scale to prevent temporary spikes
+from rescaling the entire view.
 
-\subsection{Estimating the slope (RLS with forgetting)}
+\subsection{Heading sources and device motion}
 
-In the app we do not try to build a full polar model. Instead, we estimate the \emph{local}
-slope in the neighborhood of the current trim and sea state. That is precisely what we
-need to decide whether a small heading change is paying off. We use recursive least
-squares (RLS) with exponential forgetting so the estimator behaves like an IIR filter: it
-reacts to new information, but it does not jump around when the boat is steady.
+This subsection describes how heading is sourced and how the device motion option
+interacts with GPS.
 
-Concretely, we feed the estimator a speed measurement (GPS speed for now, later optionally
-Kalman-filtered speed) and a heading estimate. Because heading wraps at \(360^\circ\), we
-unwrap it so small real changes do not appear as huge jumps. The forgetting is controlled
-by a time constant \(\tau \approx 10\,\mathrm{s}\), which sets the effective memory of the
-fit: shorter \(\tau\) reacts faster but is noisier; longer \(\tau\) is steadier but slower.
-
-Heading source. When IMU is enabled, we integrate the gyro yaw rate to track heading
-changes and use that heading in the regressor. GPS course is used to correct long-term
-drift only when speed exceeds \(2\,\mathrm{kn}\) and GPS accuracy is acceptable. If IMU is
-disabled, or no IMU heading is available yet, we fall back to GPS heading.
-
-Let \(h_k\) be heading (degrees) and \(v_k\) speed (m/s) at sample \(k\). We use unwrapped
-heading relative to a fixed reference so the regressor stays small:
-\(h_k = \psi_k - \psi_0\). This shift does not change the slope.
-
-We fit a line \(v_k = b_k + s_k h_k + e_k\), written in vector form:
-\[
-v_k = x_k^T \theta_k + e_k,\quad
-x_k = \begin{bmatrix} 1 \\ h_k \end{bmatrix},\quad
-\theta_k = \begin{bmatrix} b_k \\ s_k \end{bmatrix}
-\]
-
-With forgetting factor \(\lambda_k = e^{-\Delta t_k/\tau}\), the RLS recursion is:
-\[
-K_k = \frac{P_{k-1} x_k}{\lambda_k + x_k^T P_{k-1} x_k}
-\]
-\[
-\theta_k = \theta_{k-1} + K_k \left(v_k - x_k^T \theta_{k-1}\right)
-\]
-\[
-P_k = \frac{1}{\lambda_k}\left(P_{k-1} - K_k x_k^T P_{k-1}\right)
-\]
-where the residual is \(e_k = v_k - x_k^T \theta_{k-1}\).
-
-The slope estimate at sample \(k\) is the second component:
-\[
-s_k = \theta_{k,2}
-\]
-when the heading excitation is large enough to be reliable.
-
-\subsection{Confidence band and tack handling}
-
-This subsection explains how estimator uncertainty becomes the UI confidence band, and how
-port/starboard tack flips the meaning of left/right.
-
-We compute a simple standard error for the slope:
-\[
-\sigma_{s,k} \approx \sqrt{\sigma_{e,k}^2 \, P_{k,22}}
-\]
-where \(\sigma_{e,k}^2\) is an exponentially weighted residual variance, for example:
-\[
-\sigma_{e,k}^2 = (1-\alpha_k)\sigma_{e,k-1}^2 + \alpha_k e_k^2,\quad
-\alpha_k = 1 - e^{-\Delta t_k/\tau}
-\]
-The UI maps \(\sigma_{s,k}\) to a confidence band width. If GPS is stale or accuracy is
-poor, the bar is desaturated to signal low trust.
-
-Tack handling. The indicator is directional: on port tack the left/right meaning flips.
-We implement this by negating the slope before comparing to the break-even value and
-swapping the labels accordingly.
+RaceVMG can use the boat model (Kalman) heading or raw GPS heading, depending on the user
+selection. When the device motion sensor is enabled, we integrate yaw rate to track
+short-term heading changes and blend it back toward GPS heading when speed is sufficient
+and accuracy is acceptable. This improves responsiveness when the phone is rigidly
+mounted to the boat, but it can degrade estimates if the phone is hand-held or moved
+relative to the boat, which is why the UI warns about mounting.
