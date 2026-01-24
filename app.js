@@ -67,7 +67,12 @@ import {
   syncLineNameWithSavedLines,
   updateStartDisplay,
 } from "./features/starter/starter.js";
-import { initHome, bindHomeEvents, syncReplayUi } from "./features/home/home.js";
+import {
+  initHome,
+  bindHomeEvents,
+  syncReplayUi,
+  syncRecordingUi,
+} from "./features/home/home.js";
 import {
   initSettingsView,
   bindSettingsEvents,
@@ -187,6 +192,9 @@ function getSettingsSnapshot() {
 }
 
 async function startRecordingSession(note) {
+  if (state.replay?.active || state.replay?.loading) {
+    return { ok: false, error: "Stop replay before recording." };
+  }
   const result = await startRecording({
     note: note || "",
     settings: getSettingsSnapshot(),
@@ -202,6 +210,14 @@ async function startRecordingSession(note) {
 function stopRecordingSession() {
   stopRecording();
   setGpsMode(state.gpsMode, { force: true });
+  syncRecordingUi();
+}
+
+async function startReplaySession(entry) {
+  if (isRecordingEnabled()) {
+    stopRecordingSession();
+  }
+  return await startReplay(entry);
 }
 
 async function gzipNdjson(text) {
@@ -407,7 +423,7 @@ function applyReplayEvent(sample, playback = {}) {
       : playback.deviceTimeMs;
     const position = buildReplayPosition(sample.coords, timestamp);
     if (!position) return;
-    handlePosition(position);
+    handlePosition(position, { source: "replay" });
     return;
   }
   if (sample.type === "imu") {
@@ -712,6 +728,9 @@ function processImuEvent(event, options = {}) {
 }
 
 function handleDeviceMotion(event) {
+  if (state.replay?.active || state.replay?.loading) {
+    return;
+  }
   processImuEvent(event);
 }
 
@@ -1228,7 +1247,10 @@ function startKalmanPredictionLoop() {
   }, KALMAN_PREDICT_INTERVAL_MS);
 }
 
-function handlePosition(position) {
+function handlePosition(position, options = {}) {
+  if ((state.replay?.active || state.replay?.loading) && options.source !== "replay") {
+    return;
+  }
   recordGpsSample(position);
   const filtered = applyKalmanFilter(position);
   state.lastGpsFixAt = position.timestamp || Date.now();
@@ -1344,7 +1366,7 @@ initHome({
   setDiagUploadToken,
   getReplayState,
   loadReplayEntries,
-  startReplay,
+  startReplay: startReplaySession,
   stopReplay,
   setReplaySpeed,
   formatReplaySpeed,

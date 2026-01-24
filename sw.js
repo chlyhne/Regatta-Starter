@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v149";
+const CACHE_NAME = "racetimer-v150";
 const ASSETS = [
   "./",
   "./index.html",

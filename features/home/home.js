@@ -433,4 +433,4 @@ function bindHomeEvents() {
   }
 }
 
-export { initHome, bindHomeEvents, syncReplayUi };
+export { initHome, bindHomeEvents, syncReplayUi, syncRecordingUi };
