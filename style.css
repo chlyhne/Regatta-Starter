@@ -180,23 +180,7 @@ body {
   display: block;
 }
 
-.modal-open #load-line-modal {
-  display: flex;
-}
-
-.modal-open #record-note-modal {
-  display: flex;
-}
-
-.modal-open #send-diag-modal {
-  display: flex;
-}
-
-.imu-calibration-open #imu-calibration-modal {
-  display: flex;
-}
-
-.vmg-imu-open #vmg-imu-modal {
+.modal[aria-hidden="false"] {
   display: flex;
 }
 
