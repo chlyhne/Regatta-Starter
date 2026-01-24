@@ -1,0 +1,7 @@
+name = "racetimer-upload"
+main = "src/index.js"
+compatibility_date = "2024-10-01"
+
+r2_buckets = [
+  { binding = "DIAG_BUCKET", bucket_name = "racetimer-diag" }
+]
