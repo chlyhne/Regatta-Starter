@@ -57,7 +57,11 @@ function updateDebugControls() {
   }
   if (els.debugGpsStatus) {
     let status = "GPS: --";
-    if (state.debugGpsEnabled) {
+    if (state.replay?.active) {
+      status = "GPS: replay";
+    } else if (state.replay?.loading) {
+      status = "GPS: replay loading";
+    } else if (state.debugGpsEnabled) {
       status = "GPS: debug";
     } else if (!navigator.geolocation) {
       status = "GPS: unavailable";

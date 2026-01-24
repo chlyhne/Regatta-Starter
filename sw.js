@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v142";
+const CACHE_NAME = "racetimer-v144";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,7 +7,7 @@ const ASSETS = [
   "./map.css",
   "./app.js",
   "./build.js",
-  "./debug_wind_data.csv",
+  "./replay/manifest.json",
   "./map.js",
   "./manifest.json",
   "./boat.svg",
@@ -15,6 +15,7 @@ const ASSETS = [
   "./vendor/leaflet.css",
   "./vendor/leaflet.js",
   "./core/common.js",
+  "./core/clock.js",
   "./core/heading.js",
   "./core/settings.js",
   "./core/state.js",
@@ -23,6 +24,7 @@ const ASSETS = [
   "./core/format.js",
   "./core/geo.js",
   "./core/recording.js",
+  "./core/replay.js",
   "./core/units.js",
   "./core/gps-watch.js",
   "./core/velocity.js",

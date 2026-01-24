@@ -39,6 +39,14 @@ const state = {
   headingSourceByMode: { vmg: "kalman", lifter: "kalman" },
   imuCalibration: null,
   imuEnabled: false,
+  replay: {
+    active: false,
+    loading: false,
+    error: "",
+    file: null,
+    speed: 1,
+    clockNow: null,
+  },
   imu: {
     gravity: null,
     lastTimestamp: null,

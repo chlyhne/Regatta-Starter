@@ -52,6 +52,18 @@ export const modalsView = `
   </div>
 </section>
 
+<section id="replay-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Replay data</h2>
+    <p class="info-text">Pick a replay file to load.</p>
+    <div id="replay-list" class="modal-list"></div>
+    <div class="modal-actions">
+      <button id="replay-confirm">Start replay</button>
+      <button id="replay-cancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
+
 <section id="send-diag-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
     <h2>Send diagnostics</h2>

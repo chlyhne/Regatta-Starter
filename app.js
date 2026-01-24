@@ -20,6 +20,7 @@ import {
   getGpsOptionsForMode,
   clearGpsRetryTimer,
   stopDebugGps,
+  stopRealGps,
   startDebugGps,
   startRealGps,
   isGpsStale,
@@ -35,6 +36,7 @@ import {
 } from "./core/settings.js";
 import { KALMAN_TUNING } from "./core/tuning.js";
 import { getHeadingSourcePreference, normalizeHeadingSource } from "./core/heading.js";
+import { getNowMs } from "./core/clock.js";
 import {
   applyVmgImuSample,
   bindVmgEvents,
@@ -51,12 +53,21 @@ import {
   bindLifterEvents,
   getLifterSettingsSnapshot,
   initLifter,
-  isDebugHeadingSource,
+  resetLifterHistory,
   recordLifterHeadingFromPosition,
   requestLifterRender,
   setLifterHeadingSource,
 } from "./features/lifter/lifter.js";
 import { clamp, headingFromVelocity } from "./core/common.js";
+import {
+  initReplay,
+  loadReplayEntries,
+  startReplay,
+  stopReplay,
+  setReplaySpeed,
+  getReplayState,
+  formatReplaySpeed,
+} from "./core/replay.js";
 import {
   initStarter,
   initStarterUi,
@@ -66,7 +77,7 @@ import {
   syncLineNameWithSavedLines,
   updateStartDisplay,
 } from "./features/starter/starter.js";
-import { initHome, bindHomeEvents } from "./features/home/home.js";
+import { initHome, bindHomeEvents, syncReplayUi } from "./features/home/home.js";
 import {
   initSettingsView,
   bindSettingsEvents,
@@ -99,6 +110,8 @@ let imuCalibrationActive = false;
 let imuCalibrationSamples = [];
 let imuCalibrationTimer = null;
 let imuCalibrationError = "";
+let replayPrevDebugGps = false;
+let replayPrevImuEnabled = false;
 
 function updateViewportHeight() {
   const height = window.visualViewport?.height || window.innerHeight;
@@ -172,16 +185,21 @@ function getSettingsSnapshot() {
 }
 
 async function startRecordingSession(note) {
-  return startRecording({
+  const result = await startRecording({
     note: note || "",
     settings: getSettingsSnapshot(),
     device: getDeviceInfoSnapshot(),
     app: { build: BUILD_STAMP },
   });
+  if (result && result.ok) {
+    setGpsMode(state.gpsMode, { force: true, highAccuracy: true });
+  }
+  return result;
 }
 
 function stopRecordingSession() {
   stopRecording();
+  setGpsMode(state.gpsMode, { force: true });
 }
 
 async function gzipNdjson(text) {
@@ -249,15 +267,25 @@ function extractPositionPayload(position) {
     speed: Number.isFinite(coords.speed) ? coords.speed : null,
     heading: Number.isFinite(coords.heading) ? coords.heading : null,
     altitude: Number.isFinite(coords.altitude) ? coords.altitude : null,
+    altitudeAccuracy: Number.isFinite(coords.altitudeAccuracy) ? coords.altitudeAccuracy : null,
+    speedAccuracy: Number.isFinite(coords.speedAccuracy) ? coords.speedAccuracy : null,
+    headingAccuracy: Number.isFinite(coords.headingAccuracy) ? coords.headingAccuracy : null,
   };
 }
 
 function recordGpsSample(position) {
   if (!isRecordingEnabled()) return;
-  const payload = extractPositionPayload(position);
-  if (!payload) return;
-  const ts = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
-  recordSample("gps", payload, ts);
+  const coords = extractPositionPayload(position);
+  if (!coords) return;
+  const gpsTimeMs = Number.isFinite(position.timestamp) ? position.timestamp : null;
+  const deviceTimeMs = Date.now();
+  const payload = {
+    ...coords,
+    coords,
+    gpsTimeMs,
+    deviceTimeMs,
+  };
+  recordSample("gps", payload, deviceTimeMs);
 }
 
 function recordKalmanSample(source, timestamp) {
@@ -295,6 +323,110 @@ function recordDerivedSample(source, timestamp) {
   recordSample("derived", payload, timestamp);
 }
 
+function buildReplayPosition(coords, timestamp) {
+  if (!coords) return null;
+  const lat = Number(coords.latitude ?? coords.lat);
+  const lon = Number(coords.longitude ?? coords.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const position = {
+    coords: {
+      latitude: lat,
+      longitude: lon,
+      accuracy: Number.isFinite(coords.accuracy) ? coords.accuracy : null,
+      speed: Number.isFinite(coords.speed) ? coords.speed : null,
+      heading: Number.isFinite(coords.heading) ? coords.heading : null,
+      altitude: Number.isFinite(coords.altitude) ? coords.altitude : null,
+      altitudeAccuracy: Number.isFinite(coords.altitudeAccuracy) ? coords.altitudeAccuracy : null,
+      speedAccuracy: Number.isFinite(coords.speedAccuracy) ? coords.speedAccuracy : null,
+      headingAccuracy: Number.isFinite(coords.headingAccuracy) ? coords.headingAccuracy : null,
+    },
+    timestamp,
+  };
+  return position;
+}
+
+function applyDerivedReplaySample(sample, timestamp) {
+  if (!sample || !sample.position) return;
+  const position = buildReplayPosition(sample.position, timestamp);
+  if (!position) return;
+
+  let velocity = null;
+  if (sample.velocity && Number.isFinite(sample.velocity.x) && Number.isFinite(sample.velocity.y)) {
+    velocity = { x: sample.velocity.x, y: sample.velocity.y };
+  }
+  let speed = Number.isFinite(sample.speed) ? sample.speed : null;
+  if (!velocity) {
+    const coords = position.coords;
+    if (Number.isFinite(coords.speed) && Number.isFinite(coords.heading)) {
+      velocity = computeVelocityFromHeading(coords.speed, coords.heading);
+      speed = Number.isFinite(speed) ? speed : coords.speed;
+    } else {
+      const computed = computeVelocityFromPositions(position, state.lastPosition);
+      velocity = { x: computed.x, y: computed.y };
+      speed = Number.isFinite(speed) ? speed : computed.speed;
+    }
+  }
+  if (!Number.isFinite(speed)) {
+    speed = Math.hypot(velocity.x, velocity.y);
+  }
+
+  const bowPosition = sample.bowPosition
+    ? buildReplayPosition(sample.bowPosition, timestamp)
+    : applyForwardOffset(position, velocity, state.bowOffsetMeters);
+
+  state.velocity = velocity;
+  state.speed = speed;
+  state.position = position;
+  state.bowPosition = bowPosition;
+  state.kalmanPosition = sample.source === "kalman" ? position : null;
+  state.lastGpsFixAt = timestamp;
+  recordLifterHeadingFromPosition(position);
+  recordTrackPoints(position, position, bowPosition);
+  recordSpeedSample(speed, timestamp);
+  state.lastPosition = position;
+  updateGPSDisplay();
+  updateLineProjection();
+  updateVmgEstimate(position);
+}
+
+function applyReplayEvent(sample, playback = {}) {
+  if (!sample) return;
+  if (sample.type === "gps") {
+    const timestamp = Number.isFinite(playback.gpsTimeMs)
+      ? playback.gpsTimeMs
+      : playback.deviceTimeMs;
+    const position = buildReplayPosition(sample.coords, timestamp);
+    if (!position) return;
+    handlePosition(position);
+    return;
+  }
+  if (sample.type === "imu") {
+    const timestamp = Number.isFinite(playback.imuTimeMs)
+      ? playback.imuTimeMs
+      : playback.deviceTimeMs;
+    const event = {
+      accelerationIncludingGravity: sample.accelerationIncludingGravity || null,
+      acceleration: sample.acceleration || null,
+      rotationRate: sample.rotationRate || null,
+      timeStamp: timestamp,
+      interval: Number.isFinite(sample.intervalMs) ? sample.intervalMs : null,
+    };
+    processImuEvent(event, {
+      force: true,
+      mapping: sample.mapping || null,
+      record: false,
+      deviceTimeMs: playback.deviceTimeMs,
+    });
+    return;
+  }
+  if (sample.type === "derived") {
+    const timestamp = Number.isFinite(playback.deviceTimeMs)
+      ? playback.deviceTimeMs
+      : sample.ts;
+    applyDerivedReplaySample(sample, timestamp);
+  }
+}
+
 function readDebugFlagFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const raw = params.get("debug");
@@ -309,6 +441,7 @@ function applyDebugFlagFromUrl() {
   const flag = readDebugFlagFromUrl();
   if (flag === null) return;
   state.debugGpsEnabled = flag;
+  document.body.classList.toggle("debug-mode", flag === true);
 }
 
 function syncNoCacheToken() {
@@ -466,6 +599,46 @@ function readImuSample(event) {
   };
 }
 
+function formatImuVector(vector) {
+  if (!vector) return null;
+  const x = Number(vector.x);
+  const y = Number(vector.y);
+  const z = Number(vector.z);
+  return {
+    x: Number.isFinite(x) ? x : null,
+    y: Number.isFinite(y) ? y : null,
+    z: Number.isFinite(z) ? z : null,
+  };
+}
+
+function formatImuRotation(rotation) {
+  if (!rotation) return null;
+  const alpha = Number(rotation.alpha);
+  const beta = Number(rotation.beta);
+  const gamma = Number(rotation.gamma);
+  return {
+    alpha: Number.isFinite(alpha) ? alpha : null,
+    beta: Number.isFinite(beta) ? beta : null,
+    gamma: Number.isFinite(gamma) ? gamma : null,
+  };
+}
+
+function buildImuRecordPayload(event, sample, yawRate, dtRaw, mapping, deviceTimeMs) {
+  return {
+    deviceTimeMs: Number.isFinite(deviceTimeMs) ? deviceTimeMs : null,
+    eventTimeMs: Number.isFinite(event?.timeStamp) ? event.timeStamp : null,
+    intervalMs: Number.isFinite(event?.interval) ? event.interval : null,
+    rotationRate: formatImuRotation(event?.rotationRate),
+    rotationDeg: formatImuRotation(sample?.rotation),
+    acceleration: formatImuVector(event?.acceleration),
+    accelerationIncludingGravity: formatImuVector(event?.accelerationIncludingGravity),
+    gravity: sample?.gravity ? formatImuVector(sample.gravity) : null,
+    yawRateRad: Number.isFinite(yawRate) ? yawRate : null,
+    dtSeconds: Number.isFinite(dtRaw) ? dtRaw : null,
+    mapping: mapping || null,
+  };
+}
+
 function resetImuState() {
   state.imu.gravity = null;
   state.imu.lastTimestamp = null;
@@ -473,11 +646,12 @@ function resetImuState() {
   state.imu.lastYawRate = null;
 }
 
-function handleDeviceMotion(event) {
-  if (!state.imuEnabled) return;
+function processImuEvent(event, options = {}) {
+  const force = options.force === true;
+  if (!state.imuEnabled && !force) return;
   const sample = readImuSample(event);
   if (!sample) return;
-  const mapping = getImuMapping();
+  const mapping = options.mapping || getImuMapping();
   const omegaDeg = mapRotationToVector(sample.rotation, mapping);
   const omegaX = toRadians(omegaDeg.x);
   const omegaY = toRadians(omegaDeg.y);
@@ -503,30 +677,17 @@ function handleDeviceMotion(event) {
   if (dt <= 0) return;
   applyImuYawRate(yawRate, dt);
   applyVmgImuSample(yawRate, timestamp);
-  if (isRecordingEnabled()) {
-    recordSample(
-      "imu",
-      {
-        rotationDeg: {
-          alpha: Number.isFinite(sample.rotation.alpha) ? sample.rotation.alpha : null,
-          beta: Number.isFinite(sample.rotation.beta) ? sample.rotation.beta : null,
-          gamma: Number.isFinite(sample.rotation.gamma) ? sample.rotation.gamma : null,
-        },
-        gravity: sample.gravity
-          ? {
-              x: Number.isFinite(sample.gravity.x) ? sample.gravity.x : null,
-              y: Number.isFinite(sample.gravity.y) ? sample.gravity.y : null,
-              z: Number.isFinite(sample.gravity.z) ? sample.gravity.z : null,
-            }
-          : null,
-        yawRateRad: Number.isFinite(yawRate) ? yawRate : null,
-        dtSeconds: Number.isFinite(dtRaw) ? dtRaw : null,
-        eventTimeMs: Number.isFinite(event.timeStamp) ? event.timeStamp : null,
-        mapping: getImuMapping(),
-      },
-      Date.now()
-    );
+  if (options.record !== false && isRecordingEnabled()) {
+    const deviceTimeMs = Number.isFinite(options.deviceTimeMs)
+      ? options.deviceTimeMs
+      : Date.now();
+    const payload = buildImuRecordPayload(event, sample, yawRate, dtRaw, mapping, deviceTimeMs);
+    recordSample("imu", payload, deviceTimeMs);
   }
+}
+
+function handleDeviceMotion(event) {
+  processImuEvent(event);
 }
 
 async function requestImuPermission() {
@@ -806,7 +967,7 @@ function setHeadingSourcePreference(mode, source) {
   if (mode === "vmg") {
     resetVmgEstimator();
   }
-  if (mode === "lifter" && !isDebugHeadingSource()) {
+  if (mode === "lifter") {
     setLifterHeadingSource(normalized);
   }
 }
@@ -869,6 +1030,11 @@ function updateInputs() {
   updateStatusUnitLabels();
 }
 
+function handleReplayStatus() {
+  updateDebugControls();
+  syncReplayUi();
+}
+
 function resetPositionState() {
   state.position = null;
   state.bowPosition = null;
@@ -889,6 +1055,41 @@ function resetPositionState() {
   updateLineProjection();
 }
 
+function prepareReplaySession(info = {}) {
+  replayPrevDebugGps = state.debugGpsEnabled;
+  replayPrevImuEnabled = state.imuEnabled;
+  stopDebugGps();
+  stopRealGps();
+  state.debugGpsEnabled = false;
+  if (replayPrevImuEnabled) {
+    stopImu();
+  }
+  state.imuEnabled = Boolean(info.hasImu);
+  resetPositionState();
+  resetLifterHistory();
+  requestLifterRender({ force: true });
+  updateDebugControls();
+  updateVmgImuToggle();
+}
+
+function resumeFromReplay() {
+  if (replayPrevImuEnabled) {
+    startImu();
+  } else {
+    stopImu();
+  }
+  if (replayPrevDebugGps) {
+    state.debugGpsEnabled = true;
+    startDebugGps(handlePosition, createDebugPosition);
+  } else {
+    setGpsMode(state.gpsMode, { force: true });
+  }
+  replayPrevDebugGps = false;
+  replayPrevImuEnabled = false;
+  updateDebugControls();
+  updateVmgImuToggle();
+}
+
 function recordSpeedSample(speed, timestamp) {
   if (!Number.isFinite(speed)) return;
   const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
@@ -901,6 +1102,10 @@ function recordSpeedSample(speed, timestamp) {
 
 function setDebugGpsEnabled(enabled) {
   const next = Boolean(enabled);
+  if (next && state.replay.active) {
+    stopReplay({ silent: true, skipResume: true });
+    handleReplayStatus();
+  }
   if (state.debugGpsEnabled === next) {
     updateDebugControls();
     return;
@@ -928,14 +1133,19 @@ function setGpsMode(mode, options = {}) {
   const next = mode === "race" ? "race" : "setup";
   const force = Boolean(options.force);
   const highAccuracy = Boolean(options.highAccuracy);
+  const recordingHighAccuracy = isRecordingEnabled();
+  const wantsHighAccuracy = highAccuracy || recordingHighAccuracy;
   state.gpsMode = next;
+  if (state.replay.active) {
+    return;
+  }
   if (state.debugGpsEnabled) {
     return;
   }
-  if (!force && state.geoWatchId !== null && prev === next && !highAccuracy && !isGpsStale()) {
+  if (!force && state.geoWatchId !== null && prev === next && !wantsHighAccuracy && !isGpsStale()) {
     return;
   }
-  const gpsOptions = highAccuracy ? GPS_OPTIONS_RACE : getGpsOptionsForMode(state.gpsMode);
+  const gpsOptions = wantsHighAccuracy ? GPS_OPTIONS_RACE : getGpsOptionsForMode(state.gpsMode);
   startRealGps(handlePosition, handlePositionError, gpsOptions, markGpsUnavailable);
 }
 
@@ -970,7 +1180,7 @@ function startKalmanPredictionLoop() {
   if (kalmanPredictTimer) return;
   kalmanPredictTimer = setInterval(() => {
     if (!state.kalman) return;
-    const prediction = predictKalmanState(Date.now());
+    const prediction = predictKalmanState(getNowMs());
     if (!prediction) return;
     const ts = prediction.position?.timestamp || Date.now();
     if (ts === lastKalmanPredictionTs) return;
@@ -1032,6 +1242,9 @@ function handlePositionError(err) {
 }
 
 function initGeolocation() {
+  if (state.replay.active) {
+    return;
+  }
   if (state.debugGpsEnabled) {
     startDebugGps(handlePosition, createDebugPosition);
     return;
@@ -1088,6 +1301,18 @@ initHome({
   stopRecording: stopRecordingSession,
   isRecordingEnabled,
   sendDiagnostics,
+  getReplayState,
+  loadReplayEntries,
+  startReplay,
+  stopReplay,
+  setReplaySpeed,
+  formatReplaySpeed,
+});
+initReplay({
+  onSample: applyReplayEvent,
+  onReset: prepareReplaySession,
+  onStop: resumeFromReplay,
+  onStatus: handleReplayStatus,
 });
 initSettingsView({ saveSettings, setView, updateStartDisplay });
 initStarter({
@@ -1120,7 +1345,6 @@ initVmg({
 initLifter({
   setHeadingSourcePreference,
   updateHeadingSourceToggles,
-  hardReload,
 });
 bindEvents();
 initGeolocation();

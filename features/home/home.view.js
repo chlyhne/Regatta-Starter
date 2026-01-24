@@ -76,5 +76,30 @@ export const homeView = `
       <div id="send-status" class="hint">No upload yet</div>
     </div>
   </section>
+
+  <section class="panel debug-only">
+    <h2>Replay</h2>
+    <div class="row stack">
+      <button id="replay-open" type="button">Replay data</button>
+      <button id="replay-stop" class="ghost" type="button">Stop replay</button>
+      <div id="replay-status" class="hint">Replay off</div>
+    </div>
+    <div class="lifter-controls">
+      <div class="lifter-control-head">
+        <h2 id="replay-speed-title">Replay speed</h2>
+        <div id="replay-speed-value" class="lifter-window-value">1x</div>
+      </div>
+      <input
+        id="replay-speed"
+        class="lifter-window-slider"
+        type="range"
+        min="0.5"
+        max="4"
+        step="0.5"
+        value="1"
+        aria-labelledby="replay-speed-title replay-speed-value"
+      />
+    </div>
+  </section>
 </section>
 `;

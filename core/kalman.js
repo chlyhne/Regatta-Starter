@@ -3,6 +3,7 @@ import { toMeters, fromMeters } from "./geo.js";
 import { computeVelocityFromHeading } from "./velocity.js";
 import { KALMAN_TUNING } from "./tuning.js";
 import { clamp } from "./common.js";
+import { getNowMs } from "./clock.js";
 
 // State vector layout: [x, y, vx, vy] in meters and meters/second, relative to a local origin.
 // Axes follow the local tangent plane: x = east, y = north (see geo.js).
@@ -176,7 +177,7 @@ function initKalmanState(position) {
   const headingRad = getVelocityHeadingRad(vx, vy) ?? 0;
   return {
     origin,
-    lastTs: position.timestamp || Date.now(),
+    lastTs: position.timestamp || getNowMs(),
     accuracy,
     headingRad,
     x: [0, 0, vx, vy],
@@ -294,8 +295,8 @@ function applyKalmanFilter(position) {
     state.kalman = initKalmanState(position);
   }
   const filter = state.kalman;
-  const measurementTs = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
-  const timestamp = Math.max(Date.now(), measurementTs, filter.lastTs);
+  const measurementTs = Number.isFinite(position.timestamp) ? position.timestamp : getNowMs();
+  const timestamp = Math.max(getNowMs(), measurementTs, filter.lastTs);
   const dtRaw = (timestamp - filter.lastTs) / 1000;
   const dt = clampDtSeconds(dtRaw);
   filter.lastTs = timestamp;
@@ -406,7 +407,7 @@ function predictKalmanState(targetTimestamp) {
   if (!state.kalman) return null;
   const filter = state.kalman;
   const timestamp = Math.max(
-    Number.isFinite(targetTimestamp) ? targetTimestamp : Date.now(),
+    Number.isFinite(targetTimestamp) ? targetTimestamp : getNowMs(),
     filter.lastTs
   );
   const dtRaw = (timestamp - filter.lastTs) / 1000;

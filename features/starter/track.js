@@ -1,6 +1,7 @@
 import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "../../core/state.js";
 import { els } from "../../ui/dom.js";
 import { toMeters } from "../../core/geo.js";
+import { getNowMs } from "../../core/clock.js";
 import { getKalmanProcessPositionCovariance } from "../../core/kalman.js";
 
 const TRACK_PADDING = 16;
@@ -835,12 +836,13 @@ function renderTrack() {
 }
 
 function recordTrackPoints(rawPosition, devicePosition, bowPosition) {
-  const cutoff = Date.now() - TRACK_WINDOW_MS;
+  const nowMs = getNowMs();
+  const cutoff = nowMs - TRACK_WINDOW_MS;
   if (rawPosition) {
     appendTrackPoint(state.gpsTrackRaw, {
       lat: rawPosition.coords.latitude,
       lon: rawPosition.coords.longitude,
-      ts: rawPosition.timestamp || Date.now(),
+      ts: rawPosition.timestamp || nowMs,
     });
     pruneTrackPoints(state.gpsTrackRaw, cutoff);
   }
@@ -848,7 +850,7 @@ function recordTrackPoints(rawPosition, devicePosition, bowPosition) {
     appendTrackPoint(state.gpsTrackDevice, {
       lat: devicePosition.coords.latitude,
       lon: devicePosition.coords.longitude,
-      ts: devicePosition.timestamp || Date.now(),
+      ts: devicePosition.timestamp || nowMs,
     });
     pruneTrackPoints(state.gpsTrackDevice, cutoff);
   }
@@ -856,7 +858,7 @@ function recordTrackPoints(rawPosition, devicePosition, bowPosition) {
     appendTrackPoint(state.gpsTrackFiltered, {
       lat: bowPosition.coords.latitude,
       lon: bowPosition.coords.longitude,
-      ts: bowPosition.timestamp || Date.now(),
+      ts: bowPosition.timestamp || nowMs,
     });
     pruneTrackPoints(state.gpsTrackFiltered, cutoff);
   }

@@ -8,3 +8,5 @@ Thumbs.db
 *.toc
 docs/*.pdf
 node_modules/
+diagnostics-downloads/
+.env.local

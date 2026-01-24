@@ -48,38 +48,6 @@ export const lifterView = `
       </div>
     </section>
 
-    <section id="lifter-debug-panel" class="vmg-panel">
-      <h2>Debug</h2>
-      <div class="row stack">
-        <button
-          id="lifter-debug-toggle"
-          class="ghost"
-          type="button"
-          aria-pressed="false"
-        >
-          Debug
-        </button>
-        <button id="lifter-debug-refresh" class="ghost" type="button">
-          Reload
-        </button>
-      </div>
-      <div class="lifter-controls lifter-debug-controls">
-        <div class="lifter-control-head">
-          <h2 id="lifter-debug-speed-title">Replay speed</h2>
-          <div id="lifter-debug-speed-value" class="lifter-window-value">1x</div>
-        </div>
-        <input
-          id="lifter-debug-speed"
-          class="lifter-window-slider"
-          type="range"
-          min="0.5"
-          max="4"
-          step="0.5"
-          value="1"
-          aria-labelledby="lifter-debug-speed-title lifter-debug-speed-value"
-        />
-      </div>
-    </section>
   </div>
 
   <section id="lifter-settings-view" class="lifter-settings-view" aria-hidden="true">
