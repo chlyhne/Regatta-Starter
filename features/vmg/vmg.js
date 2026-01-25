@@ -12,7 +12,7 @@ import {
   normalizeHeadingDegrees,
   meanHeadingDegreesFromSinCos,
   resizeCanvasToCssPixels,
-  renderDeviationBarPlot,
+  formatWindowSeconds,
 } from "../../core/common.js";
 import { getHeadingSampleForMode, getHeadingSourcePreference } from "../../core/heading.js";
 
@@ -33,19 +33,25 @@ const VMG_EVAL_MAX_GAIN = 50;
 const VMG_EVAL_MIN_BASE = 0.2;
 const VMG_EVAL_HISTORY_PAD_MS = 5000;
 const VMG_EVAL_WARMUP_MIN_MS = 1000;
-const VMG_PLOT_MIN_WINDOW_SEC = 60;
-const VMG_PLOT_MAX_WINDOW_SEC = 300;
-const VMG_PLOT_BIN_COUNT = 30;
+const VMG_BASELINE_TAU_DEFAULT_SEC = 45;
+const VMG_BASELINE_TAU_MIN_SEC = 15;
+const VMG_BASELINE_TAU_MAX_SEC = 75;
+const VMG_PLOT_WINDOW_TAU_FACTOR = 4;
+const VMG_PLOT_SCALE_STEP = 2;
+const VMG_PLOT_GRID_SMALL = 2;
+const VMG_PLOT_GRID_LARGE = 4;
+const VMG_PLOT_GRID_THRESHOLD = 6;
+const VMG_PLOT_GRID_DASH = [6, 8];
+const VMG_PLOT_PADDING = 10;
 const VMG_PLOT_HISTORY_PAD_MS = 5000;
 
 const vmgPlotHistory = [];
-let vmgPlotWindowSeconds = 180;
+let vmgPlotTauSeconds = VMG_BASELINE_TAU_DEFAULT_SEC;
 let vmgPlotLastSampleTs = null;
-let vmgPlotBinDurationMs = Math.round((vmgPlotWindowSeconds * 1000) / VMG_PLOT_BIN_COUNT);
-let vmgPlotLastBinId = null;
+let vmgPlotBaseline = null;
+let vmgPlotFast = null;
 let vmgPlotLastRenderAt = 0;
 let vmgPlotRenderTimer = null;
-const vmgPlotBins = new Map();
 const vmgEstimate = {
   lastTs: null,
   lastHeading: null,
@@ -84,81 +90,25 @@ function initVmg(deps = {}) {
   vmgDeps = { ...vmgDeps, ...deps };
 }
 
-function clampVmgWindowMinutes(minutes) {
-  const safe = Number.parseInt(minutes, 10);
-  if (!Number.isFinite(safe)) return Math.round(vmgPlotWindowSeconds / 60);
-  return clamp(safe, VMG_PLOT_MIN_WINDOW_SEC / 60, VMG_PLOT_MAX_WINDOW_SEC / 60);
+function clampVmgTauSeconds(seconds) {
+  const safe = Number.parseInt(seconds, 10);
+  if (!Number.isFinite(safe)) return vmgPlotTauSeconds;
+  return clamp(safe, VMG_BASELINE_TAU_MIN_SEC, VMG_BASELINE_TAU_MAX_SEC);
 }
 
 function syncVmgWindowUi() {
-  const minutes = Math.round(vmgPlotWindowSeconds / 60);
+  const tauSeconds = clampVmgTauSeconds(vmgPlotTauSeconds);
+  vmgPlotTauSeconds = tauSeconds;
   if (els.vmgWindow) {
-    els.vmgWindow.value = String(minutes);
+    els.vmgWindow.value = String(tauSeconds);
   }
   if (els.vmgWindowValue) {
-    els.vmgWindowValue.textContent = `${minutes} min`;
+    els.vmgWindowValue.textContent = formatWindowSeconds(tauSeconds);
   }
 }
 
-function getVmgPlotBinDurationMs(seconds = vmgPlotWindowSeconds) {
-  const safeMinutes = clampVmgWindowMinutes(seconds / 60);
-  const windowMs = safeMinutes * 60 * 1000;
-  return Math.max(1, Math.round(windowMs / VMG_PLOT_BIN_COUNT));
-}
-
-function getVmgPlotBinId(timestampMs, binDurationMs = vmgPlotBinDurationMs) {
-  const ts = Number.isFinite(timestampMs) ? timestampMs : 0;
-  const duration = Number.isFinite(binDurationMs) && binDurationMs > 0 ? binDurationMs : 1;
-  return Math.floor(ts / duration);
-}
-
-function rebuildVmgPlotBins() {
-  vmgPlotBins.clear();
-  vmgPlotBinDurationMs = getVmgPlotBinDurationMs(vmgPlotWindowSeconds);
-  if (!Number.isFinite(vmgPlotLastSampleTs)) {
-    vmgPlotLastBinId = null;
-    return;
-  }
-  vmgPlotLastBinId = getVmgPlotBinId(vmgPlotLastSampleTs);
-  vmgPlotHistory.forEach((sample) => {
-    if (!sample) return;
-    if (!Number.isFinite(sample.ts) || !Number.isFinite(sample.value)) return;
-    const binId = getVmgPlotBinId(sample.ts);
-    let bin = vmgPlotBins.get(binId);
-    if (!bin) {
-      bin = { sum: 0, count: 0 };
-      vmgPlotBins.set(binId, bin);
-    }
-    bin.sum += sample.value;
-    bin.count += 1;
-  });
-}
-
-function updateVmgPlotBinsWithSample(timestampMs, value, cutoffTs) {
-  const nextDuration = getVmgPlotBinDurationMs(vmgPlotWindowSeconds);
-  if (nextDuration !== vmgPlotBinDurationMs) {
-    rebuildVmgPlotBins();
-    return;
-  }
-  const binId = getVmgPlotBinId(timestampMs);
-  let bin = vmgPlotBins.get(binId);
-  if (!bin) {
-    bin = { sum: 0, count: 0 };
-    vmgPlotBins.set(binId, bin);
-  }
-  bin.sum += value;
-  bin.count += 1;
-
-  const previousBinId = vmgPlotLastBinId;
-  vmgPlotLastBinId = binId;
-  if (!Number.isFinite(previousBinId) || previousBinId === binId) return;
-  if (!Number.isFinite(cutoffTs)) return;
-  const cutoffBinId = getVmgPlotBinId(cutoffTs);
-  for (const key of vmgPlotBins.keys()) {
-    if (key < cutoffBinId) {
-      vmgPlotBins.delete(key);
-    }
-  }
+function getVmgPlotWindowSeconds() {
+  return vmgPlotTauSeconds * VMG_PLOT_WINDOW_TAU_FACTOR;
 }
 
 function requestVmgPlotRender(options = {}) {
@@ -202,56 +152,101 @@ function renderVmgPlot() {
     return;
   }
 
-  const binCount = VMG_PLOT_BIN_COUNT;
-  const nextDuration = getVmgPlotBinDurationMs(vmgPlotWindowSeconds);
-  if (nextDuration !== vmgPlotBinDurationMs) {
-    rebuildVmgPlotBins();
-  }
+  const windowSeconds = getVmgPlotWindowSeconds();
+  const windowMs = Math.max(1000, windowSeconds * 1000);
+  const endTs = vmgPlotLastSampleTs;
+  const startTs = endTs - windowMs;
 
-  const binDurationMs = vmgPlotBinDurationMs;
-  const lastBinId = getVmgPlotBinId(vmgPlotLastSampleTs, binDurationMs);
-  const startBinId = lastBinId - binCount + 1;
-  const binValues = new Array(binCount).fill(null);
-
-  for (let i = 0; i < binCount; i += 1) {
-    const binId = startBinId + i;
-    const bin = vmgPlotBins.get(binId);
-    if (!bin || !Number.isFinite(bin.count) || bin.count <= 0) continue;
-    const mean = bin.sum / bin.count;
-    if (!Number.isFinite(mean)) continue;
-    binValues[i] = mean;
-  }
-
-  const baselineBins = Math.min(
-    binCount,
-    Math.max(1, Math.ceil((vmgPlotWindowSeconds * 1000) / (2 * binDurationMs)))
+  const samples = vmgPlotHistory.filter(
+    (sample) => sample && Number.isFinite(sample.ts) && sample.ts >= startTs
   );
-  let baselineSum = 0;
-  let baselineCount = 0;
-  for (let i = 0; i < baselineBins; i += 1) {
-    const value = binValues[i];
-    if (!Number.isFinite(value)) continue;
-    baselineSum += value;
-    baselineCount += 1;
-  }
-  if (!baselineCount) {
+
+  if (!samples.length) {
     ctx.fillStyle = "#000000";
     ctx.font = "16px sans-serif";
     ctx.fillText("No data", 12, 24);
     return;
   }
-  const baselineMean = baselineSum / baselineCount;
-  renderDeviationBarPlot(ctx, width, height, binValues, baselineMean, {
-    activeIndex: binCount - 1,
-    deltaFn: (value, mean) => value - mean,
+
+  let maxAbs = 0;
+  samples.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.value)) return;
+    maxAbs = Math.max(maxAbs, Math.abs(sample.value));
   });
+  if (!Number.isFinite(maxAbs) || maxAbs <= 0) {
+    maxAbs = VMG_PLOT_SCALE_STEP;
+  } else {
+    maxAbs = Math.max(
+      VMG_PLOT_SCALE_STEP,
+      Math.ceil(maxAbs / VMG_PLOT_SCALE_STEP) * VMG_PLOT_SCALE_STEP
+    );
+  }
+  const centerX = width / 2;
+  const maxBar = Math.max(1, centerX - VMG_PLOT_PADDING);
+  const xScale = maxBar / maxAbs;
+
+  const gridStep =
+    maxAbs >= VMG_PLOT_GRID_THRESHOLD ? VMG_PLOT_GRID_LARGE : VMG_PLOT_GRID_SMALL;
+  const maxGrid = Math.floor(maxAbs / gridStep) * gridStep;
+  if (maxGrid >= gridStep) {
+    ctx.save();
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.setLineDash(VMG_PLOT_GRID_DASH);
+    for (let value = gridStep; value <= maxGrid; value += gridStep) {
+      const dx = value * xScale;
+      const xLeft = centerX - dx;
+      const xRight = centerX + dx;
+      [xLeft, xRight].forEach((x) => {
+        if (!Number.isFinite(x) || x < 0 || x > width) return;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  let started = false;
+  samples.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.value)) return;
+    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
+    const x = centerX + sample.value * xScale;
+    const y = height - t * height;
+    if (!started) {
+      ctx.moveTo(x, y);
+      started = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  if (started) {
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(centerX, 0);
+  ctx.lineTo(centerX, height);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function resetVmgPlotHistory() {
   vmgPlotHistory.length = 0;
   vmgPlotLastSampleTs = null;
-  vmgPlotLastBinId = null;
-  vmgPlotBins.clear();
+  vmgPlotBaseline = null;
+  vmgPlotFast = null;
   requestVmgPlotRender({ force: true });
 }
 
@@ -356,14 +351,14 @@ function isVmgGpsBad() {
 
 function getVmgEvalWindowSeconds() {
   if (vmgMode === "reaching") {
-    return Math.max(1, vmgPlotWindowSeconds / 2);
+    return Math.max(1, getVmgPlotWindowSeconds() / 2);
   }
   return VMG_EVAL_WINDOW_SEC;
 }
 
 function getVmgEvalHistoryMs() {
   const minWindowSeconds = VMG_EVAL_WINDOW_SEC * 2;
-  const windowSeconds = Math.max(minWindowSeconds, vmgPlotWindowSeconds);
+  const windowSeconds = Math.max(minWindowSeconds, getVmgPlotWindowSeconds());
   return windowSeconds * 1000 + VMG_EVAL_HISTORY_PAD_MS;
 }
 
@@ -525,18 +520,44 @@ function computeVmgChangePercent() {
   };
 }
 
-function recordVmgPlotSample(percent, timestampMs) {
-  if (!Number.isFinite(percent)) return;
-  const clamped = clamp(percent, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
+function applyFirstOrderFilter(prevValue, nextValue, dtSec, tauSec) {
+  if (!Number.isFinite(nextValue)) return prevValue;
+  if (!Number.isFinite(tauSec) || tauSec <= 0) return nextValue;
+  if (!Number.isFinite(prevValue)) return nextValue;
+  const alpha = 1 - Math.exp(-dtSec / tauSec);
+  return prevValue + alpha * (nextValue - prevValue);
+}
+
+function recordVmgPlotSample(value, timestampMs) {
+  if (!Number.isFinite(value)) return;
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  vmgPlotHistory.push({ ts, value: clamped });
+  vmgPlotHistory.push({ ts, value });
   vmgPlotLastSampleTs = ts;
-  const cutoff = ts - (VMG_PLOT_MAX_WINDOW_SEC * 1000 + VMG_PLOT_HISTORY_PAD_MS);
+  const cutoff = ts - (getVmgPlotWindowSeconds() * 1000 + VMG_PLOT_HISTORY_PAD_MS);
   while (vmgPlotHistory.length && vmgPlotHistory[0].ts < cutoff) {
     vmgPlotHistory.shift();
   }
-  updateVmgPlotBinsWithSample(ts, clamped, cutoff);
   requestVmgPlotRender();
+}
+
+function updateVmgPlotFilters(rawValue, timestampMs) {
+  if (!Number.isFinite(rawValue)) return;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  const clamped = clamp(rawValue, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
+  if (!Number.isFinite(vmgPlotLastSampleTs)) {
+    vmgPlotBaseline = clamped;
+    vmgPlotFast = clamped;
+    recordVmgPlotSample(0, ts);
+    return;
+  }
+  const dtSec = Math.max(0, (ts - vmgPlotLastSampleTs) / 1000);
+  if (dtSec <= 0) return;
+  const baselineTau = vmgPlotTauSeconds;
+  const fastTau = Math.max(0.05, baselineTau / 10);
+  vmgPlotBaseline = applyFirstOrderFilter(vmgPlotBaseline, clamped, dtSec, baselineTau);
+  vmgPlotFast = applyFirstOrderFilter(vmgPlotFast, clamped, dtSec, fastTau);
+  const delta = clamp(vmgPlotFast - vmgPlotBaseline, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
+  recordVmgPlotSample(delta, ts);
 }
 
 function updateVmgEstimate(position) {
@@ -559,7 +580,7 @@ function updateVmgEstimate(position) {
     if (result) {
       setVmgWarmupState(result.warmup);
       if (Number.isFinite(result.percent)) {
-        recordVmgPlotSample(result.percent, sample.ts);
+        updateVmgPlotFilters(result.percent, sample.ts);
       }
     }
   }
@@ -749,17 +770,13 @@ function bindVmgEvents() {
   }
 
   if (els.vmgWindow) {
-    const minutes = clampVmgWindowMinutes(els.vmgWindow.value);
-    vmgPlotWindowSeconds = minutes * 60;
+    const tauSeconds = clampVmgTauSeconds(els.vmgWindow.value);
+    vmgPlotTauSeconds = tauSeconds;
     syncVmgWindowUi();
-    vmgPlotBinDurationMs = getVmgPlotBinDurationMs(vmgPlotWindowSeconds);
-    rebuildVmgPlotBins();
     const onWindowChange = () => {
-      const nextMinutes = clampVmgWindowMinutes(els.vmgWindow.value);
-      vmgPlotWindowSeconds = nextMinutes * 60;
+      const nextTauSeconds = clampVmgTauSeconds(els.vmgWindow.value);
+      vmgPlotTauSeconds = nextTauSeconds;
       syncVmgWindowUi();
-      vmgPlotBinDurationMs = getVmgPlotBinDurationMs(vmgPlotWindowSeconds);
-      rebuildVmgPlotBins();
       pruneVmgEvalHistory(Date.now() - getVmgEvalHistoryMs());
       requestVmgPlotRender({ force: true });
     };
@@ -865,7 +882,6 @@ function bindVmgEvents() {
 
 function enterVmgView() {
   syncVmgWindowUi();
-  rebuildVmgPlotBins();
   requestVmgPlotRender({ force: true });
 }
 
@@ -885,7 +901,7 @@ function applyVmgImuSample(yawRateRad, timestamp) {
 
 function getVmgSettingsSnapshot() {
   return {
-    windowSeconds: vmgPlotWindowSeconds,
+    baselineTauSeconds: vmgPlotTauSeconds,
     mode: vmgMode,
     tack: vmgTack,
     twaUpDeg: getVmgTwaDegrees(),
@@ -901,7 +917,6 @@ export {
   updateVmgEstimate,
   updateVmgGpsState,
   requestVmgPlotRender,
-  rebuildVmgPlotBins,
   syncVmgWindowUi,
   resetVmgEstimator,
   resetVmgImuState,

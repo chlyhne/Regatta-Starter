@@ -42,17 +42,17 @@ export const vmgView = `
     <section class="vmg-panel">
       <div class="vmg-controls">
         <div class="vmg-control-head">
-          <h2 id="vmg-window-title">Window</h2>
-          <div id="vmg-window-value" class="vmg-window-value">3 min</div>
+          <h2 id="vmg-window-title">Time constant</h2>
+          <div id="vmg-window-value" class="vmg-window-value">45 s</div>
         </div>
         <input
           id="vmg-window"
           class="vmg-window-slider"
           type="range"
-          min="1"
-          max="5"
-          step="1"
-          value="3"
+          min="15"
+          max="75"
+          step="5"
+          value="45"
           aria-labelledby="vmg-window-title vmg-window-value"
         />
       </div>
