@@ -286,42 +286,13 @@ function finalizeReplayEvents(events) {
   if (!events.length) return [];
   events.sort((a, b) => a.tsDevice - b.tsDevice);
   const baseDeviceTimeMs = events[0].tsDevice;
-  let baseGpsTimeMs = null;
-  let baseImuTimeMs = null;
-  for (const event of events) {
-    if (event.type === "gps" && Number.isFinite(event.tsGps)) {
-      baseGpsTimeMs = event.tsGps;
-      break;
-    }
-  }
-  for (const event of events) {
-    if (event.type === "imu" && Number.isFinite(event.eventTimeMs)) {
-      baseImuTimeMs = event.eventTimeMs;
-      break;
-    }
-  }
-  if (!Number.isFinite(baseGpsTimeMs)) {
-    baseGpsTimeMs = baseDeviceTimeMs;
-  }
-  if (!Number.isFinite(baseImuTimeMs)) {
-    baseImuTimeMs = baseDeviceTimeMs;
-  }
   events.forEach((event) => {
     event.offsetMs = Math.max(0, event.tsDevice - baseDeviceTimeMs);
-    if (event.type === "gps") {
-      const gpsOffset = Number.isFinite(event.tsGps)
-        ? event.tsGps - baseGpsTimeMs
-        : event.offsetMs;
-      event.gpsOffsetMs = Math.max(0, gpsOffset);
+    if (event.type === "gps" || event.type === "derived") {
+      event.gpsOffsetMs = event.offsetMs;
     }
     if (event.type === "imu") {
-      const imuOffset = Number.isFinite(event.eventTimeMs)
-        ? event.eventTimeMs - baseImuTimeMs
-        : event.offsetMs;
-      event.imuOffsetMs = Math.max(0, imuOffset);
-    }
-    if (event.type === "derived") {
-      event.gpsOffsetMs = event.offsetMs;
+      event.imuOffsetMs = event.offsetMs;
     }
   });
   return events;
@@ -394,17 +365,11 @@ function tickReplay() {
     const sample = replayEvents[replayCursor];
     if (!sample || sample.offsetMs > elapsedMs) break;
     const playbackDeviceTimeMs = replayBaseTimeMs + sample.offsetMs;
-    const playbackGpsTimeMs = Number.isFinite(sample.gpsOffsetMs)
-      ? replayBaseTimeMs + sample.gpsOffsetMs
-      : playbackDeviceTimeMs;
-    const playbackImuTimeMs = Number.isFinite(sample.imuOffsetMs)
-      ? replayBaseTimeMs + sample.imuOffsetMs
-      : playbackDeviceTimeMs;
     if (typeof replayDeps.onSample === "function") {
       replayDeps.onSample(sample, {
         deviceTimeMs: playbackDeviceTimeMs,
-        gpsTimeMs: playbackGpsTimeMs,
-        imuTimeMs: playbackImuTimeMs,
+        gpsTimeMs: playbackDeviceTimeMs,
+        imuTimeMs: playbackDeviceTimeMs,
       });
     }
     replayCursor += 1;
