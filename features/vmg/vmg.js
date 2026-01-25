@@ -219,8 +219,8 @@ function renderVmgPlot() {
   let lastY = null;
   samples.forEach((sample) => {
     if (!sample || !Number.isFinite(sample.value)) return;
-    const age = clamp((endTs - sample.ts) / windowMs, 0, 1);
-    const x = age * width;
+    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
+    const x = t * width;
     const y = centerY - sample.value * yScale;
     pointCount += 1;
     lastX = x;
