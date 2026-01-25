@@ -183,6 +183,10 @@ function renderVmgPlot() {
       Math.ceil(maxAbs / VMG_PLOT_SCALE_STEP) * VMG_PLOT_SCALE_STEP
     );
   }
+  const labelMargin = 44;
+  const plotLeft = Math.min(labelMargin, Math.max(0, width - 20));
+  const plotRight = Math.max(plotLeft + 1, width - 6);
+  const plotWidth = Math.max(1, plotRight - plotLeft);
   const centerY = height / 2;
   const maxBar = Math.max(1, centerY - VMG_PLOT_PADDING);
   const yScale = maxBar / maxAbs;
@@ -202,8 +206,8 @@ function renderVmgPlot() {
       [yUp, yDown].forEach((y) => {
         if (!Number.isFinite(y) || y < 0 || y > height) return;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
+        ctx.moveTo(plotLeft, y);
+        ctx.lineTo(plotRight, y);
         ctx.stroke();
       });
     }
@@ -214,7 +218,7 @@ function renderVmgPlot() {
   samples.forEach((sample) => {
     if (!sample || !Number.isFinite(sample.value)) return;
     const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
-    const x = t * width;
+    const x = plotLeft + t * plotWidth;
     const y = centerY - sample.value * yScale;
     points.push({ x, y, value: sample.value });
   });
@@ -320,23 +324,24 @@ function renderVmgPlot() {
   ctx.lineWidth = 2;
   ctx.setLineDash([]);
   ctx.beginPath();
-  ctx.moveTo(0, centerY);
-  ctx.lineTo(width, centerY);
+  ctx.moveTo(plotLeft, centerY);
+  ctx.lineTo(plotRight, centerY);
   ctx.stroke();
   ctx.restore();
 
   ctx.save();
   ctx.fillStyle = "#000000";
   ctx.font = "12px sans-serif";
-  ctx.textAlign = "left";
+  ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  ctx.fillText("0%", 6, centerY);
+  const labelX = Math.max(6, plotLeft - 6);
+  ctx.fillText("0%", labelX, centerY);
   for (let value = gridStep; value <= maxGrid; value += gridStep) {
     const dy = value * yScale;
     const yUp = centerY - dy;
     const yDown = centerY + dy;
-    ctx.fillText(`+${value}%`, 6, yUp);
-    ctx.fillText(`-${value}%`, 6, yDown);
+    ctx.fillText(`+${value}%`, labelX, yUp);
+    ctx.fillText(`-${value}%`, labelX, yDown);
   }
   ctx.restore();
 }
