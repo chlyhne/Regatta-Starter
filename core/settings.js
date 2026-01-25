@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 5;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
 
@@ -28,8 +28,8 @@ const DEFAULT_SETTINGS = {
   timeFormat: "24h",
   speedUnit: "kn",
   distanceUnit: "m",
-  bowOffsetMeters: 0,
-  boatLengthMeters: 0,
+  bowOffsetMeters: 5,
+  boatLengthMeters: 8,
   imuCalibration: null,
   diagUploadToken: "",
   start: {
@@ -157,8 +157,18 @@ function normalizeSettings(raw) {
     timeFormat: normalizeTimeFormat(raw?.timeFormat),
     speedUnit: normalizeSpeedUnit(raw?.speedUnit),
     distanceUnit: normalizeDistanceUnit(raw?.distanceUnit),
-    bowOffsetMeters: Math.max(0, Number.parseFloat(raw?.bowOffsetMeters) || 0),
-    boatLengthMeters: Math.max(0, Number.parseFloat(raw?.boatLengthMeters) || 0),
+    bowOffsetMeters: Math.max(
+      0,
+      Number.isFinite(Number.parseFloat(raw?.bowOffsetMeters))
+        ? Number.parseFloat(raw?.bowOffsetMeters)
+        : DEFAULT_SETTINGS.bowOffsetMeters
+    ),
+    boatLengthMeters: Math.max(
+      0,
+      Number.isFinite(Number.parseFloat(raw?.boatLengthMeters))
+        ? Number.parseFloat(raw?.boatLengthMeters)
+        : DEFAULT_SETTINGS.boatLengthMeters
+    ),
     imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
     diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
     start: normalizeStart(raw?.start),
@@ -216,6 +226,15 @@ function migrateSettings(raw) {
   if (version < 4) {
     migrated.diagUploadToken = "";
     migrated.version = 4;
+  }
+  if (version < 5) {
+    const bowOffset = Number.parseFloat(migrated.bowOffsetMeters);
+    const boatLength = Number.parseFloat(migrated.boatLengthMeters);
+    migrated.bowOffsetMeters =
+      Number.isFinite(bowOffset) && bowOffset > 0 ? bowOffset : DEFAULT_SETTINGS.bowOffsetMeters;
+    migrated.boatLengthMeters =
+      Number.isFinite(boatLength) && boatLength > 0 ? boatLength : DEFAULT_SETTINGS.boatLengthMeters;
+    migrated.version = 5;
   }
   return migrated;
 }
