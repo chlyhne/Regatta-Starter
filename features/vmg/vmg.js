@@ -36,7 +36,7 @@ const VMG_EVAL_WARMUP_MIN_MS = 1000;
 const VMG_BASELINE_TAU_DEFAULT_SEC = 45;
 const VMG_BASELINE_TAU_MIN_SEC = 15;
 const VMG_BASELINE_TAU_MAX_SEC = 75;
-const VMG_PLOT_WINDOW_TAU_FACTOR = 4;
+const VMG_PLOT_WINDOW_TAU_FACTOR = 6;
 const VMG_PLOT_SCALE_STEP = 2;
 const VMG_PLOT_GRID_SMALL = 2;
 const VMG_PLOT_GRID_LARGE = 4;
@@ -115,7 +115,7 @@ function requestVmgPlotRender(options = {}) {
   if (!document.body.classList.contains("vmg-mode")) return;
   const now = Date.now();
   const force = options && options.force;
-  const maxIntervalMs = 1000;
+  const maxIntervalMs = 200;
   const elapsed = now - vmgPlotLastRenderAt;
   if (force || !Number.isFinite(vmgPlotLastRenderAt) || elapsed >= maxIntervalMs) {
     if (vmgPlotRenderTimer) {
@@ -214,11 +214,17 @@ function renderVmgPlot() {
   ctx.setLineDash([]);
   ctx.beginPath();
   let started = false;
+  let pointCount = 0;
+  let lastX = null;
+  let lastY = null;
   samples.forEach((sample) => {
     if (!sample || !Number.isFinite(sample.value)) return;
     const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
     const x = centerX + sample.value * xScale;
     const y = height - t * height;
+    pointCount += 1;
+    lastX = x;
+    lastY = y;
     if (!started) {
       ctx.moveTo(x, y);
       started = true;
@@ -230,6 +236,13 @@ function renderVmgPlot() {
     ctx.stroke();
   }
   ctx.restore();
+
+  if (pointCount === 1 && Number.isFinite(lastX) && Number.isFinite(lastY)) {
+    ctx.save();
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(lastX - 2, lastY - 2, 4, 4);
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.strokeStyle = "#000000";
@@ -577,11 +590,12 @@ function updateVmgEstimate(position) {
   if (Number.isFinite(headingUnwrapped)) {
     recordVmgEvalSample(sample, heading, headingUnwrapped);
     const result = computeVmgChangePercent();
-    if (result) {
-      setVmgWarmupState(result.warmup);
-      if (Number.isFinite(result.percent)) {
-        updateVmgPlotFilters(result.percent, sample.ts);
-      }
+    const warmup = result ? result.warmup : true;
+    setVmgWarmupState(warmup);
+    if (result && Number.isFinite(result.percent)) {
+      updateVmgPlotFilters(result.percent, sample.ts);
+    } else if (!vmgPlotHistory.length) {
+      updateVmgPlotFilters(0, sample.ts);
     }
   }
   if (!Number.isFinite(headingUnwrapped)) return;
