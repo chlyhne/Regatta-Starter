@@ -16,6 +16,7 @@ Instructions for coding agents working in this repo.
 - Avoid decorative elements, extra text, or crowded layouts.
 - Avoid small tap targets; prioritize legibility over density.
 - Never use `text-transform: uppercase;` anywhere.
+- Prefer structural fixes over ad-hoc overrides; rework the layout instead of patching around it.
 
 ## Data and storage
 - Settings and saved lines live in `localStorage` via `state.js` and `settings.js`.

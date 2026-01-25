@@ -447,10 +447,12 @@ body {
 }
 
 .vmg-plot-panel {
-  margin-inline: 1px;
-  padding-inline: 1px;
-  margin-block: 1px;
-  padding-block: 1px;
+  --section-edge-padding: 1px;
+  --section-padding-inline: 0;
+  --section-padding-block: 0;
+  --section-divider-gap: 0;
+  --section-margin-block: 1px;
+  gap: 0;
 }
 
 .vmg-plot canvas {
@@ -1052,17 +1054,22 @@ h1 {
 }
 
 .mode-shell > * {
-  padding: var(--mode-section-padding-block) var(--mode-section-padding);
-  padding-bottom: calc(var(--mode-section-padding-block) + var(--mode-divider-gap));
-  margin-inline: var(--mode-edge-padding);
+  padding: var(--section-padding-block, var(--mode-section-padding-block))
+    var(--section-padding-inline, var(--mode-section-padding));
+  padding-bottom: calc(
+    var(--section-padding-block, var(--mode-section-padding-block)) +
+      var(--section-divider-gap, var(--mode-divider-gap))
+  );
+  margin-inline: var(--section-edge-padding, var(--mode-edge-padding));
+  margin-block: var(--section-margin-block, 0);
   position: relative;
 }
 
 .mode-shell > *::after {
   content: "";
   position: absolute;
-  left: calc(-1 * var(--mode-edge-padding));
-  right: calc(-1 * var(--mode-edge-padding));
+  left: calc(-1 * var(--section-edge-padding, var(--mode-edge-padding)));
+  right: calc(-1 * var(--section-edge-padding, var(--mode-edge-padding)));
   bottom: 0;
   height: 2px;
   background: #000000;
