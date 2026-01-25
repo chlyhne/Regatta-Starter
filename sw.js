@@ -61,8 +61,7 @@ const ASSETS = [
   "./docs/appendix.tex",
   "./docs/plots/gain-q-length.pdf",
   "./docs/plots/gain-speed-scale.pdf",
-  "./docs/plots/gain-gravity-alpha.pdf"
-  "./replay/rt-g7uxzsyjntxc-sess-1769301852713-jb8qvd.ndjson",
+  "./docs/plots/gain-gravity-alpha.pdf",
   "./replay/rt-w503dhu3mbxm-sess-1769331908984-76inko.ndjson",
 ];
 

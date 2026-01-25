@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <file.ndjson|file.ndjson.gz|id>" >&2
+}
+
+if [ $# -lt 1 ]; then
+  usage
+  exit 1
+fi
+
+input="$1"
+manifest_path="replay/manifest.json"
+
+if [ ! -f "$manifest_path" ]; then
+  echo "Manifest not found: $manifest_path" >&2
+  exit 1
+fi
+
+info="$(python3 - "$input" "$manifest_path" <<'PY'
+import json
+import os
+import sys
+
+raw_input = sys.argv[1]
+manifest_path = sys.argv[2]
+
+with open(manifest_path, "r", encoding="utf-8") as handle:
+    try:
+        data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid JSON in {manifest_path}: {exc}") from exc
+
+if not isinstance(data, list):
+    raise SystemExit(f"{manifest_path} must contain a JSON array.")
+
+def normalize(value):
+    return str(value or "").strip()
+
+input_value = normalize(raw_input)
+input_base = os.path.basename(input_value)
+if input_base.startswith("replay" + os.sep):
+    input_base = os.path.basename(input_base)
+
+match_index = None
+removed_path = None
+for idx, entry in enumerate(data):
+    if not isinstance(entry, dict):
+        continue
+    entry_id = normalize(entry.get("id"))
+    entry_path = normalize(entry.get("path"))
+    entry_base = os.path.basename(entry_path)
+    if input_value in {entry_id, entry_path, entry_base, os.path.basename(entry_id)}:
+        match_index = idx
+        removed_path = entry_path
+        break
+    if input_base and input_base in {entry_path, entry_base}:
+        match_index = idx
+        removed_path = entry_path
+        break
+
+if match_index is None or not removed_path:
+    raise SystemExit(f"Replay entry not found for: {raw_input}")
+
+data.pop(match_index)
+
+if data:
+    with open(manifest_path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
+        handle.write("\n")
+    print(removed_path)
+    print("KEEP")
+else:
+    os.remove(manifest_path)
+    print(removed_path)
+    print("EMPTY")
+PY
+)"
+
+removed_path="$(printf "%s\n" "$info" | sed -n '1p')"
+manifest_state="$(printf "%s\n" "$info" | sed -n '2p')"
+
+if [ -z "$removed_path" ]; then
+  echo "Could not resolve replay file from manifest." >&2
+  exit 1
+fi
+
+candidate="$removed_path"
+if [ -f "replay/$removed_path" ]; then
+  candidate="replay/$removed_path"
+fi
+
+if [ -f "$candidate" ]; then
+  git rm -f --quiet "$candidate" 2>/dev/null || rm -f "$candidate"
+fi
+
+if [ "$manifest_state" = "EMPTY" ]; then
+  if [ -f "$manifest_path" ]; then
+    git rm -f --quiet "$manifest_path" 2>/dev/null || rm -f "$manifest_path"
+  fi
+fi
+
+REPLAY_FILE="$removed_path" MANIFEST_STATE="$manifest_state" python3 - <<'PY'
+import os
+import re
+
+sw_path = "sw.js"
+replay_file = os.environ.get("REPLAY_FILE", "").strip()
+manifest_state = os.environ.get("MANIFEST_STATE", "")
+
+if not replay_file:
+    raise SystemExit("Missing REPLAY_FILE")
+
+with open(sw_path, "r", encoding="utf-8") as handle:
+    text = handle.read()
+
+match = re.search(r'const\s+CACHE_NAME\s*=\s*"racetimer-v(\d+)"', text)
+if not match:
+    raise SystemExit("CACHE_NAME not found in sw.js")
+current = int(match.group(1))
+text = re.sub(
+    r'const\s+CACHE_NAME\s*=\s*"racetimer-v\d+"',
+    f'const CACHE_NAME = "racetimer-v{current + 1}"',
+    text,
+    count=1,
+)
+
+pattern = re.compile(rf'^\\s*"\\./replay/{re.escape(replay_file)}"\\s*,?\\n', re.MULTILINE)
+text = pattern.sub("", text)
+
+if manifest_state == "EMPTY":
+    text = re.sub(r'^\\s*"\\./replay/manifest\\.json"\\s*,?\\n', "", text, flags=re.MULTILINE)
+
+with open(sw_path, "w", encoding="utf-8") as handle:
+    handle.write(text)
+PY
+
+git add sw.js >/dev/null 2>&1 || true
+if [ "$manifest_state" = "KEEP" ] && [ -f "$manifest_path" ]; then
+  git add "$manifest_path" >/dev/null 2>&1 || true
+fi
+
+echo "Removed replay entry: $removed_path"
+echo "Updated sw.js"

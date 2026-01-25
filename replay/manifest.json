@@ -1,20 +1,5 @@
 [
   {
-    "id": "2026-01-24t22-00-29-861z-ndjson",
-    "label": "2026-01-24T22-00-29-861Z.ndjson",
-    "path": "2026-01-24T22-00-29-861Z.ndjson.gz"
-  },
-  {
-    "id": "2026-01-24t23-33-54-456z-ndjson",
-    "label": "2026-01-24T23-33-54-456Z.ndjson",
-    "path": "2026-01-24T23-33-54-456Z.ndjson.gz"
-  },
-  {
-    "id": "rt-g7uxzsyjntxc-sess-1769301852713-jb8qvd",
-    "label": "rt-g7uxzsyjntxc-sess-1769301852713-jb8qvd",
-    "path": "rt-g7uxzsyjntxc-sess-1769301852713-jb8qvd.ndjson"
-  },
-  {
     "id": "rt-w503dhu3mbxm-sess-1769331908984-76inko",
     "label": "rt-w503dhu3mbxm-sess-1769331908984-76inko",
     "path": "rt-w503dhu3mbxm-sess-1769331908984-76inko.ndjson"
