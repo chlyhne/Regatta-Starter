@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <file.ndjson|file.ndjson.gz>" >&2
+  echo "Usage: $0 <file.ndjson|file.ndjson.gz|manifest.json|session-dir>" >&2
 }
 
 if [ $# -lt 1 ]; then
@@ -12,13 +12,125 @@ fi
 
 src="$1"
 if [ ! -f "$src" ]; then
-  echo "File not found: $src" >&2
-  exit 1
+  if [ -d "$src" ]; then
+    if [ -f "$src/manifest.json" ]; then
+      src="$src/manifest.json"
+    else
+      echo "manifest.json not found in: $src" >&2
+      exit 1
+    fi
+  else
+    echo "File not found: $src" >&2
+    exit 1
+  fi
 fi
 
 dest_dir="replay"
 mkdir -p "$dest_dir"
-base="$(basename "$src")"
+base_override=""
+tmp_file=""
+
+if [[ "$src" == *.json ]]; then
+  tmp_file="$(mktemp -t racetimer-replay-XXXX.ndjson)"
+  base_override="$(python3 - "$src" "$tmp_file" <<'PY'
+import gzip
+import json
+import os
+import re
+import sys
+
+manifest_path = sys.argv[1]
+out_path = sys.argv[2]
+
+with open(manifest_path, "r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+chunks = manifest.get("chunks")
+if not isinstance(chunks, list) or not chunks:
+    raise SystemExit("Manifest has no chunks to assemble.")
+
+def slug(value):
+    return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+
+device_id = slug(manifest.get("deviceId"))
+session_id = slug(manifest.get("sessionId"))
+base = None
+if device_id and session_id:
+    base = f"{device_id}-{session_id}.ndjson"
+else:
+    stem = os.path.splitext(os.path.basename(manifest_path))[0]
+    base = f"{stem}.ndjson"
+
+manifest_dir = os.path.dirname(os.path.abspath(manifest_path))
+
+def resolve_path(key):
+    if not key:
+        return None
+    key = os.path.normpath(key)
+    if os.path.isabs(key) and os.path.exists(key):
+        return key
+    for depth in range(0, 6):
+        candidate_root = manifest_dir
+        for _ in range(depth):
+            candidate_root = os.path.dirname(candidate_root)
+        candidate = os.path.join(candidate_root, key)
+        if os.path.exists(candidate):
+            return candidate
+    candidate = os.path.join(manifest_dir, key)
+    if os.path.exists(candidate):
+        return candidate
+    return None
+
+def copy_stream(source, out_handle):
+    last_byte = None
+    while True:
+        chunk = source.read(1024 * 1024)
+        if not chunk:
+            break
+        out_handle.write(chunk)
+        last_byte = chunk[-1]
+    return last_byte
+
+def sort_key(entry):
+    idx = entry.get("index")
+    try:
+        idx = int(idx)
+    except Exception:
+        idx = 0
+    return (idx, entry.get("id") or "")
+
+chunks_sorted = sorted(chunks, key=sort_key)
+
+with open(out_path, "wb") as out_handle:
+    for entry in chunks_sorted:
+        key = entry.get("key") or entry.get("path") or entry.get("file")
+        path = resolve_path(key)
+        if not path:
+            raise SystemExit(f"Chunk file not found for key: {key}")
+        with open(path, "rb") as chunk_handle:
+            head = chunk_handle.read(2)
+            chunk_handle.seek(0)
+            if head == b"\x1f\x8b":
+                with gzip.GzipFile(fileobj=chunk_handle) as gz:
+                    last = copy_stream(gz, out_handle)
+            else:
+                last = copy_stream(chunk_handle, out_handle)
+        if last is not None and last != 0x0A:
+            out_handle.write(b"\n")
+
+print(base)
+PY
+)"
+  if [ -z "$base_override" ]; then
+    echo "Failed to assemble replay file from manifest." >&2
+    rm -f "$tmp_file"
+    exit 1
+  fi
+  src="$tmp_file"
+  trap 'rm -f "$tmp_file"' EXIT
+fi
+
+base="${base_override:-$(basename "$src")}"
 dest="$dest_dir/$base"
 
 if [ "$src" != "$dest" ]; then
