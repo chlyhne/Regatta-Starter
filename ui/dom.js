@@ -94,7 +94,6 @@ const els = {
   vmgTwaValue: document.getElementById("vmg-twa-value"),
   vmgTwaDown: document.getElementById("vmg-twa-down"),
   vmgTwaDownValue: document.getElementById("vmg-twa-down-value"),
-  vmgDebugRefresh: document.getElementById("vmg-debug-refresh"),
   lifterGpsIcon: document.getElementById("lifter-gps-icon"),
   lifterCanvas: document.getElementById("lifter-canvas"),
   lifterWindow: document.getElementById("lifter-window"),

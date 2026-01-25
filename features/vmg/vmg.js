@@ -1002,14 +1002,6 @@ function bindVmgEvents() {
     els.vmgTwaDown.addEventListener("input", syncVmgTwaDown);
   }
 
-  if (els.vmgDebugRefresh) {
-    els.vmgDebugRefresh.addEventListener("click", () => {
-      if (vmgDeps.hardReload) {
-        vmgDeps.hardReload();
-      }
-    });
-  }
-
   if (els.closeVmgImu) {
     els.closeVmgImu.addEventListener("click", () => {
       setVmgImuWarningOpen(false);

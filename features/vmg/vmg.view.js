@@ -93,12 +93,6 @@ export const vmgView = `
       </div>
     </section>
 
-    <section id="vmg-debug-panel" class="vmg-panel">
-      <h2>Debug</h2>
-      <div class="row stack">
-        <button id="vmg-debug-refresh">Reload</button>
-      </div>
-    </section>
   </div>
 
   <section id="vmg-settings-view" class="vmg-settings-view" aria-hidden="true">
