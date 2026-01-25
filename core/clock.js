@@ -1,8 +1,10 @@
 import { state } from "./state.js";
+import { getReplayClockNow } from "./replay.js";
 
 function getNowMs() {
-  if (state.replay && state.replay.active && Number.isFinite(state.replay.clockNow)) {
-    return state.replay.clockNow;
+  const replayNow = getReplayClockNow();
+  if (Number.isFinite(replayNow)) {
+    return replayNow;
   }
   return Date.now();
 }

@@ -77,6 +77,11 @@ function getReplayElapsedMs(now = Date.now()) {
   return Math.max(0, elapsed);
 }
 
+function getReplayClockNow(now = Date.now()) {
+  if (!state.replay?.active) return null;
+  return replayBaseTimeMs + getReplayElapsedMs(now);
+}
+
 async function loadReplayEntries() {
   if (Array.isArray(replayEntries)) return replayEntries;
   const response = await fetch(REPLAY_MANIFEST_URL, { cache: "no-cache" });
@@ -507,4 +512,5 @@ export {
   getReplayState,
   formatReplaySpeed,
   normalizeReplaySpeed,
+  getReplayClockNow,
 };
