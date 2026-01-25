@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v152";
+const CACHE_NAME = "racetimer-v155";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,7 +7,6 @@ const ASSETS = [
   "./map.css",
   "./app.js",
   "./build.js",
-  "./replay/manifest.json",
   "./map.js",
   "./manifest.json",
   "./boat.svg",
@@ -62,9 +61,9 @@ const ASSETS = [
   "./docs/appendix.tex",
   "./docs/plots/gain-q-length.pdf",
   "./docs/plots/gain-speed-scale.pdf",
-  "./docs/plots/gain-gravity-alpha.pdf",
-  "./replay/2026-01-24T22-00-29-861Z.ndjson.gz",
-  "./replay/2026-01-24T23-33-54-456Z.ndjson.gz",
+  "./docs/plots/gain-gravity-alpha.pdf"
+  "./replay/rt-g7uxzsyjntxc-sess-1769301852713-jb8qvd.ndjson",
+  "./replay/rt-w503dhu3mbxm-sess-1769331908984-76inko.ndjson",
 ];
 
 self.addEventListener("message", (event) => {
