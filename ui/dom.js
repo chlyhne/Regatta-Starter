@@ -81,6 +81,7 @@ const els = {
   vmgGpsIcon: document.getElementById("vmg-gps-icon"),
   vmgPlot: document.getElementById("vmg-plot"),
   vmgCanvas: document.getElementById("vmg-canvas"),
+  vmgWarmup: document.getElementById("vmg-warmup"),
   vmgWindow: document.getElementById("vmg-window"),
   vmgWindowValue: document.getElementById("vmg-window-value"),
   vmgModeBeating: document.getElementById("vmg-mode-beating"),

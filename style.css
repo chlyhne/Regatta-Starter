@@ -444,12 +444,30 @@ body {
   height: 65vh;
   border: 2px solid #000000;
   background: #ffffff;
+  position: relative;
 }
 
 .vmg-plot canvas {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.vmg-warmup {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 8px;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.vmg-warmup[aria-hidden="true"] {
+  display: none;
 }
 
 .vmg-plot.gps-bad {

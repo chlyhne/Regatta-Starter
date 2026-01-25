@@ -58,6 +58,7 @@ export const vmgView = `
       </div>
       <div id="vmg-plot" class="vmg-plot" aria-label="VMG change plot">
         <canvas id="vmg-canvas"></canvas>
+        <div id="vmg-warmup" class="vmg-warmup hint" aria-hidden="true">Warming</div>
       </div>
     </section>
 

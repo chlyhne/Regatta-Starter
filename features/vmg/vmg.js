@@ -32,6 +32,7 @@ const VMG_EVAL_TWA_DOWN_MAX = 175;
 const VMG_EVAL_MAX_GAIN = 50;
 const VMG_EVAL_MIN_BASE = 0.2;
 const VMG_EVAL_HISTORY_PAD_MS = 5000;
+const VMG_EVAL_WARMUP_MIN_MS = 1000;
 const VMG_PLOT_MIN_WINDOW_SEC = 60;
 const VMG_PLOT_MAX_WINDOW_SEC = 300;
 const VMG_PLOT_BIN_COUNT = 30;
@@ -68,6 +69,7 @@ const vmgImu = {
   lastTimestamp: null,
   lastGpsTs: null,
 };
+let vmgWarmup = false;
 let vmgMode = "beating";
 let vmgTack = "starboard";
 
@@ -270,6 +272,7 @@ function resetVmgEstimator() {
   vmgEstimate.slope = null;
   vmgEstimate.slopeStdErr = null;
   vmgEvalHistory.length = 0;
+  setVmgWarmupState(false);
   resetVmgPlotHistory();
   resetVmgImuState();
 }
@@ -479,27 +482,47 @@ function computeVmgWindAxis(startTs, endTs) {
 }
 
 function computeVmgChangePercent() {
-  if (!vmgEvalHistory.length) return null;
+  if (!vmgEvalHistory.length) {
+    return { percent: null, warmup: false };
+  }
 
   const windowSec = getVmgEvalWindowSeconds();
   const windowMs = windowSec * 1000;
   const endTs = vmgEvalHistory[vmgEvalHistory.length - 1].ts;
-  const currentStart = endTs - windowMs;
-  const prevStart = currentStart - windowMs;
+  const startTs = vmgEvalHistory[0].ts;
+  const span = endTs - startTs;
+  const warmup = !Number.isFinite(span) || span < 2 * windowMs;
+  const effectiveWindowMs = warmup
+    ? Math.max(VMG_EVAL_WARMUP_MIN_MS, span / 2)
+    : windowMs;
+  if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
+    return { percent: null, warmup: true };
+  }
+  const currentStart = endTs - effectiveWindowMs;
+  const prevStart = currentStart - effectiveWindowMs;
   pruneVmgEvalHistory(endTs - getVmgEvalHistoryMs());
 
   const windAxis = computeVmgWindAxis(prevStart, currentStart);
-  if (!Number.isFinite(windAxis)) return null;
+  if (!Number.isFinite(windAxis)) {
+    return { percent: null, warmup };
+  }
 
   const prevAvg = computeWindowVmgAverage(prevStart, currentStart, windAxis);
   const currAvg = computeWindowVmgAverage(currentStart, endTs, windAxis);
-  if (!Number.isFinite(prevAvg) || !Number.isFinite(currAvg)) return null;
+  if (!Number.isFinite(prevAvg) || !Number.isFinite(currAvg)) {
+    return { percent: null, warmup };
+  }
   const sign = vmgMode === "downwind" ? -1 : 1;
   const prevScore = prevAvg * sign;
   const currScore = currAvg * sign;
-  if (Math.abs(prevScore) < VMG_EVAL_MIN_BASE) return null;
+  if (Math.abs(prevScore) < VMG_EVAL_MIN_BASE) {
+    return { percent: null, warmup };
+  }
 
-  return ((currScore - prevScore) / Math.abs(prevScore)) * 100;
+  return {
+    percent: ((currScore - prevScore) / Math.abs(prevScore)) * 100,
+    warmup,
+  };
 }
 
 function recordVmgPlotSample(percent, timestampMs) {
@@ -532,9 +555,12 @@ function updateVmgEstimate(position) {
 
   if (Number.isFinite(headingUnwrapped)) {
     recordVmgEvalSample(sample, heading, headingUnwrapped);
-    const percent = computeVmgChangePercent();
-    if (Number.isFinite(percent)) {
-      recordVmgPlotSample(percent, sample.ts);
+    const result = computeVmgChangePercent();
+    if (result) {
+      setVmgWarmupState(result.warmup);
+      if (Number.isFinite(result.percent)) {
+        recordVmgPlotSample(result.percent, sample.ts);
+      }
     }
   }
   if (!Number.isFinite(headingUnwrapped)) return;
@@ -629,6 +655,15 @@ function updateVmgEstimate(position) {
 function updateVmgGpsState() {
   if (!els.vmgPlot) return;
   els.vmgPlot.classList.toggle("gps-bad", isVmgGpsBad());
+}
+
+function setVmgWarmupState(active) {
+  const next = Boolean(active);
+  if (vmgWarmup === next) return;
+  vmgWarmup = next;
+  if (els.vmgWarmup) {
+    els.vmgWarmup.setAttribute("aria-hidden", next ? "false" : "true");
+  }
 }
 
 function updateVmgImuToggle() {
