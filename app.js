@@ -250,41 +250,6 @@ function recordGpsSample(position) {
   recordSample("gps", payload, deviceTimeMs);
 }
 
-function recordKalmanSample(source, timestamp) {
-  if (!isRecordingEnabled()) return;
-  if (!state.kalman) return;
-  const payload = {
-    source,
-    x: Array.isArray(state.kalman.x) ? state.kalman.x.slice() : null,
-    P: Array.isArray(state.kalman.P) ? state.kalman.P.slice() : null,
-    headingRad: Number.isFinite(state.kalman.headingRad) ? state.kalman.headingRad : null,
-    accuracy: Number.isFinite(state.kalman.accuracy) ? state.kalman.accuracy : null,
-    origin: state.kalman.origin || null,
-  };
-  recordSample("kalman", payload, timestamp);
-}
-
-function recordDerivedSample(source, timestamp) {
-  if (!isRecordingEnabled()) return;
-  const position = extractPositionPayload(state.position);
-  if (!position) return;
-  const bow = extractPositionPayload(state.bowPosition);
-  const velocity =
-    state.velocity && Number.isFinite(state.velocity.x) && Number.isFinite(state.velocity.y)
-      ? { x: state.velocity.x, y: state.velocity.y }
-      : null;
-  const heading = velocity ? headingFromVelocity(velocity) : null;
-  const payload = {
-    source,
-    position,
-    bowPosition: bow,
-    velocity,
-    speed: Number.isFinite(state.speed) ? state.speed : null,
-    heading,
-  };
-  recordSample("derived", payload, timestamp);
-}
-
 function toFiniteNumber(value) {
   if (value === null || value === undefined) return null;
   const num = Number(value);
@@ -1160,9 +1125,6 @@ function applyKalmanEstimate(result, options = {}) {
   }
   updateGPSDisplay();
   updateLineProjection();
-  const ts = result.position?.timestamp || Date.now();
-  recordKalmanSample(source, ts);
-  recordDerivedSample(source, ts);
 }
 
 function startKalmanPredictionLoop() {
@@ -1217,7 +1179,6 @@ function handlePosition(position, options = {}) {
   updateGPSDisplay();
   updateLineProjection();
   updateVmgEstimate(position);
-  recordDerivedSample("gps", position.timestamp || Date.now());
 }
 
 function handlePositionError(err) {

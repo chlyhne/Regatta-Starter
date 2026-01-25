@@ -48,11 +48,10 @@ upload.
 
 At session start a \texttt{meta} record stores the user note, settings snapshot, device
 information, and build stamp. As the session runs, the app writes \texttt{gps} records
-containing the full coordinate payload plus both GPS and device time, \texttt{imu} records
-containing the raw motion samples, \texttt{kalman} records containing the filter state, and
-\texttt{derived} records containing the processed boat state (position, velocity, speed,
-heading). This mix allows offline analysis to compare raw inputs against what the onboard
-filter produced without recomputing everything from scratch.
+containing the full coordinate payload plus both GPS and device time, and \texttt{imu}
+records containing the raw motion samples. The recorder intentionally omits Kalman and
+derived state so playback can run the same filter code as live operation, which keeps the
+recording closer to the raw sensor truth and avoids baking in older filter behavior.
 
 Instead of a manual send step, the app streams chunks as they are produced. Each chunk is
 posted with headers that identify the device, session, chunk index, and time range, and the
@@ -69,11 +68,12 @@ see the same inputs as they would on the water.
 
 Replay uses a manifest file (\texttt{replay/manifest.json}) to list locally available data
 files. When a replay session starts, the app stops real GPS/IMU listeners, clears state,
-and inspects the recording to see whether raw GPS and IMU streams are present. If they are,
-those records drive the replay; if not, the system falls back to \texttt{derived} samples.
-Each record carries a device-time offset from the start of the file, and optional sensor
-times (GPS time or motion-event time) are converted into matching offsets so the original
-relative timing is preserved.
+and feeds the raw GPS and IMU records back through the same input handlers used on the
+water. Older recordings may still include \texttt{derived} samples, and the replay path
+keeps compatibility with those files, but new recordings rely on raw inputs only. Each
+record carries a device-time offset from the start of the file, and optional sensor times
+(GPS time or motion-event time) are converted into matching offsets so the original relative
+timing is preserved.
 
 During playback, the app advances a virtual replay clock and dispatches each record through
 the same entry points used by live sensors (\texttt{handlePosition} for GPS and the IMU
