@@ -191,29 +191,28 @@ def write_gz(lines, dest_path):
 
 files = []
 buffer = []
-buffer_bytes = 0
+buffer_bytes = [0]
 
 def flush(part_index):
-    nonlocal buffer, buffer_bytes
     if not buffer:
         return None
     filename = f"{stem}.part{part_index:03d}.ndjson.gz"
     dest_path = os.path.join(dest_dir, filename)
     write_gz(buffer, dest_path)
-    buffer = []
-    buffer_bytes = 0
+    buffer.clear()
+    buffer_bytes[0] = 0
     return filename
 
 part = 1
 for line in line_iterator(src):
     line_bytes = len(line.encode("utf-8")) + 1
-    if buffer and buffer_bytes + line_bytes > MAX_RAW_BYTES:
+    if buffer and buffer_bytes[0] + line_bytes > MAX_RAW_BYTES:
         name = flush(part)
         if name:
             files.append(name)
             part += 1
     buffer.append(line)
-    buffer_bytes += line_bytes
+    buffer_bytes[0] += line_bytes
 
 name = flush(part)
 if name:
