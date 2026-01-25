@@ -181,9 +181,9 @@ function renderVmgPlot() {
       Math.ceil(maxAbs / VMG_PLOT_SCALE_STEP) * VMG_PLOT_SCALE_STEP
     );
   }
-  const centerX = width / 2;
-  const maxBar = Math.max(1, centerX - VMG_PLOT_PADDING);
-  const xScale = maxBar / maxAbs;
+  const centerY = height / 2;
+  const maxBar = Math.max(1, centerY - VMG_PLOT_PADDING);
+  const yScale = maxBar / maxAbs;
 
   const gridStep =
     maxAbs >= VMG_PLOT_GRID_THRESHOLD ? VMG_PLOT_GRID_LARGE : VMG_PLOT_GRID_SMALL;
@@ -194,14 +194,14 @@ function renderVmgPlot() {
     ctx.lineWidth = 2;
     ctx.setLineDash(VMG_PLOT_GRID_DASH);
     for (let value = gridStep; value <= maxGrid; value += gridStep) {
-      const dx = value * xScale;
-      const xLeft = centerX - dx;
-      const xRight = centerX + dx;
-      [xLeft, xRight].forEach((x) => {
-        if (!Number.isFinite(x) || x < 0 || x > width) return;
+      const dy = value * yScale;
+      const yUp = centerY - dy;
+      const yDown = centerY + dy;
+      [yUp, yDown].forEach((y) => {
+        if (!Number.isFinite(y) || y < 0 || y > height) return;
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
         ctx.stroke();
       });
     }
@@ -219,9 +219,9 @@ function renderVmgPlot() {
   let lastY = null;
   samples.forEach((sample) => {
     if (!sample || !Number.isFinite(sample.value)) return;
-    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
-    const x = centerX + sample.value * xScale;
-    const y = height - t * height;
+    const age = clamp((endTs - sample.ts) / windowMs, 0, 1);
+    const x = age * width;
+    const y = centerY - sample.value * yScale;
     pointCount += 1;
     lastX = x;
     lastY = y;
@@ -249,8 +249,8 @@ function renderVmgPlot() {
   ctx.lineWidth = 2;
   ctx.setLineDash([]);
   ctx.beginPath();
-  ctx.moveTo(centerX, 0);
-  ctx.lineTo(centerX, height);
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(width, centerY);
   ctx.stroke();
   ctx.restore();
 }
