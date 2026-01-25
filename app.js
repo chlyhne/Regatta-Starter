@@ -28,8 +28,10 @@ import { KALMAN_TUNING } from "./core/tuning.js";
 import { getHeadingSourcePreference, normalizeHeadingSource } from "./core/heading.js";
 import { getNowMs } from "./core/clock.js";
 import {
+  applyVmgSettings,
   applyVmgImuSample,
   bindVmgEvents,
+  getVmgPersistedSettings,
   getVmgSettingsSnapshot,
   initVmg,
   resetVmgEstimator,
@@ -38,6 +40,7 @@ import {
   updateVmgEstimate,
   updateVmgGpsState,
   updateVmgImuToggle,
+  updateVmgSmoothToggle,
 } from "./features/vmg/vmg.js";
 import {
   bindLifterEvents,
@@ -951,6 +954,7 @@ function loadSettings() {
   state.speedUnit = settings.speedUnit;
   state.distanceUnit = settings.distanceUnit;
   state.start = { ...state.start, ...settings.start };
+  applyVmgSettings(settings.vmg || {});
   delete state.start.preStartSign;
 }
 
@@ -977,6 +981,7 @@ function saveSettings() {
     timeFormat: state.timeFormat,
     speedUnit: state.speedUnit,
     distanceUnit: state.distanceUnit,
+    vmg: getVmgPersistedSettings(),
     start: {
       mode: state.start.mode,
       countdownSeconds: state.start.countdownSeconds,
@@ -993,6 +998,7 @@ function updateInputs() {
   syncVmgWindowUi();
   updateHeadingSourceToggles();
   updateVmgImuToggle();
+  updateVmgSmoothToggle();
   updateStatusUnitLabels();
 }
 
@@ -1320,6 +1326,7 @@ initVmg({
   setImuEnabled,
   updateHeadingSourceToggles,
   hardReload,
+  saveSettings,
 });
 initLifter({
   setHeadingSourcePreference,

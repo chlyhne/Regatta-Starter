@@ -78,12 +78,14 @@ const vmgImu = {
 let vmgWarmup = false;
 let vmgMode = "beating";
 let vmgTack = "starboard";
+let vmgSmoothCurrent = true;
 
 let vmgDeps = {
   setHeadingSourcePreference: null,
   setImuEnabled: null,
   updateHeadingSourceToggles: null,
   hardReload: null,
+  saveSettings: null,
 };
 
 function initVmg(deps = {}) {
@@ -208,6 +210,76 @@ function renderVmgPlot() {
     ctx.restore();
   }
 
+  const points = [];
+  samples.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.value)) return;
+    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
+    const x = t * width;
+    const y = centerY - sample.value * yScale;
+    points.push({ x, y, value: sample.value });
+  });
+
+  const fillArea = (sign, fillStyle) => {
+    if (!points.length) return;
+    ctx.save();
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < points.length; i += 1) {
+      const point = points[i];
+      const prev = i > 0 ? points[i - 1] : null;
+      const isOnSide = sign > 0 ? point.value >= 0 : point.value <= 0;
+      const wasOnSide = prev
+        ? sign > 0
+          ? prev.value >= 0
+          : prev.value <= 0
+        : false;
+
+      if (!prev) {
+        if (isOnSide) {
+          ctx.moveTo(point.x, centerY);
+          ctx.lineTo(point.x, point.y);
+          started = true;
+        }
+        continue;
+      }
+
+      if (wasOnSide && isOnSide) {
+        ctx.lineTo(point.x, point.y);
+        continue;
+      }
+
+      if (wasOnSide && !isOnSide) {
+        const denom = prev.value - point.value;
+        const tCross = Number.isFinite(denom) && denom !== 0 ? prev.value / denom : 0;
+        const xCross = prev.x + clamp(tCross, 0, 1) * (point.x - prev.x);
+        ctx.lineTo(xCross, centerY);
+        ctx.closePath();
+        started = false;
+        continue;
+      }
+
+      if (!wasOnSide && isOnSide) {
+        const denom = prev.value - point.value;
+        const tCross = Number.isFinite(denom) && denom !== 0 ? prev.value / denom : 0;
+        const xCross = prev.x + clamp(tCross, 0, 1) * (point.x - prev.x);
+        ctx.moveTo(xCross, centerY);
+        ctx.lineTo(point.x, point.y);
+        started = true;
+      }
+    }
+    if (started) {
+      const last = points[points.length - 1];
+      ctx.lineTo(last.x, centerY);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.restore();
+  };
+
+  fillArea(1, "rgba(0, 120, 0, 0.25)");
+  fillArea(-1, "rgba(160, 0, 0, 0.25)");
+
   ctx.save();
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 2;
@@ -217,11 +289,10 @@ function renderVmgPlot() {
   let pointCount = 0;
   let lastX = null;
   let lastY = null;
-  samples.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.value)) return;
-    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
-    const x = t * width;
-    const y = centerY - sample.value * yScale;
+  points.forEach((point) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    const x = point.x;
+    const y = point.y;
     pointCount += 1;
     lastX = x;
     lastY = y;
@@ -252,6 +323,21 @@ function renderVmgPlot() {
   ctx.moveTo(0, centerY);
   ctx.lineTo(width, centerY);
   ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = "#000000";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("0%", 6, centerY);
+  for (let value = gridStep; value <= maxGrid; value += gridStep) {
+    const dy = value * yScale;
+    const yUp = centerY - dy;
+    const yDown = centerY + dy;
+    ctx.fillText(`+${value}%`, 6, yUp);
+    ctx.fillText(`-${value}%`, 6, yDown);
+  }
   ctx.restore();
 }
 
@@ -568,7 +654,9 @@ function updateVmgPlotFilters(rawValue, timestampMs) {
   const baselineTau = vmgPlotTauSeconds;
   const fastTau = Math.max(0.05, baselineTau / 10);
   vmgPlotBaseline = applyFirstOrderFilter(vmgPlotBaseline, clamped, dtSec, baselineTau);
-  vmgPlotFast = applyFirstOrderFilter(vmgPlotFast, clamped, dtSec, fastTau);
+  vmgPlotFast = vmgSmoothCurrent
+    ? applyFirstOrderFilter(vmgPlotFast, clamped, dtSec, fastTau)
+    : clamped;
   const delta = clamp(vmgPlotFast - vmgPlotBaseline, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
   recordVmgPlotSample(delta, ts);
 }
@@ -707,6 +795,23 @@ function updateVmgImuToggle() {
   }
 }
 
+function updateVmgSmoothToggle() {
+  if (els.vmgSmoothToggle) {
+    els.vmgSmoothToggle.setAttribute("aria-pressed", vmgSmoothCurrent ? "true" : "false");
+  }
+}
+
+function applyVmgSettings(settings = {}) {
+  if (Number.isFinite(settings.baselineTauSeconds)) {
+    vmgPlotTauSeconds = clampVmgTauSeconds(settings.baselineTauSeconds);
+  }
+  if (settings.smoothCurrent !== undefined) {
+    vmgSmoothCurrent = Boolean(settings.smoothCurrent);
+  }
+  syncVmgWindowUi();
+  updateVmgSmoothToggle();
+}
+
 function setVmgImuWarningOpen(open) {
   const next = Boolean(open);
   if (els.vmgImuModal) {
@@ -726,6 +831,7 @@ function setVmgSettingsOpen(open) {
       vmgDeps.updateHeadingSourceToggles();
     }
     updateVmgImuToggle();
+    updateVmgSmoothToggle();
     syncVmgWindowUi();
   }
 }
@@ -784,8 +890,7 @@ function bindVmgEvents() {
   }
 
   if (els.vmgWindow) {
-    const tauSeconds = clampVmgTauSeconds(els.vmgWindow.value);
-    vmgPlotTauSeconds = tauSeconds;
+    vmgPlotTauSeconds = clampVmgTauSeconds(vmgPlotTauSeconds);
     syncVmgWindowUi();
     const onWindowChange = () => {
       const nextTauSeconds = clampVmgTauSeconds(els.vmgWindow.value);
@@ -793,6 +898,9 @@ function bindVmgEvents() {
       syncVmgWindowUi();
       pruneVmgEvalHistory(Date.now() - getVmgEvalHistoryMs());
       requestVmgPlotRender({ force: true });
+      if (vmgDeps.saveSettings) {
+        vmgDeps.saveSettings();
+      }
     };
     els.vmgWindow.addEventListener("input", onWindowChange);
     els.vmgWindow.addEventListener("change", onWindowChange);
@@ -815,6 +923,16 @@ function bindVmgEvents() {
         setVmgImuWarningOpen(true);
       } else {
         setVmgImuWarningOpen(false);
+      }
+    });
+  }
+
+  if (els.vmgSmoothToggle) {
+    els.vmgSmoothToggle.addEventListener("click", () => {
+      vmgSmoothCurrent = !vmgSmoothCurrent;
+      updateVmgSmoothToggle();
+      if (vmgDeps.saveSettings) {
+        vmgDeps.saveSettings();
       }
     });
   }
@@ -921,13 +1039,23 @@ function getVmgSettingsSnapshot() {
     twaUpDeg: getVmgTwaDegrees(),
     twaDownDeg: getVmgDownTwaDegrees(),
     imuEnabled: state.imuEnabled,
+    smoothCurrent: vmgSmoothCurrent,
+  };
+}
+
+function getVmgPersistedSettings() {
+  return {
+    baselineTauSeconds: vmgPlotTauSeconds,
+    smoothCurrent: vmgSmoothCurrent,
   };
 }
 
 export {
   initVmg,
+  applyVmgSettings,
   bindVmgEvents,
   getVmgSettingsSnapshot,
+  getVmgPersistedSettings,
   updateVmgEstimate,
   updateVmgGpsState,
   requestVmgPlotRender,
@@ -936,6 +1064,7 @@ export {
   resetVmgImuState,
   setVmgSettingsOpen,
   updateVmgImuToggle,
+  updateVmgSmoothToggle,
   enterVmgView,
   applyVmgImuSample,
 };

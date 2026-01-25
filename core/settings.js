@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 7;
+const SETTINGS_VERSION = 8;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -16,6 +16,9 @@ const BOAT_SHAPES = new Set([
   "non-planing-monohull",
   "long-slender",
 ]);
+const VMG_BASELINE_TAU_DEFAULT_SEC = 45;
+const VMG_BASELINE_TAU_MIN_SEC = 15;
+const VMG_BASELINE_TAU_MAX_SEC = 75;
 
 const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
@@ -43,6 +46,10 @@ const DEFAULT_SETTINGS = {
   imuCalibration: null,
   diagUploadToken: "",
   replayLoop: false,
+  vmg: {
+    baselineTauSeconds: VMG_BASELINE_TAU_DEFAULT_SEC,
+    smoothCurrent: true,
+  },
   start: {
     mode: "countdown",
     countdownSeconds: 300,
@@ -123,6 +130,19 @@ function normalizeImuCalibration(calibration) {
   };
 }
 
+function normalizeVmgSettings(vmg) {
+  const baselineTau = Number.parseInt(vmg?.baselineTauSeconds, 10);
+  return {
+    baselineTauSeconds: clamp(
+      Number.isFinite(baselineTau) ? baselineTau : VMG_BASELINE_TAU_DEFAULT_SEC,
+      VMG_BASELINE_TAU_MIN_SEC,
+      VMG_BASELINE_TAU_MAX_SEC
+    ),
+    smoothCurrent:
+      vmg?.smoothCurrent !== undefined ? Boolean(vmg.smoothCurrent) : true,
+  };
+}
+
 function normalizeTimeString(value) {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
@@ -200,6 +220,7 @@ function normalizeSettings(raw) {
     imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
     diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
     replayLoop: Boolean(raw?.replayLoop),
+    vmg: normalizeVmgSettings(raw?.vmg),
     start: normalizeStart(raw?.start),
   };
 }
@@ -225,6 +246,9 @@ function mergeSettings(base, patch) {
       ...base.headingSourceByMode,
       ...patch.headingSourceByMode,
     };
+  }
+  if (patch?.vmg) {
+    merged.vmg = { ...base.vmg, ...patch.vmg };
   }
   return merged;
 }
@@ -278,6 +302,10 @@ function migrateSettings(raw) {
     migrated.boatShape = normalizeBoatShape(migrated.boatShape);
     migrated.replayLoop = Boolean(migrated.replayLoop);
     migrated.version = 7;
+  }
+  if (version < 8) {
+    migrated.vmg = { ...DEFAULT_SETTINGS.vmg };
+    migrated.version = 8;
   }
   return migrated;
 }

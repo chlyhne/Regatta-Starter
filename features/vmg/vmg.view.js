@@ -40,22 +40,6 @@ export const vmgView = `
     </header>
 
     <section class="vmg-panel">
-      <div class="vmg-controls">
-        <div class="vmg-control-head">
-          <h2 id="vmg-window-title">Time constant</h2>
-          <div id="vmg-window-value" class="vmg-window-value">45 s</div>
-        </div>
-        <input
-          id="vmg-window"
-          class="vmg-window-slider"
-          type="range"
-          min="15"
-          max="75"
-          step="5"
-          value="45"
-          aria-labelledby="vmg-window-title vmg-window-value"
-        />
-      </div>
       <div id="vmg-plot" class="vmg-plot" aria-label="VMG change plot">
         <canvas id="vmg-canvas"></canvas>
         <div id="vmg-warmup" class="vmg-warmup hint" aria-hidden="true">Warming</div>
@@ -140,6 +124,32 @@ export const vmgView = `
           <span class="check-label">Device motion sensor</span>
           <span class="check-box" aria-hidden="true"></span>
         </button>
+        <button
+          id="vmg-smooth-toggle"
+          class="check-toggle"
+          type="button"
+          aria-pressed="true"
+        >
+          <span class="check-label">Smooth current value</span>
+          <span class="check-box" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="vmg-settings-group">
+        <div class="vmg-control-head">
+          <h2 id="vmg-window-title">Baseline smoothing</h2>
+          <div id="vmg-window-value" class="vmg-window-value">45 s</div>
+        </div>
+        <div class="hint">Higher = steadier baseline.</div>
+        <input
+          id="vmg-window"
+          class="vmg-window-slider"
+          type="range"
+          min="15"
+          max="75"
+          step="5"
+          value="45"
+          aria-labelledby="vmg-window-title vmg-window-value"
+        />
       </div>
       <div class="vmg-settings-group">
         <div class="vmg-twa-head">
