@@ -33,6 +33,9 @@ const state = {
   distanceUnit: "m",
   bowOffsetMeters: 5,
   boatLengthMeters: 8,
+  boatModel: "",
+  boatShape: "",
+  boatWeightKg: 0,
   soundEnabled: true,
   debugGpsEnabled: DEBUG_GPS_DEFAULT,
   useKalman: true,
@@ -47,6 +50,7 @@ const state = {
     file: null,
     speed: 1,
     clockNow: null,
+    loop: false,
   },
   imu: {
     gravity: null,

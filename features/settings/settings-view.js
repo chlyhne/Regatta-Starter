@@ -78,8 +78,58 @@ function syncBoatLengthInput() {
   }
 }
 
+function formatBoatModelValue(value) {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function syncBoatModelInput() {
+  if (els.boatModel) {
+    els.boatModel.value = formatBoatModelValue(state.boatModel);
+  }
+}
+
+function parseBoatShapeInput() {
+  if (!els.boatShape) return state.boatShape;
+  return String(els.boatShape.value || "").trim();
+}
+
+function syncBoatShapeInput() {
+  if (els.boatShape) {
+    els.boatShape.value = state.boatShape || "";
+  }
+}
+
+function formatBoatWeightValue(kg) {
+  if (!Number.isFinite(kg)) return "";
+  const rounded = Math.round(kg * 10) / 10;
+  return trimTrailingZeros(rounded.toFixed(1));
+}
+
+function parseBoatWeightInput() {
+  if (!els.boatWeight) return state.boatWeightKg;
+  const raw = Number.parseFloat(String(els.boatWeight.value || "").replace(",", "."));
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, raw);
+}
+
+function syncBoatWeightInput() {
+  if (els.boatWeight) {
+    els.boatWeight.value = formatBoatWeightValue(state.boatWeightKg);
+  }
+}
+
 function commitBoatInputs() {
   let changed = false;
+  if (els.boatModel) {
+    const raw = String(els.boatModel.value || "").trim();
+    state.boatModel = raw;
+    changed = true;
+  }
+  if (els.boatShape) {
+    state.boatShape = parseBoatShapeInput();
+    changed = true;
+  }
   if (els.boatLength) {
     const raw = String(els.boatLength.value || "").trim();
     if (raw) {
@@ -87,6 +137,15 @@ function commitBoatInputs() {
       changed = true;
     } else {
       syncBoatLengthInput();
+    }
+  }
+  if (els.boatWeight) {
+    const raw = String(els.boatWeight.value || "").trim();
+    if (raw) {
+      state.boatWeightKg = parseBoatWeightInput();
+      changed = true;
+    } else {
+      syncBoatWeightInput();
     }
   }
   if (els.bowOffset) {
@@ -199,8 +258,11 @@ function setDistanceUnit(unit) {
 }
 
 function syncSettingsInputs() {
+  syncBoatModelInput();
+  syncBoatShapeInput();
   syncBowOffsetInput();
   syncBoatLengthInput();
+  syncBoatWeightInput();
   syncUploadTokenInput();
   updateSoundToggle();
   updateTimeFormatToggle();
@@ -238,6 +300,26 @@ function bindSettingsEvents() {
     });
   }
 
+  if (els.boatModel) {
+    els.boatModel.addEventListener("change", () => {
+      state.boatModel = String(els.boatModel.value || "").trim();
+      if (settingsDeps.saveSettings) {
+        settingsDeps.saveSettings();
+      }
+      syncBoatModelInput();
+    });
+  }
+
+  if (els.boatShape) {
+    els.boatShape.addEventListener("change", () => {
+      state.boatShape = parseBoatShapeInput();
+      if (settingsDeps.saveSettings) {
+        settingsDeps.saveSettings();
+      }
+      syncBoatShapeInput();
+    });
+  }
+
   if (els.diagUploadToken) {
     els.diagUploadToken.addEventListener("change", () => {
       state.diagUploadToken = String(els.diagUploadToken.value || "").trim();
@@ -254,9 +336,23 @@ function bindSettingsEvents() {
       if (settingsDeps.saveSettings) {
         settingsDeps.saveSettings();
       }
+      syncBoatLengthInput();
     });
     els.boatLength.addEventListener("focus", () => {
       els.boatLength.value = "";
+    });
+  }
+
+  if (els.boatWeight) {
+    els.boatWeight.addEventListener("change", () => {
+      state.boatWeightKg = parseBoatWeightInput();
+      if (settingsDeps.saveSettings) {
+        settingsDeps.saveSettings();
+      }
+      syncBoatWeightInput();
+    });
+    els.boatWeight.addEventListener("focus", () => {
+      els.boatWeight.value = "";
     });
   }
 

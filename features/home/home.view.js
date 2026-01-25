@@ -90,6 +90,10 @@ export const homeView = `
         aria-labelledby="replay-speed-title replay-speed-value"
       />
     </div>
+    <button id="replay-loop" class="check-toggle" type="button" aria-pressed="false">
+      <span class="check-label">Loop replay</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
   </section>
 </section>
 `;

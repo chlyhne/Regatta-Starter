@@ -53,6 +53,7 @@ function getReplayState() {
     error: state.replay?.error || "",
     file: state.replay?.file || null,
     speed: Number.isFinite(state.replay?.speed) ? state.replay.speed : REPLAY_SPEED_DEFAULT,
+    loop: Boolean(state.replay?.loop),
   };
 }
 
@@ -379,7 +380,18 @@ function tickReplay() {
     }
   }
   if (replayCursor >= replayEvents.length) {
-    stopReplay();
+    if (state.replay.loop) {
+      replayCursor = 0;
+      replayPlaybackStartMs = 0;
+      replayStartWallTs = now;
+      replayBaseTimeMs = now;
+      state.replay.clockNow = replayBaseTimeMs;
+      if (typeof replayDeps.onReset === "function") {
+        replayDeps.onReset(replayInfo || {});
+      }
+    } else {
+      stopReplay();
+    }
   }
 }
 
@@ -468,12 +480,18 @@ function setReplaySpeed(nextSpeed) {
   notifyReplayStatus();
 }
 
+function setReplayLoop(enabled) {
+  state.replay.loop = Boolean(enabled);
+  notifyReplayStatus();
+}
+
 export {
   initReplay,
   loadReplayEntries,
   startReplay,
   stopReplay,
   setReplaySpeed,
+  setReplayLoop,
   getReplayState,
   formatReplaySpeed,
   normalizeReplaySpeed,

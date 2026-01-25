@@ -12,6 +12,7 @@ let homeDeps = {
   startReplay: null,
   stopReplay: null,
   setReplaySpeed: null,
+  setReplayLoop: null,
   formatReplaySpeed: null,
 };
 
@@ -91,6 +92,10 @@ function syncReplayUi() {
   }
   if (els.replaySpeed) {
     els.replaySpeed.disabled = replay.loading;
+  }
+  if (els.replayLoop) {
+    els.replayLoop.disabled = replay.loading;
+    els.replayLoop.setAttribute("aria-pressed", replay.loop ? "true" : "false");
   }
   syncReplaySpeedUi(replay.speed);
 }
@@ -335,6 +340,16 @@ function bindHomeEvents() {
     onSpeedChange();
     els.replaySpeed.addEventListener("input", onSpeedChange);
     els.replaySpeed.addEventListener("change", onSpeedChange);
+  }
+
+  if (els.replayLoop) {
+    els.replayLoop.addEventListener("click", () => {
+      if (!homeDeps.getReplayState || !homeDeps.setReplayLoop) return;
+      const replay = homeDeps.getReplayState();
+      const next = !replay.loop;
+      homeDeps.setReplayLoop(next);
+      syncReplayUi();
+    });
   }
 
   const closeInfoButton = els.closeInfo || document.getElementById("close-info");

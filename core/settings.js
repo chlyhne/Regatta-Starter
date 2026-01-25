@@ -6,9 +6,16 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 5;
+const SETTINGS_VERSION = 7;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
+const BOAT_SHAPES = new Set([
+  "dinghy",
+  "multihull",
+  "planing-monohull",
+  "non-planing-monohull",
+  "long-slender",
+]);
 
 const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
@@ -30,8 +37,12 @@ const DEFAULT_SETTINGS = {
   distanceUnit: "m",
   bowOffsetMeters: 5,
   boatLengthMeters: 8,
+  boatModel: "",
+  boatShape: "",
+  boatWeightKg: 0,
   imuCalibration: null,
   diagUploadToken: "",
+  replayLoop: false,
   start: {
     mode: "countdown",
     countdownSeconds: 300,
@@ -84,6 +95,12 @@ function normalizeHeadingSourceByMode(sourceByMode) {
     vmg: normalizeHeadingSource(value.vmg),
     lifter: normalizeHeadingSource(value.lifter),
   };
+}
+
+function normalizeBoatShape(shape) {
+  if (typeof shape !== "string") return "";
+  const trimmed = shape.trim();
+  return BOAT_SHAPES.has(trimmed) ? trimmed : "";
 }
 
 function normalizeImuCalibration(calibration) {
@@ -169,8 +186,17 @@ function normalizeSettings(raw) {
         ? Number.parseFloat(raw?.boatLengthMeters)
         : DEFAULT_SETTINGS.boatLengthMeters
     ),
+    boatModel: typeof raw?.boatModel === "string" ? raw.boatModel.trim() : "",
+    boatShape: normalizeBoatShape(raw?.boatShape),
+    boatWeightKg: Math.max(
+      0,
+      Number.isFinite(Number.parseFloat(raw?.boatWeightKg))
+        ? Number.parseFloat(raw?.boatWeightKg)
+        : DEFAULT_SETTINGS.boatWeightKg
+    ),
     imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
     diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
+    replayLoop: Boolean(raw?.replayLoop),
     start: normalizeStart(raw?.start),
   };
 }
@@ -235,6 +261,18 @@ function migrateSettings(raw) {
     migrated.boatLengthMeters =
       Number.isFinite(boatLength) && boatLength > 0 ? boatLength : DEFAULT_SETTINGS.boatLengthMeters;
     migrated.version = 5;
+  }
+  if (version < 6) {
+    migrated.boatModel = typeof migrated.boatModel === "string" ? migrated.boatModel.trim() : "";
+    const boatWeight = Number.parseFloat(migrated.boatWeightKg);
+    migrated.boatWeightKg =
+      Number.isFinite(boatWeight) && boatWeight > 0 ? boatWeight : DEFAULT_SETTINGS.boatWeightKg;
+    migrated.version = 6;
+  }
+  if (version < 7) {
+    migrated.boatShape = normalizeBoatShape(migrated.boatShape);
+    migrated.replayLoop = Boolean(migrated.replayLoop);
+    migrated.version = 7;
   }
   return migrated;
 }

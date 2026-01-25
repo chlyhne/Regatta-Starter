@@ -55,6 +55,7 @@ import {
   startReplay,
   stopReplay,
   setReplaySpeed,
+  setReplayLoop,
   getReplayState,
   formatReplaySpeed,
 } from "./core/replay.js";
@@ -183,7 +184,11 @@ function getSettingsSnapshot() {
     distanceUnit: state.distanceUnit,
     bowOffsetMeters: state.bowOffsetMeters,
     boatLengthMeters: state.boatLengthMeters,
+    boatModel: state.boatModel,
+    boatShape: state.boatShape,
+    boatWeightKg: state.boatWeightKg,
     imuCalibration: state.imuCalibration,
+    replayLoop: state.replay?.loop,
     start: { ...state.start },
     vmg: getVmgSettingsSnapshot(),
     lifter: getLifterSettingsSnapshot(),
@@ -935,8 +940,12 @@ function loadSettings() {
   setLifterHeadingSource(normalizeHeadingSource(state.headingSourceByMode?.lifter));
   state.bowOffsetMeters = settings.bowOffsetMeters;
   state.boatLengthMeters = settings.boatLengthMeters;
+  state.boatModel = settings.boatModel || "";
+  state.boatShape = settings.boatShape || "";
+  state.boatWeightKg = settings.boatWeightKg || 0;
   state.imuCalibration = settings.imuCalibration || null;
   state.diagUploadToken = settings.diagUploadToken || "";
+  state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
   state.speedUnit = settings.speedUnit;
@@ -958,8 +967,12 @@ function saveSettings() {
     headingSourceByMode: state.headingSourceByMode,
     bowOffsetMeters: state.bowOffsetMeters,
     boatLengthMeters: state.boatLengthMeters,
+    boatModel: state.boatModel,
+    boatShape: state.boatShape,
+    boatWeightKg: state.boatWeightKg,
     imuCalibration: state.imuCalibration,
     diagUploadToken: state.diagUploadToken,
+    replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,
     speedUnit: state.speedUnit,
@@ -1271,6 +1284,7 @@ initHome({
   startReplay: startReplaySession,
   stopReplay,
   setReplaySpeed,
+  setReplayLoop,
   formatReplaySpeed,
 });
 initReplay({
