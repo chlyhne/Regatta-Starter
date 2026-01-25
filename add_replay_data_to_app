@@ -301,48 +301,6 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 
-REPLAY_INFO="$replay_info" python3 - <<'PY'
-import json
-import os
-import re
-
-sw_path = "sw.js"
-info = json.loads(os.environ.get("REPLAY_INFO", "{}"))
-files = info.get("files") or []
-if not files:
-    raise SystemExit("Missing replay files list.")
-
-with open(sw_path, "r", encoding="utf-8") as handle:
-    text = handle.read()
-
-match = re.search(r'CACHE_NAME\s*=\s*["\']racetimer-v(\d+)["\']', text)
-if not match:
-    raise SystemExit("CACHE_NAME not found in sw.js")
-current = int(match.group(1))
-text = re.sub(
-    r'const\s+CACHE_NAME\s*=\s*"racetimer-v\d+"',
-    f'const CACHE_NAME = "racetimer-v{current + 1}"',
-    text,
-    count=1,
-)
-
-start = text.find("const ASSETS = [")
-if start < 0:
-    raise SystemExit("ASSETS array not found in sw.js")
-end = text.find("];", start)
-if end < 0:
-    raise SystemExit("ASSETS array closing not found in sw.js")
-
-for file_name in files:
-    asset_line = f'  "./replay/{os.path.basename(file_name)}",'
-    if asset_line not in text:
-        text = text[:end] + asset_line + "\n" + text[end:]
-        end += len(asset_line) + 1
-
-with open(sw_path, "w", encoding="utf-8") as handle:
-    handle.write(text)
-PY
-
 echo "Added replay files:"
 python3 - <<'PY'
 import json
@@ -352,7 +310,7 @@ info = json.loads(os.environ.get("REPLAY_INFO", "{}"))
 for name in info.get("files") or []:
     print(f"  replay/{os.path.basename(name)}")
 PY
-echo "Updated replay/manifest.json and sw.js"
+echo "Updated replay/manifest.json"
 
 REPLAY_INFO="$replay_info" python3 - <<'PY'
 import json
@@ -364,4 +322,4 @@ for name in info.get("files") or []:
     if os.path.exists(path):
         os.system(f'git add "{path}" >/dev/null 2>&1')
 PY
-git add replay/manifest.json sw.js >/dev/null 2>&1 || true
+git add replay/manifest.json >/dev/null 2>&1 || true
