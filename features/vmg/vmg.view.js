@@ -4,7 +4,7 @@ export const vmgView = `
     <header class="page-head">
       <div class="head-title">
         <h1 class="brand-mark brand-light">
-          <span class="brand-label">Race</span><span class="brand-accent">VMG</span>
+          <span class="brand-label">Race</span><span class="brand-accent">Performance</span>
         </h1>
       </div>
       <div class="head-bar">
@@ -14,7 +14,12 @@ export const vmgView = `
           </button>
         </div>
         <div class="head-right">
-          <button id="open-vmg-settings" class="icon-btn" type="button" aria-label="VMG settings">
+          <button
+            id="open-vmg-settings"
+            class="icon-btn"
+            type="button"
+            aria-label="Performance settings"
+          >
             <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
               <path
@@ -40,7 +45,7 @@ export const vmgView = `
     </header>
 
     <section class="vmg-panel vmg-plot-panel">
-      <div id="vmg-plot" class="vmg-plot" aria-label="VMG change plot">
+      <div id="vmg-plot" class="vmg-plot" aria-label="Performance change plot">
         <canvas id="vmg-canvas"></canvas>
         <div id="vmg-warmup" class="vmg-warmup hint" aria-hidden="true">Warming</div>
       </div>
@@ -97,7 +102,7 @@ export const vmgView = `
 
   <section id="vmg-settings-view" class="vmg-settings-view" aria-hidden="true">
     <div class="vmg-settings-panel">
-      <h2>VMG settings</h2>
+      <h2>Performance settings</h2>
       <div class="vmg-settings-group">
         <div class="hint">Enhance heading and speed estimate using:</div>
         <button

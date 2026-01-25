@@ -59,7 +59,7 @@ export const homeView = `
         <span class="brand-label">Race</span><span class="brand-accent">Starter</span>
       </button>
       <button id="open-vmg" class="home-entry brand-btn brand-mark brand-light" type="button">
-        <span class="brand-label">Race</span><span class="brand-accent">VMG</span>
+        <span class="brand-label">Race</span><span class="brand-accent">Performance</span>
       </button>
       <button id="open-lifter" class="home-entry brand-btn brand-mark brand-light" type="button">
         <span class="brand-label">Race</span><span class="brand-accent">Lifter</span>

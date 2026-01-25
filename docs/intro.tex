@@ -7,13 +7,13 @@ deliberately narrow: show only the information you actually need, with stable nu
 clear UI that remains readable when the start line is busy and you are operating the
 phone one-handed.
 
-The app opens on a Home screen with three tools: RaceStarter, RaceVMG, and RaceLifter.
+The app opens on a Home screen with three tools: RaceStarter, RacePerformance, and RaceLifter.
 Boat and Settings are accessed from Home so all modes share the same configuration.
 
 This document is a technical report that explains how the app works and why the math is
 set up the way it is. The report is structured by tool. The RaceStarter part focuses on
 start line setup and the race view, and on the estimation methods needed to make distance,
-speed, and direction stable enough to trust. The RaceVMG part explains the VMG evaluator:
+speed, and direction stable enough to trust. The RacePerformance part explains the VMG evaluator:
 it compares successive time windows using an assumed TWA for beating or running, or a
 mean heading for reaching, and shows the change as a bar plot. The RaceLifter part
 explains the heading history plot and how its bins, mean, and scaling are computed.

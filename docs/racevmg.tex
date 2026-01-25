@@ -1,8 +1,8 @@
 % !TeX root = master.tex
 
-\section{RaceVMG (VMG evaluator)}
+\section{RacePerformance (VMG evaluator)}
 
-This section describes how RaceVMG turns a stream of heading and speed samples into a
+This section describes how RacePerformance turns a stream of heading and speed samples into a
 simple, stable evaluation: is the most recent window better or worse than the one just
 before it, and by how much. The goal is not to estimate true wind, but to provide a
 consistent reference so changes in trim or steering show up as a clear percentage.
@@ -12,7 +12,7 @@ consistent reference so changes in trim or steering show up as a clear percentag
 This subsection explains how the mode and tack selections define the reference direction
 used to compute VMG.
 
-RaceVMG does not estimate wind direction directly. Instead, it constructs a wind axis
+RacePerformance does not estimate wind direction directly. Instead, it constructs a wind axis
 from the older of the two evaluation windows. We take the time-weighted mean heading in
 that older window and then apply a simple mode rule. In beating mode we assume an upwind
 TWA and offset the mean by \(\pm\)TWA depending on tack (port is negative, starboard is
@@ -67,7 +67,7 @@ from rescaling the entire view.
 This subsection describes how heading is sourced and how the device motion option
 interacts with GPS.
 
-RaceVMG can use the boat model (Kalman) heading or raw GPS heading, depending on the user
+RacePerformance can use the boat model (Kalman) heading or raw GPS heading, depending on the user
 selection. When the device motion sensor is enabled, we integrate yaw rate to track
 short-term heading changes and blend it back toward GPS heading when speed is sufficient
 and accuracy is acceptable. This improves responsiveness when the phone is rigidly

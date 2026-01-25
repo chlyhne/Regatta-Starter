@@ -3,7 +3,7 @@
 Static web app with two race-day tools:
 
 - RaceStarter (race start timing + line setup)
-- RaceVMG (VMG Hunter)
+- RacePerformance (VMG Hunter)
 
 ## Kalman filter (GPS smoothing)
 
