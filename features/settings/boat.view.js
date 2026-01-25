@@ -44,9 +44,10 @@ export const boatView = `
         <input
           id="boat-weight"
           type="number"
-          inputmode="decimal"
+          inputmode="numeric"
           step="1"
           min="0"
+          max="99999"
           placeholder="0"
         />
         <span class="input-unit">[kg]</span>

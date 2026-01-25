@@ -188,11 +188,14 @@ function normalizeSettings(raw) {
     ),
     boatModel: typeof raw?.boatModel === "string" ? raw.boatModel.trim() : "",
     boatShape: normalizeBoatShape(raw?.boatShape),
-    boatWeightKg: Math.max(
-      0,
-      Number.isFinite(Number.parseFloat(raw?.boatWeightKg))
-        ? Number.parseFloat(raw?.boatWeightKg)
-        : DEFAULT_SETTINGS.boatWeightKg
+    boatWeightKg: Math.min(
+      99999,
+      Math.max(
+        0,
+        Number.isFinite(Number.parseFloat(raw?.boatWeightKg))
+          ? Number.parseFloat(raw?.boatWeightKg)
+          : DEFAULT_SETTINGS.boatWeightKg
+      )
     ),
     imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
     diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
@@ -266,7 +269,9 @@ function migrateSettings(raw) {
     migrated.boatModel = typeof migrated.boatModel === "string" ? migrated.boatModel.trim() : "";
     const boatWeight = Number.parseFloat(migrated.boatWeightKg);
     migrated.boatWeightKg =
-      Number.isFinite(boatWeight) && boatWeight > 0 ? boatWeight : DEFAULT_SETTINGS.boatWeightKg;
+      Number.isFinite(boatWeight) && boatWeight > 0
+        ? Math.min(99999, boatWeight)
+        : DEFAULT_SETTINGS.boatWeightKg;
     migrated.version = 6;
   }
   if (version < 7) {

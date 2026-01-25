@@ -102,15 +102,16 @@ function syncBoatShapeInput() {
 
 function formatBoatWeightValue(kg) {
   if (!Number.isFinite(kg)) return "";
-  const rounded = Math.round(kg * 10) / 10;
-  return trimTrailingZeros(rounded.toFixed(1));
+  const rounded = Math.round(kg);
+  return String(rounded);
 }
 
 function parseBoatWeightInput() {
   if (!els.boatWeight) return state.boatWeightKg;
   const raw = Number.parseFloat(String(els.boatWeight.value || "").replace(",", "."));
   if (!Number.isFinite(raw)) return 0;
-  return Math.max(0, raw);
+  const clamped = Math.min(99999, Math.max(0, raw));
+  return Math.round(clamped);
 }
 
 function syncBoatWeightInput() {
