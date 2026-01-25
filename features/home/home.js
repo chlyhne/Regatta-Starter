@@ -7,9 +7,6 @@ let homeDeps = {
   startRecording: null,
   stopRecording: null,
   isRecordingEnabled: null,
-  sendDiagnostics: null,
-  getDiagUploadToken: null,
-  setDiagUploadToken: null,
   getReplayState: null,
   loadReplayEntries: null,
   startReplay: null,
@@ -24,7 +21,6 @@ let replaySelectedId = null;
 function initHome(deps = {}) {
   homeDeps = { ...homeDeps, ...deps };
   syncRecordingUi();
-  syncSendUi();
   syncReplayUi();
 }
 
@@ -56,38 +52,6 @@ function closeRecordNoteModal() {
   document.body.classList.remove("modal-open");
   if (els.recordNoteModal) {
     els.recordNoteModal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function syncSendUi(message) {
-  if (els.sendStatus) {
-    if (message) {
-      els.sendStatus.textContent = message;
-    }
-  }
-}
-
-function openSendDiagModal() {
-  document.body.classList.add("modal-open");
-  if (els.sendDiagModal) {
-    els.sendDiagModal.setAttribute("aria-hidden", "false");
-  }
-  let tokenValue = "";
-  if (els.sendDiagToken) {
-    tokenValue = homeDeps.getDiagUploadToken ? homeDeps.getDiagUploadToken() : "";
-    els.sendDiagToken.value = tokenValue || "";
-  }
-  if (els.sendDiagToken && !tokenValue) {
-    els.sendDiagToken.focus();
-  } else if (els.sendDiagConfirm) {
-    els.sendDiagConfirm.focus();
-  }
-}
-
-function closeSendDiagModal() {
-  document.body.classList.remove("modal-open");
-  if (els.sendDiagModal) {
-    els.sendDiagModal.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -320,55 +284,6 @@ function bindHomeEvents() {
   if (els.recordNoteCancel) {
     els.recordNoteCancel.addEventListener("click", () => {
       closeRecordNoteModal();
-    });
-  }
-
-  if (els.sendDiagnostics) {
-    els.sendDiagnostics.addEventListener("click", () => {
-      openSendDiagModal();
-    });
-  }
-
-  if (els.sendDiagCancel) {
-    els.sendDiagCancel.addEventListener("click", () => {
-      closeSendDiagModal();
-    });
-  }
-
-  if (els.sendDiagConfirm) {
-    els.sendDiagConfirm.addEventListener("click", async () => {
-      if (!homeDeps.sendDiagnostics) return;
-      const token = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
-      if (homeDeps.setDiagUploadToken) {
-        homeDeps.setDiagUploadToken(token);
-      }
-      if (els.sendDiagConfirm) {
-        els.sendDiagConfirm.disabled = true;
-      }
-      syncSendUi("Sending diagnostics...");
-      const result = await homeDeps.sendDiagnostics({ token });
-      if (els.sendDiagConfirm) {
-        els.sendDiagConfirm.disabled = false;
-      }
-      closeSendDiagModal();
-      if (result && result.ok === false) {
-        const message = result.error || "Diagnostics upload failed.";
-        syncSendUi(`Upload failed: ${message}`);
-        return;
-      }
-      const time = new Date().toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      syncSendUi(`Uploaded ${time}`);
-    });
-  }
-
-  if (els.sendDiagToken) {
-    els.sendDiagToken.addEventListener("change", () => {
-      if (!homeDeps.setDiagUploadToken) return;
-      const value = els.sendDiagToken ? els.sendDiagToken.value.trim() : "";
-      homeDeps.setDiagUploadToken(value);
     });
   }
 

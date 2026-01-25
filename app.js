@@ -84,9 +84,8 @@ import {
   startRecording,
   stopRecording,
   recordSample,
-  flushRecording,
-  getRecordingRecords,
-  getDeviceId,
+  configureRecordingUpload,
+  resumeUploadQueue,
 } from "./core/recording.js";
 import { BUILD_STAMP } from "./build.js";
 
@@ -218,63 +217,6 @@ async function startReplaySession(entry) {
     stopRecordingSession();
   }
   return await startReplay(entry);
-}
-
-async function gzipNdjson(text) {
-  if (typeof CompressionStream === "undefined") {
-    throw new Error("Compression not supported on this device.");
-  }
-  const blob = new Blob([text], { type: "application/x-ndjson" });
-  const compressedStream = blob.stream().pipeThrough(new CompressionStream("gzip"));
-  return await new Response(compressedStream).blob();
-}
-
-async function sendDiagnostics({ url, token } = {}) {
-  try {
-    const endpoint = url || DIAG_ENDPOINT_URL;
-    if (!endpoint) {
-      return { ok: false, error: "Diagnostics endpoint is not configured." };
-    }
-    await flushRecording();
-    const cutoff = Date.now() - 60 * 60 * 1000;
-    const records = await getRecordingRecords({ sinceMs: cutoff });
-    if (!records.length) {
-      return { ok: false, error: "No data to upload." };
-    }
-    const deviceId = getDeviceId();
-    const uploadMeta = {
-      ts: Date.now(),
-      type: "upload",
-      deviceId,
-      payload: { build: BUILD_STAMP },
-    };
-    const payload = [uploadMeta, ...records]
-      .sort((a, b) => (a.ts || 0) - (b.ts || 0))
-      .map((record) => JSON.stringify(record))
-      .join("\n");
-    const compressed = await gzipNdjson(payload);
-    const resolvedToken =
-      typeof token === "string" ? token.trim() : (state.diagUploadToken || "").trim();
-    const headers = {
-      "Content-Type": "application/x-ndjson",
-      "Content-Encoding": "gzip",
-      "X-Device-Id": deviceId,
-    };
-    if (resolvedToken) {
-      headers["Authorization"] = `Bearer ${resolvedToken}`;
-    }
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: compressed,
-    });
-    if (!response.ok) {
-      return { ok: false, error: `Upload failed (${response.status})` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
 }
 
 function extractPositionPayload(position) {
@@ -1016,17 +958,6 @@ function setHeadingSourcePreference(mode, source) {
   }
 }
 
-function getDiagUploadToken() {
-  return state.diagUploadToken || "";
-}
-
-function setDiagUploadToken(value) {
-  const next = typeof value === "string" ? value.trim() : "";
-  if (state.diagUploadToken === next) return;
-  state.diagUploadToken = next;
-  saveSettings();
-}
-
 function loadSettings() {
   const settings = loadSettingsFromStorage();
   state.line = settings.line;
@@ -1347,6 +1278,19 @@ function tick() {
 }
 
 loadSettings();
+configureRecordingUpload({
+  endpoint: DIAG_ENDPOINT_URL,
+  getToken: () => state.diagUploadToken || "",
+  maxQueueBytes: 5 * 1024 * 1024,
+  chunkTargetBytes: 512 * 1024,
+});
+resumeUploadQueue();
+window.addEventListener("online", resumeUploadQueue);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    resumeUploadQueue();
+  }
+});
 applyDebugFlagFromUrl();
 syncNoCacheToken();
 initStarterUi();
@@ -1361,9 +1305,6 @@ initHome({
   startRecording: startRecordingSession,
   stopRecording: stopRecordingSession,
   isRecordingEnabled,
-  sendDiagnostics,
-  getDiagUploadToken,
-  setDiagUploadToken,
   getReplayState,
   loadReplayEntries,
   startReplay: startReplaySession,

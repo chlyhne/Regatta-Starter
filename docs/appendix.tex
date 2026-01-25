@@ -34,9 +34,12 @@ the mapping used for yaw extraction, so the reconstruction path can be audited.
 
 Storage is implemented in \texttt{core/recording.js} using an IndexedDB store named
 \texttt{racetimer-recording}. Each record includes a device ID, a session ID, a timestamp
-used for ordering, and a typed payload. A short in-memory queue batches writes to avoid
-per-event overhead, and a prune pass keeps roughly the last hour of data. The result is a
-ring buffer that is offline-friendly yet detailed enough for later analysis.
+used for ordering, and a typed payload. An in-memory queue batches records into NDJSON
+chunks (roughly half a megabyte or a couple of seconds of samples), which are then written
+as chunk objects in IndexedDB. These chunks form a small upload queue that is capped by
+total size (about 5\,MB by default), so the app never accumulates unbounded local storage
+even if the network is down. When the queue is full, the oldest data chunks are dropped,
+which makes the system resilient while still preserving the most recent diagnostics.
 
 \subsection{Record types and upload format}
 
@@ -51,13 +54,13 @@ containing the raw motion samples, \texttt{kalman} records containing the filter
 heading). This mix allows offline analysis to compare raw inputs against what the onboard
 filter produced without recomputing everything from scratch.
 
-When the user presses the send button, the app flushes pending writes, reads the last hour
-from IndexedDB, prepends an \texttt{upload} record with a build stamp, and sorts by timestamp.
-The payload is serialized as NDJSON so each record remains independent, then compressed with
-gzip before posting to the diagnostics endpoint. The line-oriented format keeps the payload
-streamable and lets the server store the data without parsing it into a larger schema. If
-the endpoint expects an upload key, the app includes it as a bearer token so only authorized
-clients can post data.
+Instead of a manual send step, the app streams chunks as they are produced. Each chunk is
+posted with headers that identify the device, session, chunk index, and time range, and the
+payload remains line-oriented NDJSON so each record is independent. The worker stores each
+chunk under a device/session prefix and maintains a manifest file that lists the chunks in
+order, which is enough to reconstruct a full session on demand without requiring an append
+operation on the storage backend. If an upload key is configured, the app includes it as a
+bearer token so only authorized clients can post data.
 
 \subsection{Replay pipeline and timing model}
 

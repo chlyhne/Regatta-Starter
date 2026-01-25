@@ -58,6 +58,17 @@ export const settingsView = `
     </div>
     <div id="imu-calibration-status" class="setting-note">IMU: not calibrated</div>
     <div class="row stack">
+      <label class="setting-label" for="diag-upload-token">Upload key</label>
+      <input
+        id="diag-upload-token"
+        type="text"
+        inputmode="text"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+      />
+    </div>
+    <div class="row stack">
       <button id="close-settings">Done</button>
     </div>
   </div>

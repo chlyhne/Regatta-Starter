@@ -148,6 +148,12 @@ function updateDistanceUnitToggle() {
   }
 }
 
+function syncUploadTokenInput() {
+  if (els.diagUploadToken) {
+    els.diagUploadToken.value = state.diagUploadToken || "";
+  }
+}
+
 function setSoundEnabled(enabled) {
   state.soundEnabled = Boolean(enabled);
   if (settingsDeps.saveSettings) {
@@ -195,6 +201,7 @@ function setDistanceUnit(unit) {
 function syncSettingsInputs() {
   syncBowOffsetInput();
   syncBoatLengthInput();
+  syncUploadTokenInput();
   updateSoundToggle();
   updateTimeFormatToggle();
   updateSpeedUnitToggle();
@@ -228,6 +235,16 @@ function bindSettingsEvents() {
     });
     els.bowOffset.addEventListener("focus", () => {
       els.bowOffset.value = "";
+    });
+  }
+
+  if (els.diagUploadToken) {
+    els.diagUploadToken.addEventListener("change", () => {
+      state.diagUploadToken = String(els.diagUploadToken.value || "").trim();
+      if (settingsDeps.saveSettings) {
+        settingsDeps.saveSettings();
+      }
+      syncUploadTokenInput();
     });
   }
 
@@ -319,4 +336,5 @@ export {
   setDistanceUnit,
   syncBowOffsetInput,
   syncBoatLengthInput,
+  syncUploadTokenInput,
 };

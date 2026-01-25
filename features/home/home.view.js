@@ -68,14 +68,6 @@ export const homeView = `
   </section>
 
   <section class="panel">
-    <h2>Diagnostics</h2>
-    <div class="row stack">
-      <button id="send-diagnostics" class="ghost" type="button">Send diagnostics</button>
-      <div id="send-status" class="hint">No upload yet</div>
-    </div>
-  </section>
-
-  <section class="panel">
     <h2>Replay</h2>
     <div class="row stack">
       <button id="replay-open" type="button">Replay data</button>
