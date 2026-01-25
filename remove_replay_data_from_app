@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <file.ndjson|file.ndjson.gz|id>" >&2
+  echo "Usage: $0 <file.ndjson|file.ndjson.gz|id|--all>" >&2
 }
 
 if [ $# -lt 1 ]; then
@@ -10,8 +10,53 @@ if [ $# -lt 1 ]; then
   exit 1
 fi
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
+
 input="$1"
 manifest_path="replay/manifest.json"
+
+if [ "$input" = "--all" ] || [ "$input" = "all" ]; then
+  if [ -f "$manifest_path" ]; then
+    git rm -f --quiet "$manifest_path" 2>/dev/null || rm -f "$manifest_path"
+  fi
+
+  if [ -d "replay" ]; then
+    find replay -maxdepth 1 -type f ! -name "manifest.json" -print0 | while IFS= read -r -d '' file; do
+      git rm -f --quiet "$file" 2>/dev/null || rm -f "$file"
+    done
+  fi
+  mkdir -p replay
+
+  python3 - <<'PY'
+import re
+
+sw_path = "sw.js"
+with open(sw_path, "r", encoding="utf-8") as handle:
+    text = handle.read()
+
+match = re.search(r'CACHE_NAME\\s*=\\s*["\\\']racetimer-v(\\d+)["\\\']', text)
+if not match:
+    raise SystemExit("CACHE_NAME not found in sw.js")
+current = int(match.group(1))
+text = re.sub(
+    r'const\\s+CACHE_NAME\\s*=\\s*"racetimer-v\\d+"',
+    f'const CACHE_NAME = "racetimer-v{current + 1}"',
+    text,
+    count=1,
+)
+
+text = re.sub(r'^\\s*"\\./replay/[^"]+"\\s*,?\\n', "", text, flags=re.MULTILINE)
+
+with open(sw_path, "w", encoding="utf-8") as handle:
+    handle.write(text)
+PY
+
+git add sw.js >/dev/null 2>&1 || true
+echo "Removed all replay entries."
+echo "Updated sw.js"
+exit 0
+fi
 
 if [ ! -f "$manifest_path" ]; then
   echo "Manifest not found: $manifest_path" >&2
@@ -44,7 +89,7 @@ if input_base.startswith("replay" + os.sep):
     input_base = os.path.basename(input_base)
 
 match_index = None
-removed_path = None
+removed_files = None
 for idx, entry in enumerate(data):
     if not isinstance(entry, dict):
         continue
@@ -53,14 +98,20 @@ for idx, entry in enumerate(data):
     entry_base = os.path.basename(entry_path)
     if input_value in {entry_id, entry_path, entry_base, os.path.basename(entry_id)}:
         match_index = idx
-        removed_path = entry_path
+        if isinstance(entry.get("chunks"), list) and entry.get("chunks"):
+            removed_files = entry.get("chunks")
+        else:
+            removed_files = [entry_path]
         break
     if input_base and input_base in {entry_path, entry_base}:
         match_index = idx
-        removed_path = entry_path
+        if isinstance(entry.get("chunks"), list) and entry.get("chunks"):
+            removed_files = entry.get("chunks")
+        else:
+            removed_files = [entry_path]
         break
 
-if match_index is None or not removed_path:
+if match_index is None or not removed_files:
     raise SystemExit(f"Replay entry not found for: {raw_input}")
 
 data.pop(match_index)
@@ -69,65 +120,66 @@ if data:
     with open(manifest_path, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2)
         handle.write("\n")
-    print(removed_path)
-    print("KEEP")
+    state = "KEEP"
 else:
     os.remove(manifest_path)
-    print(removed_path)
-    print("EMPTY")
+    state = "EMPTY"
+
+print(json.dumps({"files": removed_files, "manifest_state": state}))
 PY
 )"
 
-removed_path="$(printf "%s\n" "$info" | sed -n '1p')"
-manifest_state="$(printf "%s\n" "$info" | sed -n '2p')"
-
-if [ -z "$removed_path" ]; then
-  echo "Could not resolve replay file from manifest." >&2
+if [ -z "$info" ]; then
+  echo "Could not resolve replay files from manifest." >&2
   exit 1
 fi
 
-candidate="$removed_path"
-if [ -f "replay/$removed_path" ]; then
-  candidate="replay/$removed_path"
-fi
-
-if [ -f "$candidate" ]; then
-  git rm -f --quiet "$candidate" 2>/dev/null || rm -f "$candidate"
-fi
-
-if [ "$manifest_state" = "EMPTY" ]; then
-  if [ -f "$manifest_path" ]; then
-    git rm -f --quiet "$manifest_path" 2>/dev/null || rm -f "$manifest_path"
-  fi
-fi
-
-REPLAY_FILE="$removed_path" MANIFEST_STATE="$manifest_state" python3 - <<'PY'
+REPLAY_INFO="$info" python3 - <<'PY'
+import json
 import os
 import re
+import subprocess
+
+info = json.loads(os.environ.get("REPLAY_INFO", "{}"))
+files = info.get("files") or []
+manifest_state = info.get("manifest_state") or ""
+
+if not files:
+    raise SystemExit("Missing replay files list.")
+
+for name in files:
+    candidate = name
+    if os.path.exists(os.path.join("replay", name)):
+        candidate = os.path.join("replay", name)
+    if os.path.exists(candidate):
+        subprocess.run(["git", "rm", "-f", "--quiet", candidate], check=False)
+        if os.path.exists(candidate):
+            os.remove(candidate)
+
+if manifest_state == "EMPTY":
+    if os.path.exists("replay/manifest.json"):
+        subprocess.run(["git", "rm", "-f", "--quiet", "replay/manifest.json"], check=False)
+        if os.path.exists("replay/manifest.json"):
+            os.remove("replay/manifest.json")
 
 sw_path = "sw.js"
-replay_file = os.environ.get("REPLAY_FILE", "").strip()
-manifest_state = os.environ.get("MANIFEST_STATE", "")
-
-if not replay_file:
-    raise SystemExit("Missing REPLAY_FILE")
-
 with open(sw_path, "r", encoding="utf-8") as handle:
     text = handle.read()
 
-match = re.search(r'const\s+CACHE_NAME\s*=\s*"racetimer-v(\d+)"', text)
+match = re.search(r'CACHE_NAME\\s*=\\s*["\\\']racetimer-v(\\d+)["\\\']', text)
 if not match:
     raise SystemExit("CACHE_NAME not found in sw.js")
 current = int(match.group(1))
 text = re.sub(
-    r'const\s+CACHE_NAME\s*=\s*"racetimer-v\d+"',
+    r'const\\s+CACHE_NAME\\s*=\\s*"racetimer-v\\d+"',
     f'const CACHE_NAME = "racetimer-v{current + 1}"',
     text,
     count=1,
 )
 
-pattern = re.compile(rf'^\\s*"\\./replay/{re.escape(replay_file)}"\\s*,?\\n', re.MULTILINE)
-text = pattern.sub("", text)
+for name in files:
+    pattern = re.compile(rf'^\\s*"\\./replay/{re.escape(os.path.basename(name))}"\\s*,?\\n', re.MULTILINE)
+    text = pattern.sub("", text)
 
 if manifest_state == "EMPTY":
     text = re.sub(r'^\\s*"\\./replay/manifest\\.json"\\s*,?\\n', "", text, flags=re.MULTILINE)
@@ -136,10 +188,24 @@ with open(sw_path, "w", encoding="utf-8") as handle:
     handle.write(text)
 PY
 
+mkdir -p replay
 git add sw.js >/dev/null 2>&1 || true
-if [ "$manifest_state" = "KEEP" ] && [ -f "$manifest_path" ]; then
-  git add "$manifest_path" >/dev/null 2>&1 || true
+if REPLAY_INFO="$info" python3 - <<'PY'
+import json, os, sys
+info = json.loads(os.environ.get("REPLAY_INFO", "{}"))
+sys.exit(0 if info.get("manifest_state") == "KEEP" else 1)
+PY
+then
+  if [ -f "$manifest_path" ]; then
+    git add "$manifest_path" >/dev/null 2>&1 || true
+  fi
 fi
 
-echo "Removed replay entry: $removed_path"
+echo "Removed replay entry:"
+REPLAY_INFO="$info" python3 - <<'PY'
+import json
+info = json.loads(os.environ.get("REPLAY_INFO", "{}"))
+for name in info.get("files") or []:
+    print(f"  {name}")
+PY
 echo "Updated sw.js"

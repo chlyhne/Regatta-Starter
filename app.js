@@ -1256,7 +1256,7 @@ configureRecordingUpload({
   endpoint: DIAG_ENDPOINT_URL,
   getToken: () => state.diagUploadToken || "",
   maxQueueBytes: 5 * 1024 * 1024,
-  chunkTargetBytes: 512 * 1024,
+  chunkTargetBytes: 512 * 1024 * 16,
 });
 resumeUploadQueue();
 window.addEventListener("online", resumeUploadQueue);

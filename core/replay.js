@@ -98,15 +98,20 @@ async function loadReplayEntries() {
     .map((entry, index) => {
       if (!entry || typeof entry !== "object") return null;
       const path = typeof entry.path === "string" ? entry.path.trim() : "";
-      if (!path) return null;
+      const chunks = Array.isArray(entry.chunks)
+        ? entry.chunks.map((chunk) => String(chunk || "").trim()).filter(Boolean)
+        : [];
+      if (!path && !chunks.length) return null;
       const id = typeof entry.id === "string" && entry.id.trim()
         ? entry.id.trim()
         : `replay-${index + 1}`;
+      const labelSource = path || chunks[0] || id;
       const label = typeof entry.label === "string" && entry.label.trim()
         ? entry.label.trim()
-        : path.split("/").pop();
-      const url = new URL(path, baseUrl).toString();
-      return { id, label, path, url };
+        : labelSource.split("/").pop();
+      const url = path ? new URL(path, baseUrl).toString() : null;
+      const chunkUrls = chunks.map((chunk) => new URL(chunk, baseUrl).toString());
+      return { id, label, path, url, chunks: chunks.length ? chunks : null, chunkUrls };
     })
     .filter(Boolean);
   return replayEntries;
@@ -331,6 +336,22 @@ async function readReplayText(response, url) {
 }
 
 async function loadReplayData(entry) {
+  if (Array.isArray(entry?.chunkUrls) && entry.chunkUrls.length) {
+    let combined = "";
+    for (const url of entry.chunkUrls) {
+      const response = await fetch(url, { cache: "no-cache" });
+      if (!response.ok) {
+        throw new Error(`Replay file missing (${response.status})`);
+      }
+      const text = await readReplayText(response, url);
+      combined += text;
+      if (combined && !combined.endsWith("\n")) {
+        combined += "\n";
+      }
+    }
+    const records = parseNdjson(combined);
+    return buildReplayEventsFromRecords(records);
+  }
   const response = await fetch(entry.url, { cache: "no-cache" });
   if (!response.ok) {
     throw new Error(`Replay file missing (${response.status})`);
