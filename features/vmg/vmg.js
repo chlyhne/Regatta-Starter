@@ -463,6 +463,27 @@ function getVmgEvalWindowSeconds() {
   return VMG_EVAL_WINDOW_SEC;
 }
 
+function computeInstantWindAxis(heading) {
+  if (!Number.isFinite(heading)) return null;
+  if (vmgMode === "reaching") {
+    return normalizeHeadingDegrees(heading);
+  }
+  const twa = vmgMode === "downwind" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
+  const offset = vmgTack === "starboard" ? twa : -twa;
+  return normalizeHeadingDegrees(heading + offset);
+}
+
+function computeInstantVmgScore(sample, heading) {
+  if (!sample || !Number.isFinite(sample.speed)) return null;
+  if (!Number.isFinite(heading)) return null;
+  const windAxis = computeInstantWindAxis(heading);
+  if (!Number.isFinite(windAxis)) return null;
+  const angleDiff = Math.abs(normalizeDeltaDegrees(heading - windAxis));
+  const score = sample.speed * Math.cos(toRadians(angleDiff));
+  if (!Number.isFinite(score)) return null;
+  return vmgMode === "downwind" ? -score : score;
+}
+
 function getVmgEvalHistoryMs() {
   const minWindowSeconds = VMG_EVAL_WINDOW_SEC * 2;
   const windowSeconds = Math.max(minWindowSeconds, getVmgPlotWindowSeconds());
@@ -661,19 +682,19 @@ function updateLatestVmgPlotSample(value, timestampMs) {
 }
 
 function updateVmgPlotFilters(rawValue, timestampMs) {
-  if (!Number.isFinite(rawValue)) return;
+  if (!Number.isFinite(rawValue)) return true;
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
   const inputValue = getVmgPlotInputValue(rawValue);
-  if (!Number.isFinite(inputValue)) return;
+  if (!Number.isFinite(inputValue)) return true;
   vmgPlotLastRaw = rawValue;
   if (!Number.isFinite(vmgPlotLastSampleTs)) {
     vmgPlotBaseline = inputValue;
     vmgPlotFast = inputValue;
     updateLatestVmgPlotSample(0, ts);
-    return;
+    return true;
   }
   const dtSec = Math.max(0, (ts - vmgPlotLastSampleTs) / 1000);
-  if (dtSec <= 0) return;
+  if (dtSec <= 0) return false;
   const baselineTau = vmgPlotTauSeconds;
   const fastTau = Math.max(0.05, baselineTau / 10);
   vmgPlotBaseline = applyFirstOrderFilter(vmgPlotBaseline, inputValue, dtSec, baselineTau);
@@ -681,7 +702,9 @@ function updateVmgPlotFilters(rawValue, timestampMs) {
     ? applyFirstOrderFilter(vmgPlotFast, inputValue, dtSec, fastTau)
     : inputValue;
   const delta = getVmgPlotDeltaValue();
-  updateLatestVmgPlotSample(delta, ts);
+  const warmup = !Number.isFinite(delta);
+  updateLatestVmgPlotSample(warmup ? 0 : delta, ts);
+  return warmup;
 }
 
 function updateVmgEstimate(position) {
@@ -698,15 +721,14 @@ function updateVmgEstimate(position) {
   vmgEstimate.lastHeadingUnwrapped = headingUnwrapped;
   vmgEstimate.lastSpeed = sample.speed;
 
-  if (Number.isFinite(headingUnwrapped)) {
-    recordVmgEvalSample(sample, heading, headingUnwrapped);
-    const result = computeVmgChangePercent();
-    const warmup = result ? result.warmup : true;
-    setVmgWarmupState(warmup);
-    if (result && Number.isFinite(result.percent)) {
-      updateVmgPlotFilters(result.percent, sample.ts);
+  if (Number.isFinite(heading)) {
+    const rawScore = computeInstantVmgScore(sample, heading);
+    if (Number.isFinite(rawScore)) {
+      const warmup = updateVmgPlotFilters(rawScore, sample.ts);
+      setVmgWarmupState(warmup);
     } else if (!vmgPlotHistory.length) {
       updateVmgPlotFilters(0, sample.ts);
+      setVmgWarmupState(true);
     }
   }
   if (!Number.isFinite(headingUnwrapped)) return;
@@ -832,14 +854,14 @@ function updateVmgCapToggle() {
 
 function getVmgPlotInputValue(rawValue) {
   if (!Number.isFinite(rawValue)) return null;
-  return vmgCapEnabled
-    ? clamp(rawValue, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
-    : rawValue;
+  return rawValue;
 }
 
 function getVmgPlotDeltaValue() {
   if (!Number.isFinite(vmgPlotFast) || !Number.isFinite(vmgPlotBaseline)) return null;
-  const delta = vmgPlotFast - vmgPlotBaseline;
+  const denom = Math.abs(vmgPlotBaseline);
+  if (!Number.isFinite(denom) || denom < VMG_EVAL_MIN_BASE) return null;
+  const delta = ((vmgPlotFast - vmgPlotBaseline) / denom) * 100;
   return vmgCapEnabled
     ? clamp(delta, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
     : delta;
@@ -853,7 +875,7 @@ function applyVmgSmoothSetting() {
     if (!Number.isFinite(inputValue)) return;
     vmgPlotFast = inputValue;
     const delta = getVmgPlotDeltaValue();
-    updateLatestVmgPlotSample(delta, vmgPlotLastSampleTs);
+    updateLatestVmgPlotSample(Number.isFinite(delta) ? delta : 0, vmgPlotLastSampleTs);
   }
 }
 
@@ -866,7 +888,7 @@ function applyVmgCapSetting() {
     vmgPlotFast = inputValue;
   }
   const delta = getVmgPlotDeltaValue();
-  updateLatestVmgPlotSample(delta, vmgPlotLastSampleTs);
+  updateLatestVmgPlotSample(Number.isFinite(delta) ? delta : 0, vmgPlotLastSampleTs);
 }
 
 function applyVmgSettings(settings = {}) {
