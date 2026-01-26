@@ -58,7 +58,7 @@ const vmgImu = {
   lastGpsTs: null,
 };
 let vmgWarmup = false;
-let vmgMode = "beating";
+let vmgMode = "beat";
 let vmgTack = "starboard";
 let vmgSmoothCurrent = true;
 let vmgCapEnabled = true;
@@ -323,8 +323,8 @@ function updateVmgImuFromGps(sample) {
 }
 
 function getVmgSignedTwaRad() {
-  if (vmgMode === "reaching") return 0;
-  const twaDeg = vmgMode === "downwind" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
+  if (vmgMode === "reach") return 0;
+  const twaDeg = vmgMode === "run" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
   const signed = vmgTack === "starboard" ? twaDeg : -twaDeg;
   return toRadians(signed);
 }
@@ -407,25 +407,24 @@ function setVmgSettingsOpen(open) {
 }
 
 function setVmgMode(mode) {
-  const normalized =
-    mode === "reaching" || mode === "downwind" ? mode : "beating";
+  const normalized = mode === "reach" || mode === "run" ? mode : "beat";
   vmgMode = normalized;
-  if (els.vmgModeBeating) {
-    els.vmgModeBeating.setAttribute(
+  if (els.vmgModeBeat) {
+    els.vmgModeBeat.setAttribute(
       "aria-pressed",
-      normalized === "beating" ? "true" : "false"
+      normalized === "beat" ? "true" : "false"
     );
   }
-  if (els.vmgModeReaching) {
-    els.vmgModeReaching.setAttribute(
+  if (els.vmgModeReach) {
+    els.vmgModeReach.setAttribute(
       "aria-pressed",
-      normalized === "reaching" ? "true" : "false"
+      normalized === "reach" ? "true" : "false"
     );
   }
-  if (els.vmgModeDownwind) {
-    els.vmgModeDownwind.setAttribute(
+  if (els.vmgModeRun) {
+    els.vmgModeRun.setAttribute(
       "aria-pressed",
-      normalized === "downwind" ? "true" : "false"
+      normalized === "run" ? "true" : "false"
     );
   }
   resetVmgEstimator();
@@ -520,24 +519,24 @@ function bindVmgEvents() {
     });
   }
 
-  if (els.vmgModeBeating || els.vmgModeReaching || els.vmgModeDownwind) {
-    setVmgMode("beating");
+  if (els.vmgModeBeat || els.vmgModeReach || els.vmgModeRun) {
+    setVmgMode("beat");
 
-    if (els.vmgModeBeating) {
-      els.vmgModeBeating.addEventListener("click", () => {
-        setVmgMode("beating");
+    if (els.vmgModeBeat) {
+      els.vmgModeBeat.addEventListener("click", () => {
+        setVmgMode("beat");
       });
     }
 
-    if (els.vmgModeReaching) {
-      els.vmgModeReaching.addEventListener("click", () => {
-        setVmgMode("reaching");
+    if (els.vmgModeReach) {
+      els.vmgModeReach.addEventListener("click", () => {
+        setVmgMode("reach");
       });
     }
 
-    if (els.vmgModeDownwind) {
-      els.vmgModeDownwind.addEventListener("click", () => {
-        setVmgMode("downwind");
+    if (els.vmgModeRun) {
+      els.vmgModeRun.addEventListener("click", () => {
+        setVmgMode("run");
       });
     }
   }

@@ -28,9 +28,10 @@ line decisions depend more on stable estimates than on raw precision.
 \input{tuning.tex}
 \clearpage
 \part{RacePerformance}
-\noindent This part covers RacePerformance (VMG evaluator): how we compare successive time windows,
-how the assumed TWA and tack define a wind axis for beating or running, how reaching uses
-a mean heading instead, and how the resulting change is presented in the VMG bar plot.
+\noindent This part covers RacePerformance (VMG evaluator): how a low-pass baseline is formed from
+speed and heading, how the assumed TWA and tack define the VMG reference for beat or run,
+how reach is handled without a wind estimate, and how the resulting percent change is
+shown as a time history plot.
 \input{racevmg.tex}
 \clearpage
 \part{RaceLifter}

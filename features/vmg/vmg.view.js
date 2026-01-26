@@ -54,28 +54,28 @@ export const vmgView = `
     <section class="vmg-panel">
       <div class="race-toggle horizontal start-toggle vmg-mode-toggle" role="group" aria-label="Mode">
         <button
-          id="vmg-mode-beating"
+          id="vmg-mode-beat"
           class="race-toggle-btn"
           type="button"
           aria-pressed="true"
         >
-          Beating
+          Beat
         </button>
         <button
-          id="vmg-mode-reaching"
+          id="vmg-mode-reach"
           class="race-toggle-btn"
           type="button"
           aria-pressed="false"
         >
-          Reaching
+          Reach
         </button>
         <button
-          id="vmg-mode-downwind"
+          id="vmg-mode-run"
           class="race-toggle-btn"
           type="button"
           aria-pressed="false"
         >
-          Running
+          Run
         </button>
       </div>
       <div class="race-toggle horizontal start-toggle vmg-tack-toggle" role="group" aria-label="Tack">

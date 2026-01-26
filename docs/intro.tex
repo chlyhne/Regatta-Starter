@@ -14,9 +14,10 @@ This document is a technical report that explains how the app works and why the 
 set up the way it is. The report is structured by tool. The RaceStarter part focuses on
 start line setup and the race view, and on the estimation methods needed to make distance,
 speed, and direction stable enough to trust. The RacePerformance part explains the VMG evaluator:
-it compares successive time windows using an assumed TWA for beating or running, or a
-mean heading for reaching, and shows the change as a bar plot. The RaceLifter part
-explains the heading history plot and how its bins, mean, and scaling are computed.
+it builds a low-pass baseline for speed and heading, compares each new sample against that
+baseline using an assumed TWA for beat or run (or zero for reach), and shows the resulting
+percent change as a time history plot. The RaceLifter part explains the heading history
+plot and how its bins, mean, and scaling are computed.
 
 Across both tools, the most important requirement is trust. Raw GPS fixes are jittery, and
 naively differentiating them produces even noisier speed and heading. For this reason, we

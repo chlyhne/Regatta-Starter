@@ -3,64 +3,65 @@
 \section{RacePerformance (VMG evaluator)}
 
 This section describes how RacePerformance turns a stream of heading and speed samples into a
-simple, stable evaluation: is the most recent window better or worse than the one just
-before it, and by how much. The goal is not to estimate true wind, but to provide a
+simple, stable evaluation: how much the most recent behavior improves or degrades VMG
+relative to a low-pass baseline. The goal is not to estimate true wind, but to provide a
 consistent reference so changes in trim or steering show up as a clear percentage.
 
-\subsection{Modes, wind axis, and sign}
+\subsection{Signals and baseline filters}
 
-This subsection explains how the mode and tack selections define the reference direction
-used to compute VMG.
+This subsection defines the signals used by the evaluator and how they are filtered.
 
-RacePerformance does not estimate wind direction directly. Instead, it constructs a wind axis
-from the older of the two evaluation windows. We take the time-weighted mean heading in
-that older window and then apply a simple mode rule. In beating mode we assume an upwind
-TWA and offset the mean by \(\pm\)TWA depending on tack (port is negative, starboard is
-positive). In running mode we use a downwind TWA slider and apply the same tack offset.
-In reaching mode we assume no TWA and use the mean heading itself as the reference axis.
+RacePerformance works directly with instantaneous estimates from the navigation layer. Let
+\(v\) be the instantaneous boat speed and \(h\) be the instantaneous heading, both sourced
+from the same heading selection used elsewhere (boat model or raw GPS). We maintain two
+first-order low-pass baselines using the user-selected time constant \(\tau\):
+\(\overline{v}=\mathrm{LPF}(v)\) and \(\overline{h}=\mathrm{LPF}(h)\). Both filters are
+initialized to the first sample so the plot starts immediately. The instantaneous
+deviations are \(dv=v-\overline{v}\) and \(dh=h-\overline{h}\), with \(dh\) wrapped to the
+shortest signed angular difference. The evaluator is driven by the same Kalman output
+stream as the track view, so it updates on prediction steps as well as GPS updates.
 
-The VMG at any moment is the component of speed along that axis:
+\subsection{VMG improvement model}
+
+This subsection explains how mode, tack, and the assumed TWA enter the percent-improvement
+calculation.
+
+RacePerformance does not estimate wind direction directly. Instead, it uses the selected
+mode and tack to define a signed target TWA \(a\). In beat and run modes, \(a\) is taken
+from the upwind or downwind TWA sliders and signed by tack (port is negative, starboard is
+positive). In reach mode we set \(a=0\), which effectively evaluates changes along the
+current baseline heading without introducing a wind assumption. The baseline VMG is
+\(w=\overline{v}\cos(a)\), and the instantaneous VMG is \(v\cos(a+dh)\).
+
+The ratio of instantaneous VMG to the baseline simplifies to:
 \[
-\mathrm{VMG} = v\cos\Delta\psi
+\frac{v\cos(a+dh)}{\overline{v}\cos(a)}=
+\left(1+\frac{dv}{\overline{v}}\right)\left(\cos(dh)-\tan(a)\sin(dh)\right)
 \]
-where \(\Delta\psi\) is the angular difference between heading and the chosen axis. For
-running, VMG is expected to be negative because the axis points downwind. To keep the
-readout intuitive (more running is better), we flip the sign when computing the change so
-a more negative VMG counts as an improvement.
-
-\subsection{Windowed comparison and percent change}
-
-This subsection describes how two adjacent windows are compared to produce a percent
-change.
-
-We maintain a rolling history of heading and speed samples and compare two windows of
-length \(W\). For beating and running, \(W\) is a fixed \(30\,\mathrm{s}\) so the feedback
-feels immediate. For reaching, the window length follows half of the selected plot window
-so slower changes remain visible without amplifying noise. Because GPS samples are not
-uniformly spaced, we compute window averages with time-weighted linear interpolation
-between samples rather than assuming fixed-rate data.
-
-Let \(\overline{V}_\text{prev}\) and \(\overline{V}_\text{curr}\) be the average VMG values
-in the older and newer windows after the running-mode sign correction. The VMG change is
-reported as a percentage:
+We report percent improvement, so the displayed value is:
 \[
-\Delta_\% = \frac{\overline{V}_\text{curr} - \overline{V}_\text{prev}}{|\overline{V}_\text{prev}|}\times 100
+X_\%=\left[\left(1+\frac{dv}{\overline{v}}\right)\left(\cos(dh)-\tan(a)\sin(dh)\right)-1\right]\times 100
 \]
-We suppress the output if the baseline is too small and clamp the displayed value to a
-reasonable range so outliers do not dominate the plot.
+This single expression handles beat, reach, and run. For running, the cosine in the
+denominator is negative, but the ratio removes that sign, so a faster or better-aligned
+run produces a positive improvement.
 
-\subsection{Plot bins and baseline}
+\subsection{Displayed signal and plot window}
 
-This subsection explains how the VMG change history becomes the vertical bar plot.
+This subsection describes the optional smoothing of the displayed signal and how the time
+history window is chosen.
 
-The plot window is user-selected from one to five minutes and is divided into a fixed
-number of time bins (30). Each computed \(\Delta_\%\) value is added to the current bin
-based on its timestamp, and the bin value is the mean of all samples it contains. The
-baseline for centering the plot is the mean of the oldest half of the bins, which keeps
-the reference stable and avoids bias from the active bin that is still accumulating
-samples. The plot is scaled symmetrically, rounded to fixed step sizes so the grid feels
-stable, and the active bin is clipped to the current scale to prevent temporary spikes
-from rescaling the entire view.
+The baseline filters always use the long time constant \(\tau\). The displayed signal can
+either be the raw improvement \(X_\%\) or a ``fast'' smoothed version using a first-order
+low-pass filter with time constant \(\tau/10\). This toggle changes only the display; the
+baseline filters are unchanged. If the baseline magnitude is too small, the output is
+suppressed until it stabilizes.
+
+The plot window is fixed at four time constants (\(4\tau\)). The time axis runs left to
+right with ``now'' at the right edge. We draw the improvement history as a line with a
+filled area underneath: green for positive values and red for negative values. The
+percent axis is symmetric with labeled ticks. An optional cap limits the displayed
+magnitude to a fixed percentage so outliers do not rescale the plot.
 
 \subsection{Heading sources and device motion}
 

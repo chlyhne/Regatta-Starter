@@ -1146,6 +1146,7 @@ function applyKalmanEstimate(result, options = {}) {
   }
   updateGPSDisplay();
   updateLineProjection();
+  updateVmgEstimate(result.position);
 }
 
 function startKalmanPredictionLoop() {
@@ -1173,7 +1174,6 @@ function handlePosition(position, options = {}) {
     applyKalmanEstimate(filtered, { rawPosition: position, source: "update" });
     recordSpeedSample(filtered.speed, position.timestamp || Date.now());
     state.lastPosition = state.position;
-    updateVmgEstimate(state.position);
     return;
   }
   const coords = position.coords;
