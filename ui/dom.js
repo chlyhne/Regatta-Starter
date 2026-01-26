@@ -73,7 +73,6 @@ const els = {
   lifterSettingsView: document.getElementById("lifter-settings-view"),
   closeVmgSettings: document.getElementById("close-vmg-settings"),
   closeLifterSettings: document.getElementById("close-lifter-settings"),
-  vmgModelToggle: document.getElementById("vmg-model-toggle"),
   vmgImuToggle: document.getElementById("vmg-imu-toggle"),
   vmgSmoothToggle: document.getElementById("vmg-smooth-toggle"),
   vmgCapToggle: document.getElementById("vmg-cap-toggle"),

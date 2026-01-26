@@ -13,7 +13,7 @@ This subsection defines the signals used by the evaluator and how they are filte
 
 RacePerformance works directly with instantaneous estimates from the navigation layer. Let
 \(v\) be the instantaneous boat speed and \(h\) be the instantaneous heading, both sourced
-from the same heading selection used elsewhere (boat model or raw GPS). We maintain two
+from the Kalman state (optionally enhanced by the device motion sensor). We maintain two
 first-order low-pass baselines using the user-selected time constant \(\tau\):
 \(\overline{v}=\mathrm{LPF}(v)\) and \(\overline{h}=\mathrm{LPF}(h)\). Both filters are
 initialized to the first sample so the plot starts immediately. The instantaneous
@@ -68,8 +68,8 @@ magnitude to a fixed percentage so outliers do not rescale the plot.
 This subsection describes how heading is sourced and how the device motion option
 interacts with GPS.
 
-RacePerformance can use the boat model (Kalman) heading or raw GPS heading, depending on the user
-selection. When the device motion sensor is enabled, we integrate yaw rate to track
+RacePerformance always uses the Kalman heading. When the device motion sensor is enabled, we
+integrate yaw rate to track
 short-term heading changes and blend it back toward GPS heading when speed is sufficient
 and accuracy is acceptable. This improves responsiveness when the phone is rigidly
 mounted to the boat, but it can degrade estimates if the phone is hand-held or moved

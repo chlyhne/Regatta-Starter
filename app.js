@@ -29,13 +29,11 @@ import { getHeadingSourcePreference, normalizeHeadingSource } from "./core/headi
 import { getNowMs } from "./core/clock.js";
 import {
   applyVmgSettings,
-  applyVmgImuSample,
   bindVmgEvents,
   getVmgPersistedSettings,
   getVmgSettingsSnapshot,
   initVmg,
   resetVmgEstimator,
-  resetVmgImuState,
   syncVmgWindowUi,
   updateVmgEstimate,
   updateVmgGpsState,
@@ -633,7 +631,6 @@ function processImuEvent(event, options = {}) {
   const dt = clamp(dtRaw, dtClamp.min, dtClamp.max);
   if (dt <= 0) return;
   applyImuYawRate(yawRate, dt);
-  applyVmgImuSample(yawRate, timestamp);
   if (options.record !== false && isRecordingEnabled()) {
     const deviceTimeMs = Number.isFinite(options.deviceTimeMs)
       ? options.deviceTimeMs
@@ -668,7 +665,6 @@ function stopImu() {
   }
   state.imuEnabled = false;
   resetImuState();
-  resetVmgImuState();
 }
 
 async function startImu() {
@@ -680,7 +676,6 @@ async function startImu() {
   imuListening = true;
   state.imuEnabled = true;
   resetImuState();
-  resetVmgImuState();
   if (state.kalman) {
     const vx = state.kalman.x[2];
     const vy = state.kalman.x[3];
@@ -899,13 +894,6 @@ function releaseWakeLock() {
 }
 
 function updateHeadingSourceToggles() {
-  const vmgSource = getHeadingSourcePreference("vmg");
-  if (els.vmgModelToggle) {
-    els.vmgModelToggle.setAttribute(
-      "aria-pressed",
-      vmgSource === "kalman" ? "true" : "false"
-    );
-  }
   const lifterSource = getHeadingSourcePreference("lifter");
   if (els.lifterModelToggle) {
     els.lifterModelToggle.setAttribute(
@@ -924,9 +912,6 @@ function setHeadingSourcePreference(mode, source) {
   state.headingSourceByMode[mode] = normalized;
   saveSettings();
   updateHeadingSourceToggles();
-  if (mode === "vmg") {
-    resetVmgEstimator();
-  }
   if (mode === "lifter") {
     setLifterHeadingSource(normalized);
   }
@@ -1020,7 +1005,6 @@ function resetPositionState() {
   state.kalman = null;
   lastKalmanPredictionTs = 0;
   resetVmgEstimator();
-  resetVmgImuState();
   state.gpsTrackRaw = [];
   state.gpsTrackDevice = [];
   state.gpsTrackFiltered = [];
@@ -1324,9 +1308,7 @@ initNavigation({
   setGpsMode,
 });
 initVmg({
-  setHeadingSourcePreference,
   setImuEnabled,
-  updateHeadingSourceToggles,
   hardReload,
   saveSettings,
 });

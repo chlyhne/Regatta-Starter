@@ -39,7 +39,7 @@ const state = {
   soundEnabled: true,
   debugGpsEnabled: DEBUG_GPS_DEFAULT,
   useKalman: true,
-  headingSourceByMode: { vmg: "kalman", lifter: "kalman" },
+  headingSourceByMode: { lifter: "kalman" },
   imuCalibration: null,
   diagUploadToken: "",
   imuEnabled: false,

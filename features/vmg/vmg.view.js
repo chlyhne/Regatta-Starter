@@ -104,16 +104,7 @@ export const vmgView = `
     <div class="vmg-settings-panel">
       <h2>Performance settings</h2>
       <div class="vmg-settings-group">
-        <div class="hint">Enhance heading and speed estimate using:</div>
-        <button
-          id="vmg-model-toggle"
-          class="check-toggle"
-          type="button"
-          aria-pressed="true"
-        >
-          <span class="check-label">Boat model</span>
-          <span class="check-box" aria-hidden="true"></span>
-        </button>
+        <div class="hint">Enhance heading estimate using:</div>
         <button
           id="vmg-imu-toggle"
           class="check-toggle"

@@ -5,19 +5,13 @@ import { isGpsStale } from "../../core/gps-watch.js";
 import {
   clamp,
   normalizeDeltaDegrees,
-  normalizeAngleRad,
-  normalizeDeltaRad,
-  headingRadToDegrees,
   unwrapHeadingDegrees,
   resizeCanvasToCssPixels,
   formatWindowSeconds,
+  headingFromVelocity,
 } from "../../core/common.js";
-import { getHeadingSampleForMode, getHeadingSourcePreference } from "../../core/heading.js";
+import { canUseKalmanHeading } from "../../core/heading.js";
 
-const KNOTS_TO_MS = 0.514444;
-const VMG_IMU_GPS_MIN_SPEED = 2 * KNOTS_TO_MS;
-const VMG_IMU_GPS_BLEND_TAU = 12;
-const VMG_IMU_DT_CLAMP = { min: 0.005, max: 0.25 };
 const VMG_EVAL_TWA_UP_DEG = 45;
 const VMG_EVAL_TWA_UP_MIN = 35;
 const VMG_EVAL_TWA_UP_MAX = 50;
@@ -50,12 +44,6 @@ let vmgPlotRenderTimer = null;
 const vmgEstimate = {
   lastHeading: null,
   lastHeadingUnwrapped: null,
-  lastRawPosition: null,
-};
-const vmgImu = {
-  headingRad: null,
-  lastTimestamp: null,
-  lastGpsTs: null,
 };
 let vmgWarmup = false;
 let vmgMode = "beat";
@@ -64,9 +52,7 @@ let vmgSmoothCurrent = true;
 let vmgCapEnabled = true;
 
 let vmgDeps = {
-  setHeadingSourcePreference: null,
   setImuEnabled: null,
-  updateHeadingSourceToggles: null,
   hardReload: null,
   saveSettings: null,
 };
@@ -288,38 +274,8 @@ function renderVmgPlot() {
 function resetVmgEstimator() {
   vmgEstimate.lastHeading = null;
   vmgEstimate.lastHeadingUnwrapped = null;
-  vmgEstimate.lastRawPosition = null;
   setVmgWarmupState(false);
   resetVmgPlotHistory();
-  resetVmgImuState();
-}
-
-function applyVmgImuYawRate(yawRateRad, dtSeconds) {
-  if (!state.imuEnabled) return;
-  if (!Number.isFinite(yawRateRad) || !Number.isFinite(dtSeconds)) return;
-  if (!Number.isFinite(vmgImu.headingRad)) return;
-  const delta = yawRateRad * dtSeconds;
-  vmgImu.headingRad = normalizeAngleRad(vmgImu.headingRad + delta);
-}
-
-function updateVmgImuFromGps(sample) {
-  if (!state.imuEnabled) return;
-  if (!sample || !Number.isFinite(sample.heading)) return;
-  if (!Number.isFinite(sample.speed) || sample.speed < VMG_IMU_GPS_MIN_SPEED) return;
-  const headingRad = normalizeAngleRad(toRadians(sample.heading));
-  if (!Number.isFinite(vmgImu.headingRad)) {
-    vmgImu.headingRad = headingRad;
-    vmgImu.lastGpsTs = sample.ts;
-    return;
-  }
-  const lastTs = Number.isFinite(vmgImu.lastGpsTs) ? vmgImu.lastGpsTs : sample.ts;
-  const dtSec = Math.max(0, (sample.ts - lastTs) / 1000);
-  if (dtSec <= 0) return;
-  vmgImu.lastGpsTs = sample.ts;
-  const delta = normalizeDeltaRad(headingRad - vmgImu.headingRad);
-  const weight = 1 - Math.exp(-dtSec / VMG_IMU_GPS_BLEND_TAU);
-  if (!Number.isFinite(weight) || weight <= 0) return;
-  vmgImu.headingRad = normalizeAngleRad(vmgImu.headingRad + delta * weight);
 }
 
 function getVmgSignedTwaRad() {
@@ -349,7 +305,7 @@ function updateVmgEstimate(position) {
   const sample = getVmgSample(position);
   if (!sample) return;
 
-  const heading = getVmgHeadingDegrees(sample);
+  const heading = sample.heading;
   const headingUnwrapped = unwrapHeadingDegrees(
     heading,
     vmgEstimate.lastHeading,
@@ -396,9 +352,6 @@ function setVmgSettingsOpen(open) {
   }
   document.body.classList.toggle("vmg-settings-open", next);
   if (next) {
-    if (vmgDeps.updateHeadingSourceToggles) {
-      vmgDeps.updateHeadingSourceToggles();
-    }
     updateVmgImuToggle();
     updateVmgSmoothToggle();
     updateVmgCapToggle();
@@ -473,14 +426,6 @@ function bindVmgEvents() {
     };
     els.vmgWindow.addEventListener("input", onWindowChange);
     els.vmgWindow.addEventListener("change", onWindowChange);
-  }
-
-  if (els.vmgModelToggle) {
-    els.vmgModelToggle.addEventListener("click", () => {
-      if (!vmgDeps.setHeadingSourcePreference) return;
-      const enabled = getHeadingSourcePreference("vmg") === "kalman";
-      vmgDeps.setHeadingSourcePreference("vmg", enabled ? "gps" : "kalman");
-    });
   }
 
   if (els.vmgImuToggle) {
@@ -591,20 +536,6 @@ function enterVmgView() {
   requestVmgPlotRender({ force: true });
 }
 
-function applyVmgImuSample(yawRateRad, timestamp) {
-  if (!Number.isFinite(yawRateRad)) return;
-  const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
-  if (!Number.isFinite(vmgImu.lastTimestamp)) {
-    vmgImu.lastTimestamp = ts;
-    return;
-  }
-  const vmgDtRaw = (ts - vmgImu.lastTimestamp) / 1000;
-  vmgImu.lastTimestamp = ts;
-  const vmgDt = clamp(vmgDtRaw, VMG_IMU_DT_CLAMP.min, VMG_IMU_DT_CLAMP.max);
-  if (vmgDt <= 0) return;
-  applyVmgImuYawRate(yawRateRad, vmgDt);
-}
-
 function getVmgSettingsSnapshot() {
   return {
     baselineTauSeconds: vmgPlotTauSeconds,
@@ -680,24 +611,6 @@ function resetVmgPlotHistory() {
   requestVmgPlotRender({ force: true });
 }
 
-function resetVmgImuState() {
-  vmgImu.headingRad = null;
-  vmgImu.lastTimestamp = null;
-  vmgImu.lastGpsTs = null;
-}
-
-function getVmgHeadingDegrees(sample) {
-  if (!sample) return null;
-  if (state.imuEnabled) {
-    updateVmgImuFromGps(sample);
-    const imuHeading = headingRadToDegrees(vmgImu.headingRad);
-    if (Number.isFinite(imuHeading)) {
-      return imuHeading;
-    }
-  }
-  return sample.heading;
-}
-
 function getVmgTwaDegrees() {
   if (!els.vmgTwa) return VMG_EVAL_TWA_UP_DEG;
   const value = Number.parseFloat(els.vmgTwa.value);
@@ -713,12 +626,13 @@ function getVmgDownTwaDegrees() {
 }
 
 function getVmgSample(position) {
-  const sample = getHeadingSampleForMode("vmg", position, vmgEstimate.lastRawPosition);
-  if (!sample) return null;
-  if (sample.source === "gps") {
-    vmgEstimate.lastRawPosition = position;
-  }
-  return sample;
+  if (!position || !position.coords) return null;
+  if (!canUseKalmanHeading(position)) return null;
+  if (!state.velocity || !Number.isFinite(state.speed)) return null;
+  const heading = headingFromVelocity(state.velocity);
+  if (!Number.isFinite(heading)) return null;
+  const ts = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+  return { speed: state.speed, heading, ts, source: "kalman" };
 }
 
 function isVmgGpsBad() {
@@ -869,11 +783,9 @@ export {
   requestVmgPlotRender,
   syncVmgWindowUi,
   resetVmgEstimator,
-  resetVmgImuState,
   setVmgSettingsOpen,
   updateVmgImuToggle,
   updateVmgSmoothToggle,
   updateVmgCapToggle,
   enterVmgView,
-  applyVmgImuSample,
 };

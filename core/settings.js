@@ -8,7 +8,7 @@ import {
 const STORAGE_KEY = "racetimer-settings";
 const SETTINGS_VERSION = 9;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
-const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
+const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
   "dinghy",
   "multihull",
@@ -100,7 +100,6 @@ function normalizeHeadingSource(source) {
 function normalizeHeadingSourceByMode(sourceByMode) {
   const value = sourceByMode && typeof sourceByMode === "object" ? sourceByMode : {};
   return {
-    vmg: normalizeHeadingSource(value.vmg),
     lifter: normalizeHeadingSource(value.lifter),
   };
 }
