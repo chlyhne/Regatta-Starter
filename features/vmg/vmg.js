@@ -14,8 +14,6 @@ import {
 } from "../../core/common.js";
 import { getHeadingSampleForMode, getHeadingSourcePreference } from "../../core/heading.js";
 
-const VMG_TAU_SECONDS = 10;
-const VMG_RLS_INIT_P = 100;
 const KNOTS_TO_MS = 0.514444;
 const VMG_IMU_GPS_MIN_SPEED = 2 * KNOTS_TO_MS;
 const VMG_IMU_GPS_BLEND_TAU = 12;
@@ -50,21 +48,9 @@ let vmgHeadingBaseline = null;
 let vmgPlotLastRenderAt = 0;
 let vmgPlotRenderTimer = null;
 const vmgEstimate = {
-  lastTs: null,
   lastHeading: null,
   lastHeadingUnwrapped: null,
   lastRawPosition: null,
-  lastSpeed: null,
-  headingRef: null,
-  theta0: 0,
-  theta1: 0,
-  p11: VMG_RLS_INIT_P,
-  p12: 0,
-  p22: VMG_RLS_INIT_P,
-  residualVar: null,
-  sampleCount: 0,
-  slope: null,
-  slopeStdErr: null,
 };
 const vmgImu = {
   headingRad: null,
@@ -300,21 +286,9 @@ function renderVmgPlot() {
 }
 
 function resetVmgEstimator() {
-  vmgEstimate.lastTs = null;
   vmgEstimate.lastHeading = null;
   vmgEstimate.lastHeadingUnwrapped = null;
   vmgEstimate.lastRawPosition = null;
-  vmgEstimate.lastSpeed = null;
-  vmgEstimate.headingRef = null;
-  vmgEstimate.theta0 = 0;
-  vmgEstimate.theta1 = 0;
-  vmgEstimate.p11 = VMG_RLS_INIT_P;
-  vmgEstimate.p12 = 0;
-  vmgEstimate.p22 = VMG_RLS_INIT_P;
-  vmgEstimate.residualVar = null;
-  vmgEstimate.sampleCount = 0;
-  vmgEstimate.slope = null;
-  vmgEstimate.slopeStdErr = null;
   setVmgWarmupState(false);
   resetVmgPlotHistory();
   resetVmgImuState();
@@ -383,100 +357,11 @@ function updateVmgEstimate(position) {
   );
   vmgEstimate.lastHeading = heading;
   vmgEstimate.lastHeadingUnwrapped = headingUnwrapped;
-  vmgEstimate.lastSpeed = sample.speed;
-
   if (Number.isFinite(heading)) {
     const headingForFilters = Number.isFinite(headingUnwrapped) ? headingUnwrapped : heading;
     const warmup = updateVmgPlotFilters(sample, headingForFilters, sample.ts);
     setVmgWarmupState(warmup);
   }
-  if (!Number.isFinite(headingUnwrapped)) return;
-  if (!Number.isFinite(vmgEstimate.lastTs)) {
-    vmgEstimate.lastTs = sample.ts;
-    vmgEstimate.headingRef = headingUnwrapped;
-    vmgEstimate.theta0 = sample.speed;
-    vmgEstimate.theta1 = 0;
-    vmgEstimate.p11 = VMG_RLS_INIT_P;
-    vmgEstimate.p12 = 0;
-    vmgEstimate.p22 = VMG_RLS_INIT_P;
-    vmgEstimate.residualVar = null;
-    vmgEstimate.sampleCount = 0;
-    vmgEstimate.slope = null;
-    vmgEstimate.slopeStdErr = null;
-    requestVmgPlotRender({ force: true });
-    return;
-  }
-
-  const dtSec = Math.max(0, (sample.ts - vmgEstimate.lastTs) / 1000);
-  vmgEstimate.lastTs = sample.ts;
-  if (dtSec <= 0) return;
-
-  const lambda = Math.exp(-dtSec / VMG_TAU_SECONDS);
-  const alpha = 1 - lambda;
-
-  if (!Number.isFinite(vmgEstimate.headingRef)) {
-    vmgEstimate.headingRef = headingUnwrapped;
-  }
-  const headingDelta = headingUnwrapped - vmgEstimate.headingRef;
-  const x0 = 1;
-  const x1 = headingDelta;
-
-  const p11 = vmgEstimate.p11;
-  const p12 = vmgEstimate.p12;
-  const p22 = vmgEstimate.p22;
-  const px0 = p11 * x0 + p12 * x1;
-  const px1 = p12 * x0 + p22 * x1;
-  const denom = lambda + x0 * px0 + x1 * px1;
-  if (!Number.isFinite(denom) || denom <= 0) {
-    resetVmgEstimator();
-    return;
-  }
-
-  const k0 = px0 / denom;
-  const k1 = px1 / denom;
-  const theta0 = vmgEstimate.theta0;
-  const theta1 = vmgEstimate.theta1;
-  const predicted = x0 * theta0 + x1 * theta1;
-  const residual = sample.speed - predicted;
-
-  const nextTheta0 = theta0 + k0 * residual;
-  const nextTheta1 = theta1 + k1 * residual;
-  const p11Next = (p11 - k0 * px0) / lambda;
-  const p12NextA = (p12 - k0 * px1) / lambda;
-  const p12NextB = (p12 - k1 * px0) / lambda;
-  const p12Next = 0.5 * (p12NextA + p12NextB);
-  const p22Next = (p22 - k1 * px1) / lambda;
-
-  vmgEstimate.theta0 = nextTheta0;
-  vmgEstimate.theta1 = nextTheta1;
-  vmgEstimate.p11 = p11Next;
-  vmgEstimate.p12 = p12Next;
-  vmgEstimate.p22 = p22Next;
-  vmgEstimate.sampleCount += 1;
-
-  let residualVar = vmgEstimate.residualVar;
-  if (!Number.isFinite(residualVar)) {
-    residualVar = residual * residual;
-  } else {
-    residualVar = (1 - alpha) * residualVar + alpha * residual * residual;
-  }
-  vmgEstimate.residualVar = residualVar;
-
-  let slope = null;
-  let slopeStdErr = null;
-  if (Number.isFinite(nextTheta1) && Number.isFinite(p22Next) && p22Next >= 0) {
-    slope = nextTheta1;
-    if (Number.isFinite(residualVar)) {
-      slopeStdErr = Math.sqrt(residualVar * p22Next);
-    }
-  }
-  if (vmgEstimate.sampleCount < 2) {
-    slope = null;
-    slopeStdErr = null;
-  }
-  vmgEstimate.slope = slope;
-  vmgEstimate.slopeStdErr = slopeStdErr;
-  requestVmgPlotRender();
 }
 
 function applyVmgSettings(settings = {}) {
