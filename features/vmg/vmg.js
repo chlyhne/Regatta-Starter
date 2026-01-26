@@ -23,6 +23,8 @@ const VMG_EVAL_MIN_BASE = 0.2;
 const VMG_BASELINE_TAU_DEFAULT_SEC = 45;
 const VMG_BASELINE_TAU_MIN_SEC = 15;
 const VMG_BASELINE_TAU_MAX_SEC = 75;
+const VMG_FAST_TAU_FACTOR = 0.1;
+const VMG_FAST_TAU_MIN_SEC = 0.05;
 const VMG_PLOT_WINDOW_TAU_FACTOR = 4;
 const VMG_PLOT_SCALE_STEP = 2;
 const VMG_PLOT_GRID_SMALL = 2;
@@ -31,6 +33,28 @@ const VMG_PLOT_GRID_THRESHOLD = 6;
 const VMG_PLOT_GRID_DASH = [6, 8];
 const VMG_PLOT_PADDING = 10;
 const VMG_PLOT_HISTORY_PAD_MS = 5000;
+const VMG_PLOT_MIN_WINDOW_MS = 1000;
+const VMG_PLOT_RENDER_INTERVAL_MS = 200;
+const VMG_PLOT_LABEL_MARGIN = 44;
+const VMG_PLOT_LABEL_CLAMP_INSET = 20;
+const VMG_PLOT_RIGHT_INSET = 6;
+const VMG_PLOT_LABEL_MIN_X = 6;
+const VMG_PLOT_LABEL_GAP = 6;
+const VMG_PLOT_MIN_WIDTH = 1;
+const VMG_PLOT_MIN_HALF_HEIGHT = 1;
+const VMG_PLOT_NO_DATA_X = 12;
+const VMG_PLOT_NO_DATA_Y = 24;
+const VMG_PLOT_FONT_MAIN = "16px sans-serif";
+const VMG_PLOT_FONT_LABEL = "12px sans-serif";
+const VMG_PLOT_GRID_LINE_WIDTH = 2;
+const VMG_PLOT_SERIES_LINE_WIDTH = 2;
+const VMG_PLOT_ZERO_LINE_WIDTH = 2;
+const VMG_PLOT_POINT_SIZE = 4;
+const VMG_PLOT_BG = "#ffffff";
+const VMG_PLOT_FG = "#000000";
+const VMG_PLOT_POS_FILL = "rgba(0, 120, 0, 0.25)";
+const VMG_PLOT_NEG_FILL = "rgba(160, 0, 0, 0.25)";
+const VMG_GPS_BAD_ACCURACY_M = 20;
 
 const vmgPlotHistory = [];
 let vmgPlotTauSeconds = VMG_BASELINE_TAU_DEFAULT_SEC;
@@ -69,18 +93,18 @@ function renderVmgPlot() {
   const { ctx, width, height } = canvasInfo;
 
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = VMG_PLOT_BG;
   ctx.fillRect(0, 0, width, height);
 
   if (!Number.isFinite(vmgPlotLastSampleTs)) {
-    ctx.fillStyle = "#000000";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("No data", 12, 24);
+    ctx.fillStyle = VMG_PLOT_FG;
+    ctx.font = VMG_PLOT_FONT_MAIN;
+    ctx.fillText("No data", VMG_PLOT_NO_DATA_X, VMG_PLOT_NO_DATA_Y);
     return;
   }
 
   const windowSeconds = getVmgPlotWindowSeconds();
-  const windowMs = Math.max(1000, windowSeconds * 1000);
+  const windowMs = Math.max(VMG_PLOT_MIN_WINDOW_MS, windowSeconds * 1000);
   const endTs = vmgPlotLastSampleTs;
   const startTs = endTs - windowMs;
 
@@ -89,9 +113,9 @@ function renderVmgPlot() {
   );
 
   if (!samples.length) {
-    ctx.fillStyle = "#000000";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("No data", 12, 24);
+    ctx.fillStyle = VMG_PLOT_FG;
+    ctx.font = VMG_PLOT_FONT_MAIN;
+    ctx.fillText("No data", VMG_PLOT_NO_DATA_X, VMG_PLOT_NO_DATA_Y);
     return;
   }
 
@@ -108,12 +132,12 @@ function renderVmgPlot() {
       Math.ceil(maxAbs / VMG_PLOT_SCALE_STEP) * VMG_PLOT_SCALE_STEP
     );
   }
-  const labelMargin = 44;
-  const plotLeft = Math.min(labelMargin, Math.max(0, width - 20));
-  const plotRight = Math.max(plotLeft + 1, width - 6);
-  const plotWidth = Math.max(1, plotRight - plotLeft);
+  const labelMargin = VMG_PLOT_LABEL_MARGIN;
+  const plotLeft = Math.min(labelMargin, Math.max(0, width - VMG_PLOT_LABEL_CLAMP_INSET));
+  const plotRight = Math.max(plotLeft + VMG_PLOT_MIN_WIDTH, width - VMG_PLOT_RIGHT_INSET);
+  const plotWidth = Math.max(VMG_PLOT_MIN_WIDTH, plotRight - plotLeft);
   const centerY = height / 2;
-  const maxBar = Math.max(1, centerY - VMG_PLOT_PADDING);
+  const maxBar = Math.max(VMG_PLOT_MIN_HALF_HEIGHT, centerY - VMG_PLOT_PADDING);
   const yScale = maxBar / maxAbs;
 
   const gridStep =
@@ -121,8 +145,8 @@ function renderVmgPlot() {
   const maxGrid = Math.floor(maxAbs / gridStep) * gridStep;
   if (maxGrid >= gridStep) {
     ctx.save();
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = VMG_PLOT_FG;
+    ctx.lineWidth = VMG_PLOT_GRID_LINE_WIDTH;
     ctx.setLineDash(VMG_PLOT_GRID_DASH);
     for (let value = gridStep; value <= maxGrid; value += gridStep) {
       const dy = value * yScale;
@@ -206,12 +230,12 @@ function renderVmgPlot() {
     ctx.restore();
   };
 
-  fillArea(1, "rgba(0, 120, 0, 0.25)");
-  fillArea(-1, "rgba(160, 0, 0, 0.25)");
+  fillArea(1, VMG_PLOT_POS_FILL);
+  fillArea(-1, VMG_PLOT_NEG_FILL);
 
   ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = VMG_PLOT_FG;
+  ctx.lineWidth = VMG_PLOT_SERIES_LINE_WIDTH;
   ctx.setLineDash([]);
   ctx.beginPath();
   let started = false;
@@ -239,14 +263,15 @@ function renderVmgPlot() {
 
   if (pointCount === 1 && Number.isFinite(lastX) && Number.isFinite(lastY)) {
     ctx.save();
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(lastX - 2, lastY - 2, 4, 4);
+    ctx.fillStyle = VMG_PLOT_FG;
+    const halfPoint = VMG_PLOT_POINT_SIZE / 2;
+    ctx.fillRect(lastX - halfPoint, lastY - halfPoint, VMG_PLOT_POINT_SIZE, VMG_PLOT_POINT_SIZE);
     ctx.restore();
   }
 
   ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = VMG_PLOT_FG;
+  ctx.lineWidth = VMG_PLOT_ZERO_LINE_WIDTH;
   ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(plotLeft, centerY);
@@ -255,11 +280,11 @@ function renderVmgPlot() {
   ctx.restore();
 
   ctx.save();
-  ctx.fillStyle = "#000000";
-  ctx.font = "12px sans-serif";
+  ctx.fillStyle = VMG_PLOT_FG;
+  ctx.font = VMG_PLOT_FONT_LABEL;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  const labelX = Math.max(6, plotLeft - 6);
+  const labelX = Math.max(VMG_PLOT_LABEL_MIN_X, plotLeft - VMG_PLOT_LABEL_GAP);
   ctx.fillText("0%", labelX, centerY);
   for (let value = gridStep; value <= maxGrid; value += gridStep) {
     const dy = value * yScale;
@@ -582,7 +607,7 @@ function requestVmgPlotRender(options = {}) {
   if (!document.body.classList.contains("vmg-mode")) return;
   const now = Date.now();
   const force = options && options.force;
-  const maxIntervalMs = 200;
+  const maxIntervalMs = VMG_PLOT_RENDER_INTERVAL_MS;
   const elapsed = now - vmgPlotLastRenderAt;
   if (force || !Number.isFinite(vmgPlotLastRenderAt) || elapsed >= maxIntervalMs) {
     if (vmgPlotRenderTimer) {
@@ -640,7 +665,7 @@ function isVmgGpsBad() {
   if (isGpsStale()) return true;
   const accuracy = state.position.coords?.accuracy;
   if (!Number.isFinite(accuracy)) return true;
-  return accuracy > 20;
+  return accuracy > VMG_GPS_BAD_ACCURACY_M;
 }
 
 function applyFirstOrderFilter(prevValue, nextValue, dtSec, tauSec) {
@@ -706,7 +731,7 @@ function updateVmgPlotFilters(sample, headingDeg, timestampMs) {
   }
   vmgPlotLastRaw = rawImprovement;
   if (vmgSmoothCurrent) {
-    const fastTau = Math.max(0.05, baselineTau / 10);
+  const fastTau = Math.max(VMG_FAST_TAU_MIN_SEC, baselineTau * VMG_FAST_TAU_FACTOR);
     vmgPlotFast = applyFirstOrderFilter(vmgPlotFast, rawImprovement, dtSec, fastTau);
   } else {
     vmgPlotFast = rawImprovement;
