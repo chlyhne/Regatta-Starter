@@ -50,6 +50,7 @@ let vmgPlotTauSeconds = VMG_BASELINE_TAU_DEFAULT_SEC;
 let vmgPlotLastSampleTs = null;
 let vmgPlotBaseline = null;
 let vmgPlotFast = null;
+let vmgPlotLastRaw = null;
 let vmgPlotLastRenderAt = 0;
 let vmgPlotRenderTimer = null;
 const vmgEstimate = {
@@ -351,6 +352,7 @@ function resetVmgPlotHistory() {
   vmgPlotLastSampleTs = null;
   vmgPlotBaseline = null;
   vmgPlotFast = null;
+  vmgPlotLastRaw = null;
   requestVmgPlotRender({ force: true });
 }
 
@@ -644,14 +646,28 @@ function recordVmgPlotSample(value, timestampMs) {
   requestVmgPlotRender();
 }
 
+function updateLatestVmgPlotSample(value, timestampMs) {
+  if (!Number.isFinite(value)) return;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  const last = vmgPlotHistory[vmgPlotHistory.length - 1];
+  if (last && last.ts === ts) {
+    last.value = value;
+    vmgPlotLastSampleTs = ts;
+    requestVmgPlotRender();
+    return;
+  }
+  recordVmgPlotSample(value, ts);
+}
+
 function updateVmgPlotFilters(rawValue, timestampMs) {
   if (!Number.isFinite(rawValue)) return;
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
   const clamped = clamp(rawValue, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
+  vmgPlotLastRaw = clamped;
   if (!Number.isFinite(vmgPlotLastSampleTs)) {
     vmgPlotBaseline = clamped;
     vmgPlotFast = clamped;
-    recordVmgPlotSample(0, ts);
+    updateLatestVmgPlotSample(0, ts);
     return;
   }
   const dtSec = Math.max(0, (ts - vmgPlotLastSampleTs) / 1000);
@@ -663,7 +679,7 @@ function updateVmgPlotFilters(rawValue, timestampMs) {
     ? applyFirstOrderFilter(vmgPlotFast, clamped, dtSec, fastTau)
     : clamped;
   const delta = clamp(vmgPlotFast - vmgPlotBaseline, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
-  recordVmgPlotSample(delta, ts);
+  updateLatestVmgPlotSample(delta, ts);
 }
 
 function updateVmgEstimate(position) {
@@ -806,6 +822,20 @@ function updateVmgSmoothToggle() {
   }
 }
 
+function applyVmgSmoothSetting() {
+  if (!Number.isFinite(vmgPlotLastSampleTs)) return;
+  if (!Number.isFinite(vmgPlotBaseline) || !Number.isFinite(vmgPlotLastRaw)) return;
+  if (!vmgSmoothCurrent) {
+    vmgPlotFast = vmgPlotLastRaw;
+    const delta = clamp(
+      vmgPlotFast - vmgPlotBaseline,
+      -VMG_EVAL_MAX_GAIN,
+      VMG_EVAL_MAX_GAIN
+    );
+    updateLatestVmgPlotSample(delta, vmgPlotLastSampleTs);
+  }
+}
+
 function applyVmgSettings(settings = {}) {
   if (Number.isFinite(settings.baselineTauSeconds)) {
     vmgPlotTauSeconds = clampVmgTauSeconds(settings.baselineTauSeconds);
@@ -936,6 +966,7 @@ function bindVmgEvents() {
     els.vmgSmoothToggle.addEventListener("click", () => {
       vmgSmoothCurrent = !vmgSmoothCurrent;
       updateVmgSmoothToggle();
+      applyVmgSmoothSetting();
       if (vmgDeps.saveSettings) {
         vmgDeps.saveSettings();
       }
