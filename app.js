@@ -41,6 +41,7 @@ import {
   updateVmgGpsState,
   updateVmgImuToggle,
   updateVmgSmoothToggle,
+  updateVmgCapToggle,
 } from "./features/vmg/vmg.js";
 import {
   bindLifterEvents,
@@ -999,6 +1000,7 @@ function updateInputs() {
   updateHeadingSourceToggles();
   updateVmgImuToggle();
   updateVmgSmoothToggle();
+  updateVmgCapToggle();
   updateStatusUnitLabels();
 }
 

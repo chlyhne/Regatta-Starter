@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 8;
+const SETTINGS_VERSION = 9;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { vmg: "kalman", lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
   vmg: {
     baselineTauSeconds: VMG_BASELINE_TAU_DEFAULT_SEC,
     smoothCurrent: true,
+    capEnabled: true,
   },
   start: {
     mode: "countdown",
@@ -140,6 +141,7 @@ function normalizeVmgSettings(vmg) {
     ),
     smoothCurrent:
       vmg?.smoothCurrent !== undefined ? Boolean(vmg.smoothCurrent) : true,
+    capEnabled: vmg?.capEnabled !== undefined ? Boolean(vmg.capEnabled) : true,
   };
 }
 
@@ -306,6 +308,10 @@ function migrateSettings(raw) {
   if (version < 8) {
     migrated.vmg = { ...DEFAULT_SETTINGS.vmg };
     migrated.version = 8;
+  }
+  if (version < 9) {
+    migrated.vmg = { ...DEFAULT_SETTINGS.vmg, ...migrated.vmg };
+    migrated.version = 9;
   }
   return migrated;
 }

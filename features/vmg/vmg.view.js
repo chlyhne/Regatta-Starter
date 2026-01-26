@@ -132,6 +132,15 @@ export const vmgView = `
           <span class="check-label">Smooth current value</span>
           <span class="check-box" aria-hidden="true"></span>
         </button>
+        <button
+          id="vmg-cap-toggle"
+          class="check-toggle"
+          type="button"
+          aria-pressed="true"
+        >
+          <span class="check-label">Limit spikes to 50%</span>
+          <span class="check-box" aria-hidden="true"></span>
+        </button>
       </div>
       <div class="vmg-settings-group">
         <div class="vmg-control-head">

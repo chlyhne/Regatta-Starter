@@ -80,6 +80,7 @@ let vmgWarmup = false;
 let vmgMode = "beating";
 let vmgTack = "starboard";
 let vmgSmoothCurrent = true;
+let vmgCapEnabled = true;
 
 let vmgDeps = {
   setHeadingSourcePreference: null,
@@ -662,11 +663,12 @@ function updateLatestVmgPlotSample(value, timestampMs) {
 function updateVmgPlotFilters(rawValue, timestampMs) {
   if (!Number.isFinite(rawValue)) return;
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  const clamped = clamp(rawValue, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
-  vmgPlotLastRaw = clamped;
+  const inputValue = getVmgPlotInputValue(rawValue);
+  if (!Number.isFinite(inputValue)) return;
+  vmgPlotLastRaw = rawValue;
   if (!Number.isFinite(vmgPlotLastSampleTs)) {
-    vmgPlotBaseline = clamped;
-    vmgPlotFast = clamped;
+    vmgPlotBaseline = inputValue;
+    vmgPlotFast = inputValue;
     updateLatestVmgPlotSample(0, ts);
     return;
   }
@@ -674,11 +676,11 @@ function updateVmgPlotFilters(rawValue, timestampMs) {
   if (dtSec <= 0) return;
   const baselineTau = vmgPlotTauSeconds;
   const fastTau = Math.max(0.05, baselineTau / 10);
-  vmgPlotBaseline = applyFirstOrderFilter(vmgPlotBaseline, clamped, dtSec, baselineTau);
+  vmgPlotBaseline = applyFirstOrderFilter(vmgPlotBaseline, inputValue, dtSec, baselineTau);
   vmgPlotFast = vmgSmoothCurrent
-    ? applyFirstOrderFilter(vmgPlotFast, clamped, dtSec, fastTau)
-    : clamped;
-  const delta = clamp(vmgPlotFast - vmgPlotBaseline, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN);
+    ? applyFirstOrderFilter(vmgPlotFast, inputValue, dtSec, fastTau)
+    : inputValue;
+  const delta = getVmgPlotDeltaValue();
   updateLatestVmgPlotSample(delta, ts);
 }
 
@@ -822,18 +824,49 @@ function updateVmgSmoothToggle() {
   }
 }
 
+function updateVmgCapToggle() {
+  if (els.vmgCapToggle) {
+    els.vmgCapToggle.setAttribute("aria-pressed", vmgCapEnabled ? "true" : "false");
+  }
+}
+
+function getVmgPlotInputValue(rawValue) {
+  if (!Number.isFinite(rawValue)) return null;
+  return vmgCapEnabled
+    ? clamp(rawValue, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : rawValue;
+}
+
+function getVmgPlotDeltaValue() {
+  if (!Number.isFinite(vmgPlotFast) || !Number.isFinite(vmgPlotBaseline)) return null;
+  const delta = vmgPlotFast - vmgPlotBaseline;
+  return vmgCapEnabled
+    ? clamp(delta, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : delta;
+}
+
 function applyVmgSmoothSetting() {
   if (!Number.isFinite(vmgPlotLastSampleTs)) return;
   if (!Number.isFinite(vmgPlotBaseline) || !Number.isFinite(vmgPlotLastRaw)) return;
   if (!vmgSmoothCurrent) {
-    vmgPlotFast = vmgPlotLastRaw;
-    const delta = clamp(
-      vmgPlotFast - vmgPlotBaseline,
-      -VMG_EVAL_MAX_GAIN,
-      VMG_EVAL_MAX_GAIN
-    );
+    const inputValue = getVmgPlotInputValue(vmgPlotLastRaw);
+    if (!Number.isFinite(inputValue)) return;
+    vmgPlotFast = inputValue;
+    const delta = getVmgPlotDeltaValue();
     updateLatestVmgPlotSample(delta, vmgPlotLastSampleTs);
   }
+}
+
+function applyVmgCapSetting() {
+  if (!Number.isFinite(vmgPlotLastSampleTs)) return;
+  if (!Number.isFinite(vmgPlotBaseline) || !Number.isFinite(vmgPlotLastRaw)) return;
+  if (!vmgSmoothCurrent) {
+    const inputValue = getVmgPlotInputValue(vmgPlotLastRaw);
+    if (!Number.isFinite(inputValue)) return;
+    vmgPlotFast = inputValue;
+  }
+  const delta = getVmgPlotDeltaValue();
+  updateLatestVmgPlotSample(delta, vmgPlotLastSampleTs);
 }
 
 function applyVmgSettings(settings = {}) {
@@ -843,8 +876,14 @@ function applyVmgSettings(settings = {}) {
   if (settings.smoothCurrent !== undefined) {
     vmgSmoothCurrent = Boolean(settings.smoothCurrent);
   }
+  if (settings.capEnabled !== undefined) {
+    vmgCapEnabled = Boolean(settings.capEnabled);
+  }
   syncVmgWindowUi();
   updateVmgSmoothToggle();
+  updateVmgCapToggle();
+  applyVmgSmoothSetting();
+  applyVmgCapSetting();
 }
 
 function setVmgImuWarningOpen(open) {
@@ -867,6 +906,7 @@ function setVmgSettingsOpen(open) {
     }
     updateVmgImuToggle();
     updateVmgSmoothToggle();
+    updateVmgCapToggle();
     syncVmgWindowUi();
   }
 }
@@ -973,6 +1013,18 @@ function bindVmgEvents() {
     });
   }
 
+  if (els.vmgCapToggle) {
+    els.vmgCapToggle.addEventListener("click", () => {
+      vmgCapEnabled = !vmgCapEnabled;
+      updateVmgCapToggle();
+      applyVmgSmoothSetting();
+      applyVmgCapSetting();
+      if (vmgDeps.saveSettings) {
+        vmgDeps.saveSettings();
+      }
+    });
+  }
+
   if (els.vmgModeBeating || els.vmgModeReaching || els.vmgModeDownwind) {
     setVmgMode("beating");
 
@@ -1068,6 +1120,7 @@ function getVmgSettingsSnapshot() {
     twaDownDeg: getVmgDownTwaDegrees(),
     imuEnabled: state.imuEnabled,
     smoothCurrent: vmgSmoothCurrent,
+    capEnabled: vmgCapEnabled,
   };
 }
 
@@ -1075,6 +1128,7 @@ function getVmgPersistedSettings() {
   return {
     baselineTauSeconds: vmgPlotTauSeconds,
     smoothCurrent: vmgSmoothCurrent,
+    capEnabled: vmgCapEnabled,
   };
 }
 
@@ -1093,6 +1147,7 @@ export {
   setVmgSettingsOpen,
   updateVmgImuToggle,
   updateVmgSmoothToggle,
+  updateVmgCapToggle,
   enterVmgView,
   applyVmgImuSample,
 };
