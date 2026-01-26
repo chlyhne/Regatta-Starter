@@ -9,8 +9,6 @@ import {
   normalizeDeltaRad,
   headingRadToDegrees,
   unwrapHeadingDegrees,
-  normalizeHeadingDegrees,
-  meanHeadingDegreesFromSinCos,
   resizeCanvasToCssPixels,
   formatWindowSeconds,
 } from "../../core/common.js";
@@ -22,7 +20,6 @@ const KNOTS_TO_MS = 0.514444;
 const VMG_IMU_GPS_MIN_SPEED = 2 * KNOTS_TO_MS;
 const VMG_IMU_GPS_BLEND_TAU = 12;
 const VMG_IMU_DT_CLAMP = { min: 0.005, max: 0.25 };
-const VMG_EVAL_WINDOW_SEC = 30;
 const VMG_EVAL_TWA_UP_DEG = 45;
 const VMG_EVAL_TWA_UP_MIN = 35;
 const VMG_EVAL_TWA_UP_MAX = 50;
@@ -31,8 +28,6 @@ const VMG_EVAL_TWA_DOWN_MIN = 110;
 const VMG_EVAL_TWA_DOWN_MAX = 175;
 const VMG_EVAL_MAX_GAIN = 50;
 const VMG_EVAL_MIN_BASE = 0.2;
-const VMG_EVAL_HISTORY_PAD_MS = 5000;
-const VMG_EVAL_WARMUP_MIN_MS = 1000;
 const VMG_BASELINE_TAU_DEFAULT_SEC = 45;
 const VMG_BASELINE_TAU_MIN_SEC = 15;
 const VMG_BASELINE_TAU_MAX_SEC = 75;
@@ -48,9 +43,10 @@ const VMG_PLOT_HISTORY_PAD_MS = 5000;
 const vmgPlotHistory = [];
 let vmgPlotTauSeconds = VMG_BASELINE_TAU_DEFAULT_SEC;
 let vmgPlotLastSampleTs = null;
-let vmgPlotBaseline = null;
 let vmgPlotFast = null;
 let vmgPlotLastRaw = null;
+let vmgSpeedBaseline = null;
+let vmgHeadingBaseline = null;
 let vmgPlotLastRenderAt = 0;
 let vmgPlotRenderTimer = null;
 const vmgEstimate = {
@@ -70,7 +66,6 @@ const vmgEstimate = {
   slope: null,
   slopeStdErr: null,
 };
-const vmgEvalHistory = [];
 const vmgImu = {
   headingRad: null,
   lastTimestamp: null,
@@ -92,50 +87,6 @@ let vmgDeps = {
 
 function initVmg(deps = {}) {
   vmgDeps = { ...vmgDeps, ...deps };
-}
-
-function clampVmgTauSeconds(seconds) {
-  const safe = Number.parseInt(seconds, 10);
-  if (!Number.isFinite(safe)) return vmgPlotTauSeconds;
-  return clamp(safe, VMG_BASELINE_TAU_MIN_SEC, VMG_BASELINE_TAU_MAX_SEC);
-}
-
-function syncVmgWindowUi() {
-  const tauSeconds = clampVmgTauSeconds(vmgPlotTauSeconds);
-  vmgPlotTauSeconds = tauSeconds;
-  if (els.vmgWindow) {
-    els.vmgWindow.value = String(tauSeconds);
-  }
-  if (els.vmgWindowValue) {
-    els.vmgWindowValue.textContent = formatWindowSeconds(tauSeconds);
-  }
-}
-
-function getVmgPlotWindowSeconds() {
-  return vmgPlotTauSeconds * VMG_PLOT_WINDOW_TAU_FACTOR;
-}
-
-function requestVmgPlotRender(options = {}) {
-  if (!document.body.classList.contains("vmg-mode")) return;
-  const now = Date.now();
-  const force = options && options.force;
-  const maxIntervalMs = 200;
-  const elapsed = now - vmgPlotLastRenderAt;
-  if (force || !Number.isFinite(vmgPlotLastRenderAt) || elapsed >= maxIntervalMs) {
-    if (vmgPlotRenderTimer) {
-      clearTimeout(vmgPlotRenderTimer);
-      vmgPlotRenderTimer = null;
-    }
-    vmgPlotLastRenderAt = now;
-    renderVmgPlot();
-    return;
-  }
-  if (vmgPlotRenderTimer) return;
-  vmgPlotRenderTimer = setTimeout(() => {
-    vmgPlotRenderTimer = null;
-    vmgPlotLastRenderAt = Date.now();
-    renderVmgPlot();
-  }, maxIntervalMs - elapsed);
 }
 
 function renderVmgPlot() {
@@ -348,15 +299,6 @@ function renderVmgPlot() {
   ctx.restore();
 }
 
-function resetVmgPlotHistory() {
-  vmgPlotHistory.length = 0;
-  vmgPlotLastSampleTs = null;
-  vmgPlotBaseline = null;
-  vmgPlotFast = null;
-  vmgPlotLastRaw = null;
-  requestVmgPlotRender({ force: true });
-}
-
 function resetVmgEstimator() {
   vmgEstimate.lastTs = null;
   vmgEstimate.lastHeading = null;
@@ -373,16 +315,9 @@ function resetVmgEstimator() {
   vmgEstimate.sampleCount = 0;
   vmgEstimate.slope = null;
   vmgEstimate.slopeStdErr = null;
-  vmgEvalHistory.length = 0;
   setVmgWarmupState(false);
   resetVmgPlotHistory();
   resetVmgImuState();
-}
-
-function resetVmgImuState() {
-  vmgImu.headingRad = null;
-  vmgImu.lastTimestamp = null;
-  vmgImu.lastGpsTs = null;
 }
 
 function applyVmgImuYawRate(yawRateRad, dtSeconds) {
@@ -413,299 +348,28 @@ function updateVmgImuFromGps(sample) {
   vmgImu.headingRad = normalizeAngleRad(vmgImu.headingRad + delta * weight);
 }
 
-function getVmgHeadingDegrees(sample) {
-  if (!sample) return null;
-  if (state.imuEnabled) {
-    updateVmgImuFromGps(sample);
-    const imuHeading = headingRadToDegrees(vmgImu.headingRad);
-    if (Number.isFinite(imuHeading)) {
-      return imuHeading;
-    }
-  }
-  return sample.heading;
+function getVmgSignedTwaRad() {
+  if (vmgMode === "reaching") return 0;
+  const twaDeg = vmgMode === "downwind" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
+  const signed = vmgTack === "starboard" ? twaDeg : -twaDeg;
+  return toRadians(signed);
 }
 
-function getVmgTwaDegrees() {
-  if (!els.vmgTwa) return VMG_EVAL_TWA_UP_DEG;
-  const value = Number.parseFloat(els.vmgTwa.value);
-  if (!Number.isFinite(value)) return VMG_EVAL_TWA_UP_DEG;
-  return clamp(value, VMG_EVAL_TWA_UP_MIN, VMG_EVAL_TWA_UP_MAX);
-}
-
-function getVmgDownTwaDegrees() {
-  if (!els.vmgTwaDown) return VMG_EVAL_TWA_DOWN_DEG;
-  const value = Number.parseFloat(els.vmgTwaDown.value);
-  if (!Number.isFinite(value)) return VMG_EVAL_TWA_DOWN_DEG;
-  return clamp(value, VMG_EVAL_TWA_DOWN_MIN, VMG_EVAL_TWA_DOWN_MAX);
-}
-
-function getVmgSample(position) {
-  const sample = getHeadingSampleForMode("vmg", position, vmgEstimate.lastRawPosition);
-  if (!sample) return null;
-  if (sample.source === "gps") {
-    vmgEstimate.lastRawPosition = position;
-  }
-  return sample;
-}
-
-function isVmgGpsBad() {
-  if (!state.position) return true;
-  if (isGpsStale()) return true;
-  const accuracy = state.position.coords?.accuracy;
-  if (!Number.isFinite(accuracy)) return true;
-  return accuracy > 20;
-}
-
-function getVmgEvalWindowSeconds() {
-  if (vmgMode === "reaching") {
-    return Math.max(1, getVmgPlotWindowSeconds() / 2);
-  }
-  return VMG_EVAL_WINDOW_SEC;
-}
-
-function computeInstantWindAxis(heading) {
-  if (!Number.isFinite(heading)) return null;
-  if (vmgMode === "reaching") {
-    return normalizeHeadingDegrees(heading);
-  }
-  const twa = vmgMode === "downwind" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
-  const offset = vmgTack === "starboard" ? twa : -twa;
-  return normalizeHeadingDegrees(heading + offset);
-}
-
-function computeInstantVmgScore(sample, heading) {
-  if (!sample || !Number.isFinite(sample.speed)) return null;
-  if (!Number.isFinite(heading)) return null;
-  const windAxis = computeInstantWindAxis(heading);
-  if (!Number.isFinite(windAxis)) return null;
-  const angleDiff = Math.abs(normalizeDeltaDegrees(heading - windAxis));
-  const score = sample.speed * Math.cos(toRadians(angleDiff));
-  if (!Number.isFinite(score)) return null;
-  return vmgMode === "downwind" ? -score : score;
-}
-
-function getVmgEvalHistoryMs() {
-  const minWindowSeconds = VMG_EVAL_WINDOW_SEC * 2;
-  const windowSeconds = Math.max(minWindowSeconds, getVmgPlotWindowSeconds());
-  return windowSeconds * 1000 + VMG_EVAL_HISTORY_PAD_MS;
-}
-
-function pruneVmgEvalHistory(cutoffTs) {
-  let index = 0;
-  while (index < vmgEvalHistory.length && vmgEvalHistory[index].ts < cutoffTs) {
-    index += 1;
-  }
-  const keepFrom = Math.max(0, index - 1);
-  if (keepFrom > 0) {
-    vmgEvalHistory.splice(0, keepFrom);
-  }
-}
-
-function recordVmgEvalSample(sample, heading, headingUnwrapped) {
-  if (!sample) return;
-  if (!Number.isFinite(sample.speed)) return;
-  if (!Number.isFinite(headingUnwrapped)) return;
-  const ts = Number.isFinite(sample.ts) ? sample.ts : Date.now();
-  const safeHeading = normalizeHeadingDegrees(heading);
-  if (!Number.isFinite(safeHeading)) return;
-  vmgEvalHistory.push({
-    ts,
-    speed: sample.speed,
-    heading: safeHeading,
-    headingUnwrapped,
-  });
-  pruneVmgEvalHistory(ts - getVmgEvalHistoryMs());
-}
-
-function interpolateLinear(prev, curr, ts, key) {
-  if (!prev || !curr) return null;
-  const start = prev.ts;
-  const end = curr.ts;
-  const span = end - start;
-  if (!Number.isFinite(span) || span <= 0) {
-    return Number.isFinite(prev[key]) ? prev[key] : null;
-  }
-  const frac = clamp((ts - start) / span, 0, 1);
-  const value = prev[key] + (curr[key] - prev[key]) * frac;
-  return Number.isFinite(value) ? value : null;
-}
-
-function interpolateHeadingDegrees(prev, curr, ts) {
-  const unwrapped = interpolateLinear(prev, curr, ts, "headingUnwrapped");
-  if (!Number.isFinite(unwrapped)) return null;
-  return normalizeHeadingDegrees(unwrapped);
-}
-
-function forEachVmgEvalSegment(startTs, endTs, callback) {
-  for (let i = 1; i < vmgEvalHistory.length; i += 1) {
-    const prev = vmgEvalHistory[i - 1];
-    const curr = vmgEvalHistory[i];
-    if (!prev || !curr) continue;
-    if (curr.ts <= startTs || prev.ts >= endTs) continue;
-    const segStart = Math.max(prev.ts, startTs);
-    const segEnd = Math.min(curr.ts, endTs);
-    if (segEnd <= segStart) continue;
-    callback(prev, curr, segStart, segEnd);
-  }
-}
-
-function computeWindowHeadingMean(startTs, endTs) {
-  let sumSin = 0;
-  let sumCos = 0;
-  let duration = 0;
-  forEachVmgEvalSegment(startTs, endTs, (prev, curr, segStart, segEnd) => {
-    const midTs = (segStart + segEnd) / 2;
-    const heading = interpolateHeadingDegrees(prev, curr, midTs);
-    if (!Number.isFinite(heading)) return;
-    const weight = segEnd - segStart;
-    const rad = toRadians(heading);
-    sumSin += Math.sin(rad) * weight;
-    sumCos += Math.cos(rad) * weight;
-    duration += weight;
-  });
-  if (duration <= 0) return null;
-  return meanHeadingDegreesFromSinCos(sumSin, sumCos);
-}
-
-function computeVmgAtTime(prev, curr, ts, windAxisDeg) {
-  if (!Number.isFinite(windAxisDeg)) return null;
-  const heading = interpolateHeadingDegrees(prev, curr, ts);
-  if (!Number.isFinite(heading)) return null;
-  const speed = interpolateLinear(prev, curr, ts, "speed");
+function computeVmgImprovementPercent(speed, headingDeg, headingBaselineDeg, speedBaseline) {
   if (!Number.isFinite(speed)) return null;
-  const angleDiff = Math.abs(normalizeDeltaDegrees(heading - windAxisDeg));
-  return speed * Math.cos(toRadians(angleDiff));
+  if (!Number.isFinite(headingDeg) || !Number.isFinite(headingBaselineDeg)) return null;
+  if (!Number.isFinite(speedBaseline) || Math.abs(speedBaseline) < VMG_EVAL_MIN_BASE) return null;
+  const dv = speed - speedBaseline;
+  const dhDeg = normalizeDeltaDegrees(headingDeg - headingBaselineDeg);
+  const dhRad = toRadians(dhDeg);
+  const twaRad = getVmgSignedTwaRad();
+  const headingTerm = Math.cos(dhRad) - Math.tan(twaRad) * Math.sin(dhRad);
+  const speedRatio = 1 + dv / speedBaseline;
+  const ratio = speedRatio * headingTerm;
+  if (!Number.isFinite(ratio)) return null;
+  return (ratio - 1) * 100;
 }
 
-function computeWindowVmgAverage(startTs, endTs, windAxisDeg) {
-  let sum = 0;
-  let duration = 0;
-  forEachVmgEvalSegment(startTs, endTs, (prev, curr, segStart, segEnd) => {
-    const v0 = computeVmgAtTime(prev, curr, segStart, windAxisDeg);
-    const v1 = computeVmgAtTime(prev, curr, segEnd, windAxisDeg);
-    if (!Number.isFinite(v0) || !Number.isFinite(v1)) return;
-    const segAvg = 0.5 * (v0 + v1);
-    const weight = segEnd - segStart;
-    sum += segAvg * weight;
-    duration += weight;
-  });
-  if (duration <= 0) return null;
-  return sum / duration;
-}
-
-function computeVmgWindAxis(startTs, endTs) {
-  const meanHeading = computeWindowHeadingMean(startTs, endTs);
-  if (!Number.isFinite(meanHeading)) return null;
-  if (vmgMode === "reaching") {
-    return normalizeHeadingDegrees(meanHeading);
-  }
-  const twa = vmgMode === "downwind" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
-  const offset = vmgTack === "starboard" ? twa : -twa;
-  return normalizeHeadingDegrees(meanHeading + offset);
-}
-
-function computeVmgChangePercent() {
-  if (!vmgEvalHistory.length) {
-    return { percent: null, warmup: false };
-  }
-
-  const windowSec = getVmgEvalWindowSeconds();
-  const windowMs = windowSec * 1000;
-  const endTs = vmgEvalHistory[vmgEvalHistory.length - 1].ts;
-  const startTs = vmgEvalHistory[0].ts;
-  const span = endTs - startTs;
-  const warmup = !Number.isFinite(span) || span < 2 * windowMs;
-  const effectiveWindowMs = warmup
-    ? Math.max(VMG_EVAL_WARMUP_MIN_MS, span / 2)
-    : windowMs;
-  if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
-    return { percent: null, warmup: true };
-  }
-  const currentStart = endTs - effectiveWindowMs;
-  const prevStart = currentStart - effectiveWindowMs;
-  pruneVmgEvalHistory(endTs - getVmgEvalHistoryMs());
-
-  const windAxis = computeVmgWindAxis(prevStart, currentStart);
-  if (!Number.isFinite(windAxis)) {
-    return { percent: null, warmup };
-  }
-
-  const prevAvg = computeWindowVmgAverage(prevStart, currentStart, windAxis);
-  const currAvg = computeWindowVmgAverage(currentStart, endTs, windAxis);
-  if (!Number.isFinite(prevAvg) || !Number.isFinite(currAvg)) {
-    return { percent: null, warmup };
-  }
-  const sign = vmgMode === "downwind" ? -1 : 1;
-  const prevScore = prevAvg * sign;
-  const currScore = currAvg * sign;
-  if (Math.abs(prevScore) < VMG_EVAL_MIN_BASE) {
-    return { percent: null, warmup };
-  }
-
-  return {
-    percent: ((currScore - prevScore) / Math.abs(prevScore)) * 100,
-    warmup,
-  };
-}
-
-function applyFirstOrderFilter(prevValue, nextValue, dtSec, tauSec) {
-  if (!Number.isFinite(nextValue)) return prevValue;
-  if (!Number.isFinite(tauSec) || tauSec <= 0) return nextValue;
-  if (!Number.isFinite(prevValue)) return nextValue;
-  const alpha = 1 - Math.exp(-dtSec / tauSec);
-  return prevValue + alpha * (nextValue - prevValue);
-}
-
-function recordVmgPlotSample(value, timestampMs) {
-  if (!Number.isFinite(value)) return;
-  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  vmgPlotHistory.push({ ts, value });
-  vmgPlotLastSampleTs = ts;
-  const cutoff = ts - (getVmgPlotWindowSeconds() * 1000 + VMG_PLOT_HISTORY_PAD_MS);
-  while (vmgPlotHistory.length && vmgPlotHistory[0].ts < cutoff) {
-    vmgPlotHistory.shift();
-  }
-  requestVmgPlotRender();
-}
-
-function updateLatestVmgPlotSample(value, timestampMs) {
-  if (!Number.isFinite(value)) return;
-  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  const last = vmgPlotHistory[vmgPlotHistory.length - 1];
-  if (last && last.ts === ts) {
-    last.value = value;
-    vmgPlotLastSampleTs = ts;
-    requestVmgPlotRender();
-    return;
-  }
-  recordVmgPlotSample(value, ts);
-}
-
-function updateVmgPlotFilters(rawValue, timestampMs) {
-  if (!Number.isFinite(rawValue)) return true;
-  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  const inputValue = getVmgPlotInputValue(rawValue);
-  if (!Number.isFinite(inputValue)) return true;
-  vmgPlotLastRaw = rawValue;
-  if (!Number.isFinite(vmgPlotLastSampleTs)) {
-    vmgPlotBaseline = inputValue;
-    vmgPlotFast = inputValue;
-    updateLatestVmgPlotSample(0, ts);
-    return true;
-  }
-  const dtSec = Math.max(0, (ts - vmgPlotLastSampleTs) / 1000);
-  if (dtSec <= 0) return false;
-  const baselineTau = vmgPlotTauSeconds;
-  const fastTau = Math.max(0.05, baselineTau / 10);
-  vmgPlotBaseline = applyFirstOrderFilter(vmgPlotBaseline, inputValue, dtSec, baselineTau);
-  vmgPlotFast = vmgSmoothCurrent
-    ? applyFirstOrderFilter(vmgPlotFast, inputValue, dtSec, fastTau)
-    : inputValue;
-  const delta = getVmgPlotDeltaValue();
-  const warmup = !Number.isFinite(delta);
-  updateLatestVmgPlotSample(warmup ? 0 : delta, ts);
-  return warmup;
-}
 
 function updateVmgEstimate(position) {
   const sample = getVmgSample(position);
@@ -722,14 +386,9 @@ function updateVmgEstimate(position) {
   vmgEstimate.lastSpeed = sample.speed;
 
   if (Number.isFinite(heading)) {
-    const rawScore = computeInstantVmgScore(sample, heading);
-    if (Number.isFinite(rawScore)) {
-      const warmup = updateVmgPlotFilters(rawScore, sample.ts);
-      setVmgWarmupState(warmup);
-    } else if (!vmgPlotHistory.length) {
-      updateVmgPlotFilters(0, sample.ts);
-      setVmgWarmupState(true);
-    }
+    const headingForFilters = Number.isFinite(headingUnwrapped) ? headingUnwrapped : heading;
+    const warmup = updateVmgPlotFilters(sample, headingForFilters, sample.ts);
+    setVmgWarmupState(warmup);
   }
   if (!Number.isFinite(headingUnwrapped)) return;
   if (!Number.isFinite(vmgEstimate.lastTs)) {
@@ -818,77 +477,6 @@ function updateVmgEstimate(position) {
   vmgEstimate.slope = slope;
   vmgEstimate.slopeStdErr = slopeStdErr;
   requestVmgPlotRender();
-}
-
-function updateVmgGpsState() {
-  if (!els.vmgPlot) return;
-  els.vmgPlot.classList.toggle("gps-bad", isVmgGpsBad());
-}
-
-function setVmgWarmupState(active) {
-  const next = Boolean(active);
-  if (vmgWarmup === next) return;
-  vmgWarmup = next;
-  if (els.vmgWarmup) {
-    els.vmgWarmup.setAttribute("aria-hidden", next ? "false" : "true");
-  }
-}
-
-function updateVmgImuToggle() {
-  if (els.vmgImuToggle) {
-    els.vmgImuToggle.setAttribute("aria-pressed", state.imuEnabled ? "true" : "false");
-  }
-}
-
-function updateVmgSmoothToggle() {
-  if (els.vmgSmoothToggle) {
-    els.vmgSmoothToggle.setAttribute("aria-pressed", vmgSmoothCurrent ? "true" : "false");
-  }
-}
-
-function updateVmgCapToggle() {
-  if (els.vmgCapToggle) {
-    els.vmgCapToggle.setAttribute("aria-pressed", vmgCapEnabled ? "true" : "false");
-  }
-}
-
-function getVmgPlotInputValue(rawValue) {
-  if (!Number.isFinite(rawValue)) return null;
-  return rawValue;
-}
-
-function getVmgPlotDeltaValue() {
-  if (!Number.isFinite(vmgPlotFast) || !Number.isFinite(vmgPlotBaseline)) return null;
-  const denom = Math.abs(vmgPlotBaseline);
-  if (!Number.isFinite(denom) || denom < VMG_EVAL_MIN_BASE) return null;
-  const delta = ((vmgPlotFast - vmgPlotBaseline) / denom) * 100;
-  return vmgCapEnabled
-    ? clamp(delta, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
-    : delta;
-}
-
-function applyVmgSmoothSetting() {
-  if (!Number.isFinite(vmgPlotLastSampleTs)) return;
-  if (!Number.isFinite(vmgPlotBaseline) || !Number.isFinite(vmgPlotLastRaw)) return;
-  if (!vmgSmoothCurrent) {
-    const inputValue = getVmgPlotInputValue(vmgPlotLastRaw);
-    if (!Number.isFinite(inputValue)) return;
-    vmgPlotFast = inputValue;
-    const delta = getVmgPlotDeltaValue();
-    updateLatestVmgPlotSample(Number.isFinite(delta) ? delta : 0, vmgPlotLastSampleTs);
-  }
-}
-
-function applyVmgCapSetting() {
-  if (!Number.isFinite(vmgPlotLastSampleTs)) return;
-  if (!Number.isFinite(vmgPlotBaseline) || !Number.isFinite(vmgPlotLastRaw)) return;
-  if (!vmgSmoothCurrent) {
-    const inputValue = getVmgPlotInputValue(vmgPlotLastRaw);
-    if (!Number.isFinite(inputValue)) return;
-    vmgPlotFast = inputValue;
-  }
-  const delta = getVmgPlotDeltaValue();
-  updateLatestVmgPlotSample(Number.isFinite(delta) ? delta : 0, vmgPlotLastSampleTs);
 }
 
 function applyVmgSettings(settings = {}) {
@@ -1152,6 +740,238 @@ function getVmgPersistedSettings() {
     smoothCurrent: vmgSmoothCurrent,
     capEnabled: vmgCapEnabled,
   };
+}
+
+function clampVmgTauSeconds(seconds) {
+  const safe = Number.parseInt(seconds, 10);
+  if (!Number.isFinite(safe)) return vmgPlotTauSeconds;
+  return clamp(safe, VMG_BASELINE_TAU_MIN_SEC, VMG_BASELINE_TAU_MAX_SEC);
+}
+
+function syncVmgWindowUi() {
+  const tauSeconds = clampVmgTauSeconds(vmgPlotTauSeconds);
+  vmgPlotTauSeconds = tauSeconds;
+  if (els.vmgWindow) {
+    els.vmgWindow.value = String(tauSeconds);
+  }
+  if (els.vmgWindowValue) {
+    els.vmgWindowValue.textContent = formatWindowSeconds(tauSeconds);
+  }
+}
+
+function getVmgPlotWindowSeconds() {
+  return vmgPlotTauSeconds * VMG_PLOT_WINDOW_TAU_FACTOR;
+}
+
+function requestVmgPlotRender(options = {}) {
+  if (!document.body.classList.contains("vmg-mode")) return;
+  const now = Date.now();
+  const force = options && options.force;
+  const maxIntervalMs = 200;
+  const elapsed = now - vmgPlotLastRenderAt;
+  if (force || !Number.isFinite(vmgPlotLastRenderAt) || elapsed >= maxIntervalMs) {
+    if (vmgPlotRenderTimer) {
+      clearTimeout(vmgPlotRenderTimer);
+      vmgPlotRenderTimer = null;
+    }
+    vmgPlotLastRenderAt = now;
+    renderVmgPlot();
+    return;
+  }
+  if (vmgPlotRenderTimer) return;
+  vmgPlotRenderTimer = setTimeout(() => {
+    vmgPlotRenderTimer = null;
+    vmgPlotLastRenderAt = Date.now();
+    renderVmgPlot();
+  }, maxIntervalMs - elapsed);
+}
+
+function resetVmgPlotHistory() {
+  vmgPlotHistory.length = 0;
+  vmgPlotLastSampleTs = null;
+  vmgPlotFast = null;
+  vmgPlotLastRaw = null;
+  vmgSpeedBaseline = null;
+  vmgHeadingBaseline = null;
+  requestVmgPlotRender({ force: true });
+}
+
+function resetVmgImuState() {
+  vmgImu.headingRad = null;
+  vmgImu.lastTimestamp = null;
+  vmgImu.lastGpsTs = null;
+}
+
+function getVmgHeadingDegrees(sample) {
+  if (!sample) return null;
+  if (state.imuEnabled) {
+    updateVmgImuFromGps(sample);
+    const imuHeading = headingRadToDegrees(vmgImu.headingRad);
+    if (Number.isFinite(imuHeading)) {
+      return imuHeading;
+    }
+  }
+  return sample.heading;
+}
+
+function getVmgTwaDegrees() {
+  if (!els.vmgTwa) return VMG_EVAL_TWA_UP_DEG;
+  const value = Number.parseFloat(els.vmgTwa.value);
+  if (!Number.isFinite(value)) return VMG_EVAL_TWA_UP_DEG;
+  return clamp(value, VMG_EVAL_TWA_UP_MIN, VMG_EVAL_TWA_UP_MAX);
+}
+
+function getVmgDownTwaDegrees() {
+  if (!els.vmgTwaDown) return VMG_EVAL_TWA_DOWN_DEG;
+  const value = Number.parseFloat(els.vmgTwaDown.value);
+  if (!Number.isFinite(value)) return VMG_EVAL_TWA_DOWN_DEG;
+  return clamp(value, VMG_EVAL_TWA_DOWN_MIN, VMG_EVAL_TWA_DOWN_MAX);
+}
+
+function getVmgSample(position) {
+  const sample = getHeadingSampleForMode("vmg", position, vmgEstimate.lastRawPosition);
+  if (!sample) return null;
+  if (sample.source === "gps") {
+    vmgEstimate.lastRawPosition = position;
+  }
+  return sample;
+}
+
+function isVmgGpsBad() {
+  if (!state.position) return true;
+  if (isGpsStale()) return true;
+  const accuracy = state.position.coords?.accuracy;
+  if (!Number.isFinite(accuracy)) return true;
+  return accuracy > 20;
+}
+
+function applyFirstOrderFilter(prevValue, nextValue, dtSec, tauSec) {
+  if (!Number.isFinite(nextValue)) return prevValue;
+  if (!Number.isFinite(tauSec) || tauSec <= 0) return nextValue;
+  if (!Number.isFinite(prevValue)) return nextValue;
+  const alpha = 1 - Math.exp(-dtSec / tauSec);
+  return prevValue + alpha * (nextValue - prevValue);
+}
+
+function recordVmgPlotSample(value, timestampMs) {
+  if (!Number.isFinite(value)) return;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  vmgPlotHistory.push({ ts, value });
+  vmgPlotLastSampleTs = ts;
+  const cutoff = ts - (getVmgPlotWindowSeconds() * 1000 + VMG_PLOT_HISTORY_PAD_MS);
+  while (vmgPlotHistory.length && vmgPlotHistory[0].ts < cutoff) {
+    vmgPlotHistory.shift();
+  }
+  requestVmgPlotRender();
+}
+
+function updateLatestVmgPlotSample(value, timestampMs) {
+  if (!Number.isFinite(value)) return;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  const last = vmgPlotHistory[vmgPlotHistory.length - 1];
+  if (last && last.ts === ts) {
+    last.value = value;
+    vmgPlotLastSampleTs = ts;
+    requestVmgPlotRender();
+    return;
+  }
+  recordVmgPlotSample(value, ts);
+}
+
+function updateVmgPlotFilters(sample, headingDeg, timestampMs) {
+  if (!sample || !Number.isFinite(sample.speed)) return true;
+  if (!Number.isFinite(headingDeg)) return true;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  if (!Number.isFinite(vmgPlotLastSampleTs)) {
+    vmgSpeedBaseline = sample.speed;
+    vmgHeadingBaseline = headingDeg;
+    vmgPlotFast = 0;
+    vmgPlotLastRaw = 0;
+    updateLatestVmgPlotSample(0, ts);
+    return true;
+  }
+  const dtSec = Math.max(0, (ts - vmgPlotLastSampleTs) / 1000);
+  if (dtSec <= 0) return false;
+  const baselineTau = vmgPlotTauSeconds;
+  vmgSpeedBaseline = applyFirstOrderFilter(vmgSpeedBaseline, sample.speed, dtSec, baselineTau);
+  vmgHeadingBaseline = applyFirstOrderFilter(vmgHeadingBaseline, headingDeg, dtSec, baselineTau);
+  const rawImprovement = computeVmgImprovementPercent(
+    sample.speed,
+    headingDeg,
+    vmgHeadingBaseline,
+    vmgSpeedBaseline
+  );
+  const warmup = !Number.isFinite(rawImprovement);
+  if (warmup) {
+    updateLatestVmgPlotSample(0, ts);
+    return true;
+  }
+  vmgPlotLastRaw = rawImprovement;
+  if (vmgSmoothCurrent) {
+    const fastTau = Math.max(0.05, baselineTau / 10);
+    vmgPlotFast = applyFirstOrderFilter(vmgPlotFast, rawImprovement, dtSec, fastTau);
+  } else {
+    vmgPlotFast = rawImprovement;
+  }
+  const capped = vmgCapEnabled
+    ? clamp(vmgPlotFast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : vmgPlotFast;
+  updateLatestVmgPlotSample(Number.isFinite(capped) ? capped : 0, ts);
+  return false;
+}
+
+function updateVmgGpsState() {
+  if (!els.vmgPlot) return;
+  els.vmgPlot.classList.toggle("gps-bad", isVmgGpsBad());
+}
+
+function setVmgWarmupState(active) {
+  const next = Boolean(active);
+  if (vmgWarmup === next) return;
+  vmgWarmup = next;
+  if (els.vmgWarmup) {
+    els.vmgWarmup.setAttribute("aria-hidden", next ? "false" : "true");
+  }
+}
+
+function updateVmgImuToggle() {
+  if (els.vmgImuToggle) {
+    els.vmgImuToggle.setAttribute("aria-pressed", state.imuEnabled ? "true" : "false");
+  }
+}
+
+function updateVmgSmoothToggle() {
+  if (els.vmgSmoothToggle) {
+    els.vmgSmoothToggle.setAttribute("aria-pressed", vmgSmoothCurrent ? "true" : "false");
+  }
+}
+
+function updateVmgCapToggle() {
+  if (els.vmgCapToggle) {
+    els.vmgCapToggle.setAttribute("aria-pressed", vmgCapEnabled ? "true" : "false");
+  }
+}
+
+function applyVmgSmoothSetting() {
+  if (!Number.isFinite(vmgPlotLastSampleTs)) return;
+  if (!Number.isFinite(vmgPlotLastRaw)) return;
+  vmgPlotFast = vmgPlotLastRaw;
+  const value = vmgCapEnabled
+    ? clamp(vmgPlotFast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : vmgPlotFast;
+  updateLatestVmgPlotSample(Number.isFinite(value) ? value : 0, vmgPlotLastSampleTs);
+}
+
+function applyVmgCapSetting() {
+  if (!Number.isFinite(vmgPlotLastSampleTs)) return;
+  if (!Number.isFinite(vmgPlotLastRaw)) return;
+  if (!vmgSmoothCurrent) {
+    vmgPlotFast = vmgPlotLastRaw;
+  }
+  const value = vmgCapEnabled
+    ? clamp(vmgPlotFast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : vmgPlotFast;
+  updateLatestVmgPlotSample(Number.isFinite(value) ? value : 0, vmgPlotLastSampleTs);
 }
 
 export {
