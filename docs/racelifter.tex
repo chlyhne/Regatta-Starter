@@ -3,12 +3,13 @@
 \section{RaceLifter (headers and lifts)}
 
 This section explains how RaceLifter turns heading samples into a stable lift/shift view.
-The aim is to show how much the heading deviates from a smoothed reference, without the
+The aim is to show how the current heading deviates from a smoothed reference, without the
 plot jumping around when the window size changes or when a new sample lands.
 
-\subsection{Heading baseline and deviation}
+\subsection{Signals and baseline filter}
 
-This subsection defines the low-pass baseline heading and the deviation that is plotted.
+This subsection defines the heading signal, the low-pass baseline, and the deviation that
+is plotted.
 
 RaceLifter collects heading samples from the selected source (boat model or GPS) whenever
 speed exceeds a small threshold (about \(0.5\,\mathrm{m/s}\)), so drifting or stationary
@@ -20,7 +21,7 @@ baseline filter.
 \end{flalign}
 In \eqref{eq:lifter:alpha}, \(\alpha_k\) is the per-sample gain, \(\Delta t_k\) is the
 sample interval, the subscript \(k\) is the sample index, and \(\tau\) is the user-selected
-window time constant.
+window time constant. This gain is applied to the heading baseline in the next step.
 
 \begin{flalign}
 \hspace{5em}\overline{h}_k &= \overline{h}_{k-1}+\alpha_k\,\mathrm{wrap}\left(h_k-\overline{h}_{k-1}\right) && \left[\mathrm{deg}\right] \label{eq:lifter:hbar}
@@ -28,7 +29,15 @@ window time constant.
 In \eqref{eq:lifter:hbar}, \(h_k\) is the instantaneous heading in degrees and
 \(\overline{h}_k\) is the smoothed baseline heading. The wrap operator returns the
 shortest signed angular difference so the baseline follows headings across
-\(0^\circ\) cleanly.
+\(0^\circ\) cleanly. This update is used once a baseline exists. To avoid a delayed
+plot, the first sample anchors the baseline.
+
+\begin{flalign}
+\hspace{5em}\overline{h}_0 &= h_0 && \left[\mathrm{deg}\right] \label{eq:lifter:hbar-init}
+\end{flalign}
+In \eqref{eq:lifter:hbar-init}, \(h_0\) is the first available heading sample and
+\(\overline{h}_0\) is the initial baseline. With the baseline defined, we form the
+deviation.
 
 \begin{flalign}
 \hspace{5em}\Delta h_k &= \mathrm{wrap}\left(h_k-\overline{h}_k\right) && \left[\mathrm{deg}\right] \label{eq:lifter:dh}
@@ -36,18 +45,28 @@ shortest signed angular difference so the baseline follows headings across
 In \eqref{eq:lifter:dh}, \(\Delta h_k\) is the signed deviation from the baseline in
 degrees. This is the quantity drawn in the plot.
 
-\subsection{Plot layout and colors}
+\subsection{Displayed signal and plot window}
 
 This subsection describes the vertical time layout and the color convention.
 
 \begin{flalign}
-\hspace{5em}T_{\mathrm{window}} &= \tau && \left[\mathrm{s}\right] \label{eq:lifter:window}
+\hspace{5em}T_{\mathrm{window}} &= 2\tau && \left[\mathrm{s}\right] \label{eq:lifter:window}
 \end{flalign}
-In \eqref{eq:lifter:window}, \(T_{\mathrm{window}}\) is the time span shown in the plot. The
-vertical axis runs from oldest samples at the bottom to ``now'' at the top. The horizontal
-axis is the signed deviation \(\Delta h\): line segments are green when they fall to the
-right of center and red when they fall to the left, with the area to the centerline filled
-in the same color. The center line marks zero deviation.
+In \eqref{eq:lifter:window}, \(T_{\mathrm{window}}\) is the time span shown in the plot,
+set to two time constants. The vertical axis runs from oldest samples at the bottom to
+``now'' at the top. The
+horizontal axis is the signed deviation \(\Delta h\): line segments are green when they
+fall to the right of center and red when they fall to the left, with the area to the
+centerline filled in the same color. The center line marks zero deviation.
+
+\subsection{Heading sources and device motion}
+
+This subsection summarizes which heading signal is used for the baseline and plot.
+
+RaceLifter uses the same heading pipeline as the rest of the app, but the source is chosen
+explicitly for the lifter view: either the boat model/Kalman heading or a GPS-derived
+heading. When GPS is selected, the lifter only updates when the reported speed is above
+the minimum threshold, keeping low-speed noise from dominating the baseline.
 
 \subsection{Debug playback}
 

@@ -16,6 +16,7 @@ import {
 
 const LIFTER_DEFAULT_WINDOW_SECONDS = 300;
 const LIFTER_MIN_SPEED = 0.5;
+const LIFTER_PLOT_WINDOW_TAU_FACTOR = 2;
 const LIFTER_PLOT_HISTORY_PAD_MS = 5000;
 const LIFTER_PLOT_RENDER_INTERVAL_MS = 200;
 const LIFTER_PLOT_PADDING = 10;
@@ -109,7 +110,10 @@ function recordLifterPlotSample(value, timestampMs) {
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
   lifterPlotHistory.push({ ts, value });
   lifterLastSampleTs = ts;
-  const windowMs = clampLifterWindowSeconds(lifterWindowSeconds) * 1000;
+  const windowMs =
+    clampLifterWindowSeconds(lifterWindowSeconds) *
+    LIFTER_PLOT_WINDOW_TAU_FACTOR *
+    1000;
   const cutoff = ts - (windowMs + LIFTER_PLOT_HISTORY_PAD_MS);
   while (lifterPlotHistory.length && lifterPlotHistory[0].ts < cutoff) {
     lifterPlotHistory.shift();
@@ -191,7 +195,9 @@ function renderLifterPlot() {
     els.lifterMeanValue.textContent = `${Math.round(meanDeg)}°`;
   }
 
-  const windowSeconds = clampLifterWindowSeconds(lifterWindowSeconds);
+  const windowSeconds =
+    clampLifterWindowSeconds(lifterWindowSeconds) *
+    LIFTER_PLOT_WINDOW_TAU_FACTOR;
   const windowMs = Math.max(1000, windowSeconds * 1000);
   const endTs = lifterLastSampleTs;
   const startTs = endTs - windowMs;
