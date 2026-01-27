@@ -11,57 +11,126 @@ consistent reference so changes in trim or steering show up as a clear percentag
 
 This subsection defines the signals used by the evaluator and how they are filtered.
 
-RacePerformance works directly with instantaneous estimates from the navigation layer. Let
-\(v\) be the instantaneous boat speed and \(h\) be the instantaneous heading, both sourced
-from the Kalman state (optionally enhanced by the device motion sensor). We maintain two
-first-order low-pass baselines using the user-selected time constant \(\tau\):
-\(\overline{v}=\mathrm{LPF}(v)\) and \(\overline{h}=\mathrm{LPF}(h)\). Both filters are
-initialized to the first sample so the plot starts immediately. The instantaneous
-deviations are \(dv=v-\overline{v}\) and \(dh=h-\overline{h}\), with \(dh\) wrapped to the
-shortest signed angular difference. The evaluator is driven by the same Kalman output
-stream as the track view, so it updates on prediction steps as well as GPS updates.
+RacePerformance applies a first-order low-pass baseline and computes deviations:
+\begin{flalign}
+\hspace{5em}\alpha_k &= \frac{\Delta t_k}{\tau+\Delta t_k} && \left[1\right] \label{eq:vmg:alpha}
+\end{flalign}
+In \eqref{eq:vmg:alpha}, \(\alpha_k\) is the per-sample gain, \(\Delta t_k\) is the sample
+interval, the subscript \(k\) is the sample index, and \(\tau\) is the user-selected time
+constant. This gain is applied to the speed baseline in the next step.
+\begin{flalign}
+\hspace{5em}\overline{v}_k &= \overline{v}_{k-1}+\alpha_k\left(v_k-\overline{v}_{k-1}\right) && \left[\text{m/s}\right] \label{eq:vmg:vbar-update}
+\end{flalign}
+In \eqref{eq:vmg:vbar-update}, \(v_k\) is the instantaneous boat speed from the Kalman
+state, optionally enhanced by the device motion sensor, and \(\overline{v}_k\) is the
+low-pass speed baseline. The same gain is then applied to heading with angular wrap.
+\begin{flalign}
+\hspace{5em}\overline{h}_k &= \overline{h}_{k-1}+\alpha_k\,\mathrm{wrap}\left(h_k-\overline{h}_{k-1}\right) && \left[\text{rad}\right] \label{eq:vmg:hbar-update}
+\end{flalign}
+In \eqref{eq:vmg:hbar-update}, \(h_k\) is the instantaneous heading, \(\overline{h}_k\) is
+the baseline heading, and \(\mathrm{wrap}(\cdot)\) returns the shortest signed angular
+difference. The filters start from the first sample to avoid a delayed plot.
+\begin{flalign}
+\hspace{5em}\overline{v}_0 &= v_0 && \left[\text{m/s}\right] \label{eq:vmg:vbar-init}
+\end{flalign}
+In \eqref{eq:vmg:vbar-init}, the subscript \(0\) denotes the first sample used to
+initialize the speed baseline. The heading baseline is initialized in the same way.
+\begin{flalign}
+\hspace{5em}\overline{h}_0 &= h_0 && \left[\text{rad}\right] \label{eq:vmg:hbar-init}
+\end{flalign}
+In \eqref{eq:vmg:hbar-init}, the first heading sample anchors the baseline. With
+baselines defined, we compute the deviations.
+\begin{flalign}
+\hspace{5em}\Delta v_k &= v_k-\overline{v}_k && \left[\text{m/s}\right] \label{eq:vmg:dv}
+\end{flalign}
+In \eqref{eq:vmg:dv}, \(\Delta v_k\) is the speed deviation from the baseline. The
+heading deviation follows.
+\begin{flalign}
+\hspace{5em}\Delta h_k &= \mathrm{wrap}\left(h_k-\overline{h}_k\right) && \left[\text{rad}\right] \label{eq:vmg:dh}
+\end{flalign}
+In \eqref{eq:vmg:dh}, \(\Delta h_k\) is the signed heading deviation, wrapped to the
+shortest angular difference. The derivation below omits the sample index for clarity.
+The evaluator is driven by the same Kalman output stream as the track view, so it updates
+on prediction steps as well as GPS updates.
 
 \subsection{VMG improvement model}
-
 This subsection explains how mode, tack, and the assumed TWA enter the percent-improvement
-calculation.
+calculation. It starts by defining the tack-signed target angle, then defines VMG, and
+finally derives the improvement expression and its mode-specific forms.
 
-RacePerformance does not estimate wind direction directly. Instead, it uses the selected
-mode and tack to define a signed target TWA \(a\). In beat and run modes, \(a\) is taken
-from the upwind or downwind TWA sliders and signed by tack (port is negative, starboard is
-positive). In reach mode we set \(a=0\), which effectively evaluates changes along the
-current baseline heading without introducing a wind assumption. The baseline VMG is
-\(w=\overline{v}\cos(a)\), and the instantaneous VMG is \(v\cos(a+dh)\).
-
-The ratio of instantaneous VMG to the baseline simplifies to:
-\[
-\frac{v\cos(a+dh)}{\overline{v}\cos(a)}=
-\left(1+\frac{dv}{\overline{v}}\right)\left(\cos(dh)-\tan(a)\sin(dh)\right)
-\]
-We report percent improvement, so the displayed value is:
-\[
-X_\%=\left[\left(1+\frac{dv}{\overline{v}}\right)\left(\cos(dh)-\tan(a)\sin(dh)\right)-1\right]\times 100
-\]
-This single expression handles beat, reach, and run. For running, the cosine in the
-denominator is negative, but the ratio removes that sign, so a faster or better-aligned
-run produces a positive improvement.
+\begin{flalign}
+\hspace{5em}a &=
+\begin{cases}
+-a_{\mathrm{up}}, & \text{beat, port tack} \\
+\phantom{-}a_{\mathrm{up}}, & \text{beat, starboard tack} \\
+0, & \text{reach mode} \\
+-a_{\mathrm{down}}, & \text{run, port tack} \\
+\phantom{-}a_{\mathrm{down}}, & \text{run, starboard tack}
+\end{cases}
+&& \left[\text{rad}\right] \label{eq:vmg:target-angle}
+\end{flalign}
+In \eqref{eq:vmg:target-angle}, \(a\) is the signed target TWA, \(a_{\mathrm{up}}\) is
+the upwind target, and \(a_{\mathrm{down}}\) is the downwind target. Port uses the
+negative sign and starboard uses the positive sign. With \(a\) fixed, we define the
+baseline VMG.
+Reach mode deserves an explicit interpretation. In \eqref{eq:vmg:target-angle} we set
+\(a=0\) for reach, which makes the improvement measure track how well you hold the
+baseline direction rather than true wind progress. That is a stretch to call VMG: it
+assumes you want to keep going where you are going on average, and any deviation from
+that baseline is treated as under-performance.
+\begin{flalign}
+\hspace{5em}\overline{w} &= \overline{v}\cos a && \left[\text{m/s}\right] \label{eq:vmg:wbar}
+\end{flalign}
+In \eqref{eq:vmg:wbar}, \(\overline{w}\) is the baseline VMG and \(\overline{v}\) is the
+low-pass speed baseline. The instantaneous VMG uses the current speed and heading
+deviation.
+\begin{flalign}
+\hspace{5em}w &= v\cos\left(a+\Delta h\right) && \left[\text{m/s}\right] \label{eq:vmg:w}
+\end{flalign}
+In \eqref{eq:vmg:w}, \(w\) is the instantaneous VMG, \(v\) is the instantaneous speed,
+and \(\Delta h\) is the heading deviation. The improvement ratio compares instantaneous
+to baseline VMG.
+\begin{flalign}
+\hspace{5em}R &= \frac{w}{\overline{w}} && \left[1\right] \label{eq:vmg:ratio}
+\end{flalign}
+In \eqref{eq:vmg:ratio}, \(R\) is the VMG ratio. With \(R\) defined, we convert the ratio
+to a percentage before returning it to the UI.
+\begin{flalign}
+\hspace{5em}\eta &= 100\left(R-1\right) && \left[\%\right] \label{eq:vmg:eta}
+\end{flalign}
+In \eqref{eq:vmg:eta}, \(\eta\) is the percent improvement shown in the UI. The mode
+choice only selects the target angle \(a\) using \eqref{eq:vmg:target-angle}: reach sets
+\(a=0\), beat uses the upwind target with a negative sign on port and a positive sign on
+starboard, and run uses the downwind target with the same sign rule. In run mode the
+target angle exceeds ninety degrees, so the cosine term is negative; both baseline and
+instantaneous VMG share that sign, and the ratio still reports a positive improvement for
+faster or better-aligned running.
 
 \subsection{Displayed signal and plot window}
 
 This subsection describes the optional smoothing of the displayed signal and how the time
 history window is chosen.
 
-The baseline filters always use the long time constant \(\tau\). The displayed signal can
-either be the raw improvement \(X_\%\) or a ``fast'' smoothed version using a first-order
-low-pass filter with time constant \(\tau/10\). This toggle changes only the display; the
-baseline filters are unchanged. If the baseline magnitude is too small, the output is
-suppressed until it stabilizes.
+The baseline filters always use the long time constant chosen by the user. The displayed
+signal can either be the raw improvement or a ``fast'' smoothed version that uses a
+shorter time constant.
+\begin{flalign}
+\hspace{5em}\tau_{\mathrm{fast}} &= \frac{\tau}{10} && \left[\text{s}\right] \label{eq:vmg:tau-fast}
+\end{flalign}
+In \eqref{eq:vmg:tau-fast}, \(\tau_{\mathrm{fast}}\) is used only for the display; the
+baseline filters remain set by \(\tau\). If the baseline magnitude is too small, the
+output is suppressed until it stabilizes.
 
-The plot window is fixed at four time constants (\(4\tau\)). The time axis runs left to
-right with ``now'' at the right edge. We draw the improvement history as a line with a
-filled area underneath: green for positive values and red for negative values. The
-percent axis is symmetric with labeled ticks. An optional cap limits the displayed
-magnitude to a fixed percentage so outliers do not rescale the plot.
+The plot window length is defined by the main time constant.
+\begin{flalign}
+\hspace{5em}T_{\mathrm{window}} &= 2\tau && \left[\text{s}\right] \label{eq:vmg:window}
+\end{flalign}
+In \eqref{eq:vmg:window}, \(T_{\mathrm{window}}\) is the fixed plot span of two time
+constants. The time axis
+runs left to right with ``now'' at the right edge. We draw the improvement history as a
+line with a filled area underneath: green for positive values and red for negative
+values. The percent axis is symmetric with labeled ticks. An optional cap limits the
+displayed magnitude to a fixed percentage so outliers do not rescale the plot.
 
 \subsection{Heading sources and device motion}
 

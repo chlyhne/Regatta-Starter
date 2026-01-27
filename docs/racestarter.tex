@@ -34,11 +34,11 @@ This subsection defines the state vector and the motion model used between GPS f
 including the optional turning update when IMU assist is enabled.
 
 We estimate both position and velocity in 2D:
-\[
-x = [p_x, p_y, v_x, v_y]^T
-\]
-
-Units are meters for position and meters/second for velocity.
+\begin{flalign}
+\hspace{5em}x &= [p_x, p_y, v_x, v_y]^T && \left[\text{m}, \text{m/s}\right] \label{eq:rs:state}
+\end{flalign}
+In \eqref{eq:rs:state}, \(p_x\) and \(p_y\) are positions in meters and \(v_x\) and
+\(v_y\) are velocities in meters/second.
 
 This state definition matters operationally: it lets the app produce a steady velocity
 vector even when GPS does not provide a reliable heading/speed (e.g.\ very low speed, or a
@@ -47,32 +47,38 @@ device/browser that omits those fields).
 Between GPS updates, we assume the boat maintains constant velocity over
 a short interval \(dt\). That is:
 
-\[
-\begin{aligned}
-p_{x,k} &= p_{x,k-1} + v_{x,k-1}\,dt \\
-p_{y,k} &= p_{y,k-1} + v_{y,k-1}\,dt \\
-v_{x,k} &= v_{x,k-1} \\
-v_{y,k} &= v_{y,k-1}
-\end{aligned}
-\]
+\begin{flalign}
+\hspace{5em}p_{x,k} &= p_{x,k-1} + v_{x,k-1}\,dt && \left[\text{m}\right] \label{eq:rs:cv-px} \\
+\hspace{5em}p_{y,k} &= p_{y,k-1} + v_{y,k-1}\,dt && \left[\text{m}\right] \label{eq:rs:cv-py} \\
+\hspace{5em}v_{x,k} &= v_{x,k-1} && \left[\text{m/s}\right] \label{eq:rs:cv-vx} \\
+\hspace{5em}v_{y,k} &= v_{y,k-1} && \left[\text{m/s}\right] \label{eq:rs:cv-vy}
+\end{flalign}
+In \eqref{eq:rs:cv-px} and \eqref{eq:rs:cv-py}, \(dt\) is the elapsed time between
+prediction steps and position components are in meters. In \eqref{eq:rs:cv-vx} and
+\eqref{eq:rs:cv-vy}, the velocity components are in meters/second.
 
 In matrix form:
 
-\[
-x_k = F x_{k-1} + w
-\]
+\begin{flalign}
+\hspace{5em}x_k &= F x_{k-1} + w && \left[\text{m}, \text{m/s}\right] \label{eq:rs:state-update}
+\end{flalign}
+In \eqref{eq:rs:state-update}, \(F\) is the state transition matrix and \(w\) is the
+process noise term.
 
 with
 
-\[
-F =
+\begin{flalign}
+\hspace{5em}F &=
 \begin{bmatrix}
 1 & 0 & dt & 0 \\
 0 & 1 & 0 & dt \\
 0 & 0 & 1 & 0 \\
 0 & 0 & 0 & 1
 \end{bmatrix}
-\]
+&& \left[\text{mixed}\right] \label{eq:rs:F}
+\end{flalign}
+In \eqref{eq:rs:F}, the \(dt\) entries carry seconds and the rest are unitless, so the
+matrix has mixed units.
 
 The term \texttt{w} is ``everything the model does not capture'':
 acceleration, turning, waves, gusts, steering corrections, and also
@@ -107,15 +113,18 @@ Rotation is applied only to the \emph{velocity components} of the state:
 position stays in the world frame, but velocity is rotated to track the boat's
 heading. In matrix form, the state rotation is:
 
-\[
-A =
+\begin{flalign}
+\hspace{5em}A &=
 \begin{bmatrix}
 1 & 0 & 0 & 0 \\
 0 & 1 & 0 & 0 \\
 0 & 0 & \cos\Delta\psi & -\sin\Delta\psi \\
 0 & 0 & \sin\Delta\psi & \cos\Delta\psi
 \end{bmatrix}
-\]
+&& \left[1\right] \label{eq:rs:rotation}
+\end{flalign}
+In \eqref{eq:rs:rotation}, \(\Delta\psi\) is the integrated yaw change and \(A\) is a
+dimensionless rotation matrix applied to the velocity components.
 
 Applying \(P' = A P A^T\) with this block-rotation preserves the position
 covariances in the global frame while keeping the velocity uncertainty aligned
@@ -147,28 +156,35 @@ Discrete-time \(Q\) matrix. For one axis (say \(x\)), with state
 \([p, v]^T\), constant velocity model, and white acceleration noise, the
 discrete-time process noise covariance becomes:
 
-\[
-Q_{\text{axis}} = q
+\begin{flalign}
+\hspace{5em}Q_{\text{axis}} &= q
 \begin{bmatrix}
 dt^4/4 & dt^3/2 \\
 dt^3/2 & dt^2
 \end{bmatrix}
-\]
+&& \left[\text{mixed}\right] \label{eq:rs:q-axis}
+\end{flalign}
+In \eqref{eq:rs:q-axis}, \(q\) is the acceleration variance and the \(dt\) powers set the
+position and velocity covariance scalings, which produces mixed units across the matrix.
 
 Why those powers of \(dt\)? Position is the integral of velocity, velocity is the integral
 of acceleration, and integrating white noise introduces these characteristic time scalings.
 
 If we assumed identical behavior in every direction, the full 2D filter
 would be two independent copies (\(x\) and \(y\)), combined into
-\(4\times4\) form: \[
-Q =
+\(4\times4\) form:
+\begin{flalign}
+\hspace{5em}Q &=
 \begin{bmatrix}
 q\,dt^4/4 & 0 & q\,dt^3/2 & 0 \\
 0 & q\,dt^4/4 & 0 & q\,dt^3/2 \\
 q\,dt^3/2 & 0 & q\,dt^2 & 0 \\
 0 & q\,dt^3/2 & 0 & q\,dt^2
 \end{bmatrix}
-\]
+&& \left[\text{mixed}\right] \label{eq:rs:Q}
+\end{flalign}
+In \eqref{eq:rs:Q}, the full process noise covariance retains the same mixed units as
+\eqref{eq:rs:q-axis}, now arranged for the 2D state.
 
 In RaceStarter we make a more boat-like assumption: forward and sideways
 acceleration are not equally likely.
@@ -196,25 +212,30 @@ rather than magnitude.
 
 GPS provides a measurement of position:
 
-\[
-z = [p_x, p_y]^T
-\]
+\begin{flalign}
+\hspace{5em}z &= [p_x, p_y]^T && \left[\text{m}\right] \label{eq:rs:z}
+\end{flalign}
+In \eqref{eq:rs:z}, \(z\) is the measured position in meters.
 
 and we use:
 
-\[
-z_k = H x_k + v
-\]
+\begin{flalign}
+\hspace{5em}z_k &= H x_k + v && \left[\text{m}\right] \label{eq:rs:measurement}
+\end{flalign}
+In \eqref{eq:rs:measurement}, \(v\) is the measurement noise term with the same units as
+position.
 
 with
 
-\[
-H =
+\begin{flalign}
+\hspace{5em}H &=
 \begin{bmatrix}
 1 & 0 & 0 & 0 \\
 0 & 1 & 0 & 0
 \end{bmatrix}
-\]
+&& \left[1\right] \label{eq:rs:H}
+\end{flalign}
+In \eqref{eq:rs:H}, the measurement matrix selects the position components of the state.
 
 The measurement noise \texttt{v} has covariance \texttt{R}.
 
@@ -225,16 +246,24 @@ Choosing \(R\) from GPS accuracy. Browsers provide
 we treat the uncertainty as isotropic (same in x and y) and uncorrelated between axes.
 With that, we use:
 
-\[
-R = r I_2, \quad r = \text{accuracy}^2
-\]
+\begin{flalign}
+\hspace{5em}r &= \text{accuracy}^2 && \left[\mathrm{m^2}\right] \label{eq:rs:r}
+\end{flalign}
+In \eqref{eq:rs:r}, \(\text{accuracy}\) is the reported 1\(\sigma\) position radius in
+meters and \(r\) is its variance.
+\begin{flalign}
+\hspace{5em}R &= r I_2 && \left[\mathrm{m^2}\right] \label{eq:rs:R}
+\end{flalign}
+In \eqref{eq:rs:R}, \(R\) is the isotropic measurement covariance.
 
 We clamp the reported accuracy because sometimes devices report absurd
 values:
 
-\[
-\text{accuracy} = \text{clamp}(\text{reportedAccuracy}, \text{min}, \text{max})
-\]
+\begin{flalign}
+\hspace{5em}\text{accuracy} &= \text{clamp}(\text{reportedAccuracy}, \text{min}, \text{max}) && \left[\text{m}\right] \label{eq:rs:accuracy-clamp}
+\end{flalign}
+In \eqref{eq:rs:accuracy-clamp}, \(\text{reportedAccuracy}\) is the raw GPS accuracy and
+the clamp bounds are the configured minimum and maximum in meters.
 
 This prevents one bad fix from causing a huge gain swing.
 
@@ -255,45 +284,54 @@ Each new GPS fix performs:
 
 Predict step:
 
-\[
-x^- = F x
-\]
+\begin{flalign}
+\hspace{5em}x^- &= F x && \left[\text{m}, \text{m/s}\right] \label{eq:rs:predict-x}
+\end{flalign}
+In \eqref{eq:rs:predict-x}, \(x^-\) is the predicted state before the measurement update.
 
-\[
-P^- = F P F^T + Q
-\]
+\begin{flalign}
+\hspace{5em}P^- &= F P F^T + Q && \left[\text{mixed}\right] \label{eq:rs:predict-P}
+\end{flalign}
+In \eqref{eq:rs:predict-P}, \(P^-\) is the predicted covariance and \(Q\) is the process
+noise covariance.
 
 Update step:
 
 Innovation covariance:
 
-\[
-S = H P^- H^T + R
-\]
+\begin{flalign}
+\hspace{5em}S &= H P^- H^T + R && \left[\mathrm{m^2}\right] \label{eq:rs:S}
+\end{flalign}
+In \eqref{eq:rs:S}, \(S\) is the innovation covariance in measurement space.
 
 Gain:
 
-\[
-K = P^- H^T S^{-1}
-\]
+\begin{flalign}
+\hspace{5em}K &= P^- H^T S^{-1} && \left[\text{mixed}\right] \label{eq:rs:K}
+\end{flalign}
+In \eqref{eq:rs:K}, \(K\) is the Kalman gain that maps measurement residuals into state
+corrections.
 
 Innovation:
 
-\[
-y = z - H x^-
-\]
+\begin{flalign}
+\hspace{5em}y &= z - H x^- && \left[\text{m}\right] \label{eq:rs:y}
+\end{flalign}
+In \eqref{eq:rs:y}, \(y\) is the measurement residual.
 
 State update:
 
-\[
-x = x^- + K y
-\]
+\begin{flalign}
+\hspace{5em}x &= x^- + K y && \left[\text{m}, \text{m/s}\right] \label{eq:rs:update-x}
+\end{flalign}
+In \eqref{eq:rs:update-x}, the predicted state is corrected by the innovation.
 
 Covariance update:
 
-\[
-P = P^- - K (H P^-)
-\]
+\begin{flalign}
+\hspace{5em}P &= P^- - K (H P^-) && \left[\text{mixed}\right] \label{eq:rs:update-P}
+\end{flalign}
+In \eqref{eq:rs:update-P}, the covariance is reduced based on the measurement update.
 
 The code implements these explicitly (no external matrix library) because the matrices are
 tiny (\(4\times4\), \(2\times2\)) and the app is intended to remain a static PWA with
@@ -346,9 +384,11 @@ used once tuned.
 Yaw rate from the gyro. The device supplies rotation rates around its
 own axes. We project that rotation vector onto the estimated gravity direction:
 
-\[
-\text{yawRate} \approx - (\omega \cdot \hat{g})
-\]
+\begin{flalign}
+\hspace{5em}\text{yawRate} &\approx - (\omega \cdot \hat{g}) && \left[\text{rad/s}\right] \label{eq:rs:yawrate}
+\end{flalign}
+In \eqref{eq:rs:yawrate}, \(\omega\) is the gyro rotation vector and \(\hat{g}\) is the
+unit gravity direction.
 
 This gives an estimated rotation rate about down. The sign is chosen so
 a right turn increases heading in the race/debug view.

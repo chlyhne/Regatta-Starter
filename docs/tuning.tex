@@ -18,14 +18,14 @@ We scale the base acceleration variance by boat length so longer boats
 respond more slowly. For lengths shorter than the anchor, we do not
 increase the base value.
 
-\[
-q = \text{baseQ} \left(\frac{L_0}{\max(L_0, L)}\right)^2
-\]
-
-Variables:
-in code, \(\text{baseQ}\) is
-\texttt{KALMAN\_TUNING.processNoise.baseAccelerationVariance} and \(L_0\) is
-\texttt{KALMAN\_TUNING.processNoise.baseBoatLengthMeters}.
+\begin{flalign}
+\hspace{5em}q &= \text{baseQ} \left(\frac{L_0}{\max(L_0, L)}\right)^2 && \left[\mathrm{m^2/s^4}\right] \label{eq:tuning:q-length}
+\end{flalign}
+In \eqref{eq:tuning:q-length}, \(q\) is the adjusted acceleration variance and
+\(\text{baseQ}\) is \texttt{KALMAN\_TUNING.processNoise.baseAccelerationVariance}. The
+anchor length \(L_0\) is
+\texttt{KALMAN\_TUNING.processNoise.baseBoatLengthMeters}, and \(L\) is the current boat
+length.
 
 \begin{figure}
 \centering
@@ -41,15 +41,15 @@ The process noise is further scaled by recent max speed (not
 instantaneous speed). We use the maximum speed over a recent window to
 capture the boat's potential to accelerate even if it is currently slow.
 
-\[
-\text{speedScale} = \frac{\max(v^*_{\text{kn}}, v_{\min})}{v_{\text{anchor}}}
-\]
-
-Variables:
-in code, \(v_{\min}\) is \texttt{KALMAN\_TUNING.processNoise.speedScale.minKnots},
-\(v_{\text{anchor}}\) is \texttt{KALMAN\_TUNING.processNoise.speedScale.anchorKnots}, and
-the window used to compute \(v^*\) is
-\texttt{KALMAN\_TUNING.processNoise.speedScale.recentMaxSpeedWindowSeconds}.
+\begin{flalign}
+\hspace{5em}\text{speedScale} &= \frac{\max(v^*_{\text{kn}}, v_{\min})}{v_{\text{anchor}}} && \left[1\right] \label{eq:tuning:speed-scale}
+\end{flalign}
+In \eqref{eq:tuning:speed-scale}, \(\text{speedScale}\) is dimensionless,
+\(v^*_{\text{kn}}\) is the recent maximum speed in knots over the window
+\texttt{KALMAN\_TUNING.processNoise.speedScale.recentMaxSpeedWindowSeconds}, \(v_{\min}\)
+is \texttt{KALMAN\_TUNING.processNoise.speedScale.minKnots}, and
+\(v_{\text{anchor}}\) is
+\texttt{KALMAN\_TUNING.processNoise.speedScale.anchorKnots}.
 
 \begin{figure}
 \centering
@@ -65,12 +65,11 @@ The gravity estimate is low-pass filtered so the down axis stays stable
 in waves. We scale the low-pass factor by boat length: larger boats get
 a slower response.
 
-\[
-\alpha = \text{clamp}\left(\alpha_0 \sqrt{\frac{L_0}{\max(L_0, L)}},\; \alpha_{\min},\; \alpha_{\max}\right)
-\]
-
-Variables:
-in code, \(\alpha_0\) is \texttt{KALMAN\_TUNING.imu.gravityLowPass.baseAlpha}, \(L_0\) is
+\begin{flalign}
+\hspace{5em}\alpha &= \text{clamp}\left(\alpha_0 \sqrt{\frac{L_0}{\max(L_0, L)}},\; \alpha_{\min},\; \alpha_{\max}\right) && \left[1\right] \label{eq:tuning:gravity-alpha}
+\end{flalign}
+In \eqref{eq:tuning:gravity-alpha}, \(\alpha\) is the gravity low-pass factor,
+\(\alpha_0\) is \texttt{KALMAN\_TUNING.imu.gravityLowPass.baseAlpha}, \(L_0\) is
 \texttt{KALMAN\_TUNING.imu.gravityLowPass.baseBoatLengthMeters}, \(\alpha_{\min}\) is
 \texttt{KALMAN\_TUNING.imu.gravityLowPass.minAlpha}, and \(\alpha_{\max}\) is
 \texttt{KALMAN\_TUNING.imu.gravityLowPass.maxAlpha}.
@@ -89,9 +88,9 @@ Boats change speed much more easily along their heading than sideways.
 We encode that by scaling the lateral acceleration variance as a fixed
 fraction of the forward variance:
 
-\[
-q_{\text{lateral}} = \rho\,q_{\text{forward}}
-\]
-
-Variables:
-in code, \(\rho\) is \texttt{KALMAN\_TUNING.imu.lateralVarianceRatio}.
+\begin{flalign}
+\hspace{5em}q_{\text{lateral}} &= \rho\,q_{\text{forward}} && \left[\mathrm{m^2/s^4}\right] \label{eq:tuning:q-lateral}
+\end{flalign}
+In \eqref{eq:tuning:q-lateral}, \(q_{\text{lateral}}\) is the lateral acceleration
+variance, \(q_{\text{forward}}\) is the forward acceleration variance, and \(\rho\) is
+\texttt{KALMAN\_TUNING.imu.lateralVarianceRatio}.

@@ -25,7 +25,7 @@ const VMG_BASELINE_TAU_MIN_SEC = 15;
 const VMG_BASELINE_TAU_MAX_SEC = 75;
 const VMG_FAST_TAU_FACTOR = 0.1;
 const VMG_FAST_TAU_MIN_SEC = 0.05;
-const VMG_PLOT_WINDOW_TAU_FACTOR = 4;
+const VMG_PLOT_WINDOW_TAU_FACTOR = 2;
 const VMG_PLOT_SCALE_STEP = 2;
 const VMG_PLOT_GRID_SMALL = 2;
 const VMG_PLOT_GRID_LARGE = 4;
@@ -56,11 +56,21 @@ const VMG_PLOT_POS_FILL = "rgba(0, 120, 0, 0.25)";
 const VMG_PLOT_NEG_FILL = "rgba(160, 0, 0, 0.25)";
 const VMG_GPS_BAD_ACCURACY_M = 20;
 
-const vmgPlotHistory = [];
+const VMG_CASE_KEYS = [
+  "beat-port",
+  "beat-starboard",
+  "reach",
+  "run-port",
+  "run-starboard",
+];
+
+const vmgPlotStates = VMG_CASE_KEYS.reduce((acc, key) => {
+  acc[key] = { history: [], fast: null, lastRaw: null };
+  return acc;
+}, {});
+
 let vmgPlotTauSeconds = VMG_BASELINE_TAU_DEFAULT_SEC;
 let vmgPlotLastSampleTs = null;
-let vmgPlotFast = null;
-let vmgPlotLastRaw = null;
 let vmgSpeedBaseline = null;
 let vmgHeadingBaseline = null;
 let vmgPlotLastRenderAt = 0;
@@ -74,6 +84,21 @@ let vmgMode = "beat";
 let vmgTack = "starboard";
 let vmgSmoothCurrent = true;
 let vmgCapEnabled = true;
+
+function getVmgCaseKey(mode = vmgMode, tack = vmgTack) {
+  if (mode === "reach") return "reach";
+  const safeMode = mode === "run" ? "run" : "beat";
+  const safeTack = tack === "port" ? "port" : "starboard";
+  return `${safeMode}-${safeTack}`;
+}
+
+function getActiveVmgPlotState() {
+  return vmgPlotStates[getVmgCaseKey()];
+}
+
+function forEachVmgPlotState(callback) {
+  VMG_CASE_KEYS.forEach((key) => callback(vmgPlotStates[key], key));
+}
 
 let vmgDeps = {
   setImuEnabled: null,
@@ -96,7 +121,8 @@ function renderVmgPlot() {
   ctx.fillStyle = VMG_PLOT_BG;
   ctx.fillRect(0, 0, width, height);
 
-  if (!Number.isFinite(vmgPlotLastSampleTs)) {
+  const activeState = getActiveVmgPlotState();
+  if (!Number.isFinite(vmgPlotLastSampleTs) || !activeState.history.length) {
     ctx.fillStyle = VMG_PLOT_FG;
     ctx.font = VMG_PLOT_FONT_MAIN;
     ctx.fillText("No data", VMG_PLOT_NO_DATA_X, VMG_PLOT_NO_DATA_Y);
@@ -108,7 +134,7 @@ function renderVmgPlot() {
   const endTs = vmgPlotLastSampleTs;
   const startTs = endTs - windowMs;
 
-  const samples = vmgPlotHistory.filter(
+  const samples = activeState.history.filter(
     (sample) => sample && Number.isFinite(sample.ts) && sample.ts >= startTs
   );
 
@@ -303,24 +329,24 @@ function resetVmgEstimator() {
   resetVmgPlotHistory();
 }
 
-function getVmgSignedTwaRad() {
-  if (vmgMode === "reach") return 0;
-  const twaDeg = vmgMode === "run" ? getVmgDownTwaDegrees() : getVmgTwaDegrees();
-  const signed = vmgTack === "starboard" ? twaDeg : -twaDeg;
-  return toRadians(signed);
-}
-
-function computeVmgImprovementPercent(speed, headingDeg, headingBaselineDeg, speedBaseline) {
+function computeVmgImprovementPercent(
+  speed,
+  headingDeg,
+  headingBaselineDeg,
+  speedBaseline,
+  targetTwaRad
+) {
   if (!Number.isFinite(speed)) return null;
   if (!Number.isFinite(headingDeg) || !Number.isFinite(headingBaselineDeg)) return null;
   if (!Number.isFinite(speedBaseline) || Math.abs(speedBaseline) < VMG_EVAL_MIN_BASE) return null;
-  const dv = speed - speedBaseline;
+  if (!Number.isFinite(targetTwaRad)) return null;
   const dhDeg = normalizeDeltaDegrees(headingDeg - headingBaselineDeg);
   const dhRad = toRadians(dhDeg);
-  const twaRad = getVmgSignedTwaRad();
-  const headingTerm = Math.cos(dhRad) - Math.tan(twaRad) * Math.sin(dhRad);
-  const speedRatio = 1 + dv / speedBaseline;
-  const ratio = speedRatio * headingTerm;
+  const cosTarget = Math.cos(targetTwaRad);
+  if (!Number.isFinite(cosTarget) || Math.abs(cosTarget) < 1e-6) return null;
+  const baselineVmg = speedBaseline * cosTarget;
+  const instantVmg = speed * Math.cos(targetTwaRad + dhRad);
+  const ratio = instantVmg / baselineVmg;
   if (!Number.isFinite(ratio)) return null;
   return (ratio - 1) * 100;
 }
@@ -405,7 +431,7 @@ function setVmgMode(mode) {
       normalized === "run" ? "true" : "false"
     );
   }
-  resetVmgEstimator();
+  requestVmgPlotRender({ force: true });
 }
 
 function setVmgTack(tack) {
@@ -419,7 +445,7 @@ function setVmgTack(tack) {
   if (els.vmgTackPort) {
     els.vmgTackPort.setAttribute("aria-pressed", isPort ? "true" : "false");
   }
-  resetVmgEstimator();
+  requestVmgPlotRender({ force: true });
 }
 
 function bindVmgEvents() {
@@ -627,10 +653,12 @@ function requestVmgPlotRender(options = {}) {
 }
 
 function resetVmgPlotHistory() {
-  vmgPlotHistory.length = 0;
+  forEachVmgPlotState((state) => {
+    state.history.length = 0;
+    state.fast = null;
+    state.lastRaw = null;
+  });
   vmgPlotLastSampleTs = null;
-  vmgPlotFast = null;
-  vmgPlotLastRaw = null;
   vmgSpeedBaseline = null;
   vmgHeadingBaseline = null;
   requestVmgPlotRender({ force: true });
@@ -672,33 +700,46 @@ function applyFirstOrderFilter(prevValue, nextValue, dtSec, tauSec) {
   if (!Number.isFinite(nextValue)) return prevValue;
   if (!Number.isFinite(tauSec) || tauSec <= 0) return nextValue;
   if (!Number.isFinite(prevValue)) return nextValue;
-  const alpha = 1 - Math.exp(-dtSec / tauSec);
+  const alpha = dtSec / (tauSec + dtSec);
   return prevValue + alpha * (nextValue - prevValue);
 }
 
-function recordVmgPlotSample(value, timestampMs) {
-  if (!Number.isFinite(value)) return;
-  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  vmgPlotHistory.push({ ts, value });
-  vmgPlotLastSampleTs = ts;
-  const cutoff = ts - (getVmgPlotWindowSeconds() * 1000 + VMG_PLOT_HISTORY_PAD_MS);
-  while (vmgPlotHistory.length && vmgPlotHistory[0].ts < cutoff) {
-    vmgPlotHistory.shift();
-  }
-  requestVmgPlotRender();
+function applyHeadingBaselineFilter(prevHeading, nextHeading, dtSec, tauSec) {
+  if (!Number.isFinite(nextHeading)) return prevHeading;
+  if (!Number.isFinite(tauSec) || tauSec <= 0) return nextHeading;
+  if (!Number.isFinite(prevHeading)) return nextHeading;
+  const alpha = dtSec / (tauSec + dtSec);
+  const delta = normalizeDeltaDegrees(nextHeading - prevHeading);
+  return prevHeading + alpha * delta;
 }
 
-function updateLatestVmgPlotSample(value, timestampMs) {
+function recordVmgPlotSample(state, value, timestampMs, requestRender = true) {
   if (!Number.isFinite(value)) return;
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
-  const last = vmgPlotHistory[vmgPlotHistory.length - 1];
+  state.history.push({ ts, value });
+  vmgPlotLastSampleTs = ts;
+  const cutoff = ts - (getVmgPlotWindowSeconds() * 1000 + VMG_PLOT_HISTORY_PAD_MS);
+  while (state.history.length && state.history[0].ts < cutoff) {
+    state.history.shift();
+  }
+  if (requestRender) {
+    requestVmgPlotRender();
+  }
+}
+
+function updateLatestVmgPlotSample(state, value, timestampMs, requestRender = true) {
+  if (!Number.isFinite(value)) return;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  const last = state.history[state.history.length - 1];
   if (last && last.ts === ts) {
     last.value = value;
     vmgPlotLastSampleTs = ts;
-    requestVmgPlotRender();
+    if (requestRender) {
+      requestVmgPlotRender();
+    }
     return;
   }
-  recordVmgPlotSample(value, ts);
+  recordVmgPlotSample(state, value, ts, requestRender);
 }
 
 function updateVmgPlotFilters(sample, headingDeg, timestampMs) {
@@ -708,38 +749,72 @@ function updateVmgPlotFilters(sample, headingDeg, timestampMs) {
   if (!Number.isFinite(vmgPlotLastSampleTs)) {
     vmgSpeedBaseline = sample.speed;
     vmgHeadingBaseline = headingDeg;
-    vmgPlotFast = 0;
-    vmgPlotLastRaw = 0;
-    updateLatestVmgPlotSample(0, ts);
+    forEachVmgPlotState((state) => {
+      state.fast = 0;
+      state.lastRaw = 0;
+      updateLatestVmgPlotSample(state, 0, ts, false);
+    });
+    requestVmgPlotRender();
     return true;
   }
   const dtSec = Math.max(0, (ts - vmgPlotLastSampleTs) / 1000);
   if (dtSec <= 0) return false;
   const baselineTau = vmgPlotTauSeconds;
   vmgSpeedBaseline = applyFirstOrderFilter(vmgSpeedBaseline, sample.speed, dtSec, baselineTau);
-  vmgHeadingBaseline = applyFirstOrderFilter(vmgHeadingBaseline, headingDeg, dtSec, baselineTau);
-  const rawImprovement = computeVmgImprovementPercent(
-    sample.speed,
-    headingDeg,
+  vmgHeadingBaseline = applyHeadingBaselineFilter(
     vmgHeadingBaseline,
-    vmgSpeedBaseline
+    headingDeg,
+    dtSec,
+    baselineTau
   );
-  const warmup = !Number.isFinite(rawImprovement);
-  if (warmup) {
-    updateLatestVmgPlotSample(0, ts);
+  if (!Number.isFinite(vmgSpeedBaseline) || Math.abs(vmgSpeedBaseline) < VMG_EVAL_MIN_BASE) {
+    forEachVmgPlotState((state) => {
+      state.fast = 0;
+      state.lastRaw = 0;
+      updateLatestVmgPlotSample(state, 0, ts, false);
+    });
+    requestVmgPlotRender();
     return true;
   }
-  vmgPlotLastRaw = rawImprovement;
-  if (vmgSmoothCurrent) {
+
+  const upTwaRad = toRadians(getVmgTwaDegrees());
+  const downTwaRad = toRadians(getVmgDownTwaDegrees());
+  const targetMap = {
+    "beat-port": -upTwaRad,
+    "beat-starboard": upTwaRad,
+    reach: 0,
+    "run-port": -downTwaRad,
+    "run-starboard": downTwaRad,
+  };
   const fastTau = Math.max(VMG_FAST_TAU_MIN_SEC, baselineTau * VMG_FAST_TAU_FACTOR);
-    vmgPlotFast = applyFirstOrderFilter(vmgPlotFast, rawImprovement, dtSec, fastTau);
-  } else {
-    vmgPlotFast = rawImprovement;
-  }
-  const capped = vmgCapEnabled
-    ? clamp(vmgPlotFast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
-    : vmgPlotFast;
-  updateLatestVmgPlotSample(Number.isFinite(capped) ? capped : 0, ts);
+
+  forEachVmgPlotState((state, key) => {
+    const targetRad = targetMap[key];
+    const rawImprovement = computeVmgImprovementPercent(
+      sample.speed,
+      headingDeg,
+      vmgHeadingBaseline,
+      vmgSpeedBaseline,
+      targetRad
+    );
+    if (!Number.isFinite(rawImprovement)) {
+      state.fast = 0;
+      state.lastRaw = 0;
+      updateLatestVmgPlotSample(state, 0, ts, false);
+      return;
+    }
+    state.lastRaw = rawImprovement;
+    if (vmgSmoothCurrent) {
+      state.fast = applyFirstOrderFilter(state.fast, rawImprovement, dtSec, fastTau);
+    } else {
+      state.fast = rawImprovement;
+    }
+    const capped = vmgCapEnabled
+      ? clamp(state.fast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+      : state.fast;
+    updateLatestVmgPlotSample(state, Number.isFinite(capped) ? capped : 0, ts, false);
+  });
+  requestVmgPlotRender();
   return false;
 }
 
@@ -777,24 +852,26 @@ function updateVmgCapToggle() {
 
 function applyVmgSmoothSetting() {
   if (!Number.isFinite(vmgPlotLastSampleTs)) return;
-  if (!Number.isFinite(vmgPlotLastRaw)) return;
-  vmgPlotFast = vmgPlotLastRaw;
+  const state = getActiveVmgPlotState();
+  if (!Number.isFinite(state.lastRaw)) return;
+  state.fast = state.lastRaw;
   const value = vmgCapEnabled
-    ? clamp(vmgPlotFast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
-    : vmgPlotFast;
-  updateLatestVmgPlotSample(Number.isFinite(value) ? value : 0, vmgPlotLastSampleTs);
+    ? clamp(state.fast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : state.fast;
+  updateLatestVmgPlotSample(state, Number.isFinite(value) ? value : 0, vmgPlotLastSampleTs);
 }
 
 function applyVmgCapSetting() {
   if (!Number.isFinite(vmgPlotLastSampleTs)) return;
-  if (!Number.isFinite(vmgPlotLastRaw)) return;
+  const state = getActiveVmgPlotState();
+  if (!Number.isFinite(state.lastRaw)) return;
   if (!vmgSmoothCurrent) {
-    vmgPlotFast = vmgPlotLastRaw;
+    state.fast = state.lastRaw;
   }
   const value = vmgCapEnabled
-    ? clamp(vmgPlotFast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
-    : vmgPlotFast;
-  updateLatestVmgPlotSample(Number.isFinite(value) ? value : 0, vmgPlotLastSampleTs);
+    ? clamp(state.fast, -VMG_EVAL_MAX_GAIN, VMG_EVAL_MAX_GAIN)
+    : state.fast;
+  updateLatestVmgPlotSample(state, Number.isFinite(value) ? value : 0, vmgPlotLastSampleTs);
 }
 
 export {

@@ -49,3 +49,8 @@ Instructions for coding agents working in this repo.
 - After every `\\part{}`, `\\section{}`, or `\\subsection{}`, include a short lead-in paragraph describing what follows.
 - Avoid bullet lists unless strictly necessary; prefer prose.
   - When a list is necessary, keep it short and explain the point in surrounding text.
+- When introducing formulas, present the equations first and explain each symbol inline in the following text.
+- Use `flalign` for displayed equations with a leading `\hspace{5em}` so they are not flush to the margin.
+- Align around `=` with `&`, and include a right-aligned unit column using `&&` in every displayed equation.
+- Wrap units in `\left[ \right]` in the right-aligned unit column.
+- Add `\label{...}` to each displayed equation and reference it with `\eqref{...}` in the surrounding text.
