@@ -8,6 +8,7 @@ import {
   unwrapHeadingDegrees,
   resizeCanvasToCssPixels,
   formatWindowSeconds,
+  renderSignedLinePlot,
   headingFromVelocity,
 } from "../../core/common.js";
 import { canUseKalmanHeading } from "../../core/heading.js";
@@ -145,165 +146,31 @@ function renderVmgPlot() {
     return;
   }
 
-  let maxAbs = 0;
-  samples.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.value)) return;
-    maxAbs = Math.max(maxAbs, Math.abs(sample.value));
-  });
-  if (!Number.isFinite(maxAbs) || maxAbs <= 0) {
-    maxAbs = VMG_PLOT_SCALE_STEP;
-  } else {
-    maxAbs = Math.max(
-      VMG_PLOT_SCALE_STEP,
-      Math.ceil(maxAbs / VMG_PLOT_SCALE_STEP) * VMG_PLOT_SCALE_STEP
-    );
-  }
   const labelMargin = VMG_PLOT_LABEL_MARGIN;
   const plotLeft = Math.min(labelMargin, Math.max(0, width - VMG_PLOT_LABEL_CLAMP_INSET));
   const plotRight = Math.max(plotLeft + VMG_PLOT_MIN_WIDTH, width - VMG_PLOT_RIGHT_INSET);
   const plotWidth = Math.max(VMG_PLOT_MIN_WIDTH, plotRight - plotLeft);
-  const centerY = height / 2;
-  const maxBar = Math.max(VMG_PLOT_MIN_HALF_HEIGHT, centerY - VMG_PLOT_PADDING);
-  const yScale = maxBar / maxAbs;
-
-  const gridStep =
-    maxAbs >= VMG_PLOT_GRID_THRESHOLD ? VMG_PLOT_GRID_LARGE : VMG_PLOT_GRID_SMALL;
-  const maxGrid = Math.floor(maxAbs / gridStep) * gridStep;
-  if (maxGrid >= gridStep) {
-    ctx.save();
-    ctx.strokeStyle = VMG_PLOT_FG;
-    ctx.lineWidth = VMG_PLOT_GRID_LINE_WIDTH;
-    ctx.setLineDash(VMG_PLOT_GRID_DASH);
-    for (let value = gridStep; value <= maxGrid; value += gridStep) {
-      const dy = value * yScale;
-      const yUp = centerY - dy;
-      const yDown = centerY + dy;
-      [yUp, yDown].forEach((y) => {
-        if (!Number.isFinite(y) || y < 0 || y > height) return;
-        ctx.beginPath();
-        ctx.moveTo(plotLeft, y);
-        ctx.lineTo(plotRight, y);
-        ctx.stroke();
-      });
-    }
-    ctx.restore();
-  }
-
-  const points = [];
-  samples.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.value)) return;
-    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
-    const x = plotLeft + t * plotWidth;
-    const y = centerY - sample.value * yScale;
-    points.push({ x, y, value: sample.value });
+  const plotInfo = renderSignedLinePlot(ctx, {
+    samples,
+    startTs,
+    endTs,
+    rect: { left: plotLeft, right: plotRight, top: 0, bottom: height },
+    orientation: "horizontal",
+    scaleStep: VMG_PLOT_SCALE_STEP,
+    gridStepSmall: VMG_PLOT_GRID_SMALL,
+    gridStepLarge: VMG_PLOT_GRID_LARGE,
+    gridStepThreshold: VMG_PLOT_GRID_THRESHOLD,
+    gridDash: VMG_PLOT_GRID_DASH,
+    padding: VMG_PLOT_PADDING,
+    minHalfExtent: VMG_PLOT_MIN_HALF_HEIGHT,
+    colors: { fg: VMG_PLOT_FG, posFill: VMG_PLOT_POS_FILL, negFill: VMG_PLOT_NEG_FILL },
+    lineWidth: VMG_PLOT_SERIES_LINE_WIDTH,
+    zeroLineWidth: VMG_PLOT_ZERO_LINE_WIDTH,
+    pointSize: VMG_PLOT_POINT_SIZE,
+    showGrid: true,
+    lineBySign: false,
   });
-
-  const fillArea = (sign, fillStyle) => {
-    if (!points.length) return;
-    ctx.save();
-    ctx.fillStyle = fillStyle;
-    ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < points.length; i += 1) {
-      const point = points[i];
-      const prev = i > 0 ? points[i - 1] : null;
-      const isOnSide = sign > 0 ? point.value >= 0 : point.value <= 0;
-      const wasOnSide = prev
-        ? sign > 0
-          ? prev.value >= 0
-          : prev.value <= 0
-        : false;
-
-      if (!prev) {
-        if (isOnSide) {
-          ctx.moveTo(point.x, centerY);
-          ctx.lineTo(point.x, point.y);
-          started = true;
-        }
-        continue;
-      }
-
-      if (wasOnSide && isOnSide) {
-        ctx.lineTo(point.x, point.y);
-        continue;
-      }
-
-      if (wasOnSide && !isOnSide) {
-        const denom = prev.value - point.value;
-        const tCross = Number.isFinite(denom) && denom !== 0 ? prev.value / denom : 0;
-        const xCross = prev.x + clamp(tCross, 0, 1) * (point.x - prev.x);
-        ctx.lineTo(xCross, centerY);
-        ctx.closePath();
-        started = false;
-        continue;
-      }
-
-      if (!wasOnSide && isOnSide) {
-        const denom = prev.value - point.value;
-        const tCross = Number.isFinite(denom) && denom !== 0 ? prev.value / denom : 0;
-        const xCross = prev.x + clamp(tCross, 0, 1) * (point.x - prev.x);
-        ctx.moveTo(xCross, centerY);
-        ctx.lineTo(point.x, point.y);
-        started = true;
-      }
-    }
-    if (started) {
-      const last = points[points.length - 1];
-      ctx.lineTo(last.x, centerY);
-      ctx.closePath();
-    }
-    ctx.fill();
-    ctx.restore();
-  };
-
-  fillArea(1, VMG_PLOT_POS_FILL);
-  fillArea(-1, VMG_PLOT_NEG_FILL);
-
-  ctx.save();
-  ctx.strokeStyle = VMG_PLOT_FG;
-  ctx.lineWidth = VMG_PLOT_SERIES_LINE_WIDTH;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  let started = false;
-  let pointCount = 0;
-  let lastX = null;
-  let lastY = null;
-  points.forEach((point) => {
-    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
-    const x = point.x;
-    const y = point.y;
-    pointCount += 1;
-    lastX = x;
-    lastY = y;
-    if (!started) {
-      ctx.moveTo(x, y);
-      started = true;
-    } else {
-      ctx.lineTo(x, y);
-    }
-  });
-  if (started) {
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  if (pointCount === 1 && Number.isFinite(lastX) && Number.isFinite(lastY)) {
-    ctx.save();
-    ctx.fillStyle = VMG_PLOT_FG;
-    const halfPoint = VMG_PLOT_POINT_SIZE / 2;
-    ctx.fillRect(lastX - halfPoint, lastY - halfPoint, VMG_PLOT_POINT_SIZE, VMG_PLOT_POINT_SIZE);
-    ctx.restore();
-  }
-
-  ctx.save();
-  ctx.strokeStyle = VMG_PLOT_FG;
-  ctx.lineWidth = VMG_PLOT_ZERO_LINE_WIDTH;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(plotLeft, centerY);
-  ctx.lineTo(plotRight, centerY);
-  ctx.stroke();
-  ctx.restore();
+  if (!plotInfo) return;
 
   ctx.save();
   ctx.fillStyle = VMG_PLOT_FG;
@@ -311,6 +178,10 @@ function renderVmgPlot() {
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   const labelX = Math.max(VMG_PLOT_LABEL_MIN_X, plotLeft - VMG_PLOT_LABEL_GAP);
+  const centerY = plotInfo.centerY;
+  const yScale = plotInfo.scale;
+  const gridStep = plotInfo.gridStep;
+  const maxGrid = plotInfo.maxGrid;
   ctx.fillText("0%", labelX, centerY);
   for (let value = gridStep; value <= maxGrid; value += gridStep) {
     const dy = value * yScale;

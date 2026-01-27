@@ -1,15 +1,12 @@
 import { els } from "../../ui/dom.js";
 import { state } from "../../core/state.js";
-import { toRadians } from "../../core/geo.js";
 import {
   clamp,
   normalizeDeltaDegrees,
   normalizeHeadingDegrees,
-  meanHeadingDegreesFromSinCos,
-  circularMeanDegrees,
   resizeCanvasToCssPixels,
-  renderDeviationBarPlot,
   formatWindowSeconds,
+  renderSignedLinePlot,
 } from "../../core/common.js";
 import {
   getHeadingSampleForMode,
@@ -19,18 +16,29 @@ import {
 
 const LIFTER_DEFAULT_WINDOW_SECONDS = 300;
 const LIFTER_MIN_SPEED = 0.5;
-const LIFTER_HISTORY_MAX_MS = 2 * 60 * 60 * 1000;
-const LIFTER_BIN_COUNT = 60;
-const lifterHistory = [];
+const LIFTER_PLOT_HISTORY_PAD_MS = 5000;
+const LIFTER_PLOT_RENDER_INTERVAL_MS = 200;
+const LIFTER_PLOT_PADDING = 10;
+const LIFTER_PLOT_MIN_HALF_WIDTH = 1;
+const LIFTER_PLOT_MIN_HEIGHT = 1;
+const LIFTER_PLOT_MIN_SCALE_DEG = 2;
+const LIFTER_PLOT_LINE_WIDTH = 2;
+const LIFTER_PLOT_FONT_MAIN = "16px sans-serif";
+const LIFTER_PLOT_BG = "#ffffff";
+const LIFTER_PLOT_FG = "#000000";
+const LIFTER_PLOT_POS_FILL = "rgba(0, 120, 0, 0.25)";
+const LIFTER_PLOT_NEG_FILL = "rgba(160, 0, 0, 0.25)";
+const LIFTER_PLOT_POS_LINE = "rgb(0, 120, 0)";
+const LIFTER_PLOT_NEG_LINE = "rgb(160, 0, 0)";
+
+const lifterPlotHistory = [];
 let lifterWindowSeconds = LIFTER_DEFAULT_WINDOW_SECONDS;
 let lifterLastSampleTs = null;
-let lifterBinDurationMs = Math.round((LIFTER_DEFAULT_WINDOW_SECONDS * 1000) / LIFTER_BIN_COUNT);
-let lifterLastBinId = null;
 let lifterLastRenderAt = 0;
 let lifterRenderTimer = null;
-const lifterBins = new Map();
 let lifterLastRawPosition = null;
 let lifterHeadingSource = "kalman";
+let lifterHeadingBaseline = null;
 
 let lifterDeps = {
   setHeadingSourcePreference: null,
@@ -56,75 +64,10 @@ function syncLifterWindowUi() {
   }
 }
 
-function getLifterBinDurationMs(seconds = lifterWindowSeconds) {
-  const safeSeconds = clampLifterWindowSeconds(seconds);
-  const windowMs = safeSeconds * 1000;
-  return Math.max(1, Math.round(windowMs / LIFTER_BIN_COUNT));
-}
-
-function getLifterBinId(timestampMs, binDurationMs = lifterBinDurationMs) {
-  const ts = Number.isFinite(timestampMs) ? timestampMs : 0;
-  const duration = Number.isFinite(binDurationMs) && binDurationMs > 0 ? binDurationMs : 1;
-  return Math.floor(ts / duration);
-}
-
-function rebuildLifterBins() {
-  lifterBins.clear();
-  lifterBinDurationMs = getLifterBinDurationMs(lifterWindowSeconds);
-  if (!Number.isFinite(lifterLastSampleTs)) {
-    lifterLastBinId = null;
-    return;
-  }
-  lifterLastBinId = getLifterBinId(lifterLastSampleTs);
-  lifterHistory.forEach((sample) => {
-    if (!sample) return;
-    if (!Number.isFinite(sample.ts) || !Number.isFinite(sample.heading)) return;
-    const binId = getLifterBinId(sample.ts);
-    let bin = lifterBins.get(binId);
-    if (!bin) {
-      bin = { sumSin: 0, sumCos: 0, count: 0 };
-      lifterBins.set(binId, bin);
-    }
-    const rad = toRadians(sample.heading);
-    bin.sumSin += Math.sin(rad);
-    bin.sumCos += Math.cos(rad);
-    bin.count += 1;
-  });
-}
-
-function updateLifterBinsWithSample(timestampMs, headingDegrees, cutoffTs) {
-  const nextDuration = getLifterBinDurationMs(lifterWindowSeconds);
-  if (nextDuration !== lifterBinDurationMs) {
-    rebuildLifterBins();
-    return;
-  }
-  const binId = getLifterBinId(timestampMs);
-  let bin = lifterBins.get(binId);
-  if (!bin) {
-    bin = { sumSin: 0, sumCos: 0, count: 0 };
-    lifterBins.set(binId, bin);
-  }
-  const rad = toRadians(headingDegrees);
-  bin.sumSin += Math.sin(rad);
-  bin.sumCos += Math.cos(rad);
-  bin.count += 1;
-
-  const previousBinId = lifterLastBinId;
-  lifterLastBinId = binId;
-  if (!Number.isFinite(previousBinId) || previousBinId === binId) return;
-  if (!Number.isFinite(cutoffTs)) return;
-  const cutoffBinId = getLifterBinId(cutoffTs);
-  for (const key of lifterBins.keys()) {
-    if (key < cutoffBinId) {
-      lifterBins.delete(key);
-    }
-  }
-}
-
 function requestLifterRender(options = {}) {
   if (!document.body.classList.contains("lifter-mode")) return;
   const force = options.force === true;
-  const maxIntervalMs = 1000;
+  const maxIntervalMs = LIFTER_PLOT_RENDER_INTERVAL_MS;
   const now = Date.now();
   const elapsed = now - lifterLastRenderAt;
   if (force || !Number.isFinite(lifterLastRenderAt) || elapsed >= maxIntervalMs) {
@@ -146,24 +89,53 @@ function requestLifterRender(options = {}) {
 }
 
 function resetLifterHistory() {
-  lifterHistory.length = 0;
+  lifterPlotHistory.length = 0;
   lifterLastSampleTs = null;
-  lifterLastBinId = null;
   lifterLastRawPosition = null;
-  lifterBins.clear();
+  lifterHeadingBaseline = null;
+}
+
+function applyHeadingBaselineFilter(prevHeading, nextHeading, dtSec, tauSec) {
+  if (!Number.isFinite(nextHeading)) return prevHeading;
+  if (!Number.isFinite(tauSec) || tauSec <= 0) return nextHeading;
+  if (!Number.isFinite(prevHeading)) return nextHeading;
+  const alpha = dtSec / (tauSec + dtSec);
+  const delta = normalizeDeltaDegrees(nextHeading - prevHeading);
+  return prevHeading + alpha * delta;
+}
+
+function recordLifterPlotSample(value, timestampMs) {
+  if (!Number.isFinite(value)) return;
+  const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  lifterPlotHistory.push({ ts, value });
+  lifterLastSampleTs = ts;
+  const windowMs = clampLifterWindowSeconds(lifterWindowSeconds) * 1000;
+  const cutoff = ts - (windowMs + LIFTER_PLOT_HISTORY_PAD_MS);
+  while (lifterPlotHistory.length && lifterPlotHistory[0].ts < cutoff) {
+    lifterPlotHistory.shift();
+  }
 }
 
 function recordLifterHeadingFromSource(source, heading, timestamp) {
   const safeHeading = normalizeHeadingDegrees(heading);
   if (!Number.isFinite(safeHeading)) return;
   const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
-  lifterHistory.push({ ts, heading: safeHeading });
-  lifterLastSampleTs = ts;
-  const cutoff = ts - LIFTER_HISTORY_MAX_MS;
-  while (lifterHistory.length && lifterHistory[0].ts < cutoff) {
-    lifterHistory.shift();
+  if (!Number.isFinite(lifterLastSampleTs)) {
+    lifterHeadingBaseline = safeHeading;
+  } else {
+    const dtSec = Math.max(0, (ts - lifterLastSampleTs) / 1000);
+    const tauSec = clampLifterWindowSeconds(lifterWindowSeconds);
+    lifterHeadingBaseline = applyHeadingBaselineFilter(
+      lifterHeadingBaseline,
+      safeHeading,
+      dtSec,
+      tauSec
+    );
   }
-  updateLifterBinsWithSample(ts, safeHeading, cutoff);
+  const delta = Number.isFinite(lifterHeadingBaseline)
+    ? normalizeDeltaDegrees(safeHeading - lifterHeadingBaseline)
+    : 0;
+  recordLifterPlotSample(delta, ts);
   requestLifterRender();
 }
 
@@ -201,38 +173,16 @@ function renderLifterPlot() {
   }
 
   if (!Number.isFinite(lifterLastSampleTs)) {
-    ctx.fillStyle = "#000000";
-    ctx.font = "16px sans-serif";
+    ctx.fillStyle = LIFTER_PLOT_FG;
+    ctx.font = LIFTER_PLOT_FONT_MAIN;
     ctx.fillText("No heading", 12, 24);
     return;
   }
 
-  const binCount = LIFTER_BIN_COUNT;
-  const nextDuration = getLifterBinDurationMs(lifterWindowSeconds);
-  if (nextDuration !== lifterBinDurationMs) {
-    rebuildLifterBins();
-  }
-
-  const binDurationMs = lifterBinDurationMs;
-  const lastBinId = getLifterBinId(lifterLastSampleTs, binDurationMs);
-  const startBinId = lastBinId - binCount + 1;
-  const binValues = new Array(binCount).fill(null);
-
-  for (let i = 0; i < binCount; i += 1) {
-    const binId = startBinId + i;
-    const bin = lifterBins.get(binId);
-    if (!bin || !Number.isFinite(bin.count) || bin.count <= 0) continue;
-    const mean = meanHeadingDegreesFromSinCos(bin.sumSin, bin.sumCos);
-    if (!Number.isFinite(mean)) continue;
-    binValues[i] = mean;
-  }
-
-  const activeIndex = binCount - 1;
-  const meanBins = binCount > 1 ? binValues.slice(0, activeIndex) : [];
-  const meanDeg = circularMeanDegrees(meanBins);
+  const meanDeg = normalizeHeadingDegrees(lifterHeadingBaseline);
   if (!Number.isFinite(meanDeg)) {
-    ctx.fillStyle = "#000000";
-    ctx.font = "16px sans-serif";
+    ctx.fillStyle = LIFTER_PLOT_FG;
+    ctx.font = LIFTER_PLOT_FONT_MAIN;
     ctx.fillText("No heading", 12, 24);
     return;
   }
@@ -241,9 +191,41 @@ function renderLifterPlot() {
     els.lifterMeanValue.textContent = `${Math.round(meanDeg)}°`;
   }
 
-  renderDeviationBarPlot(ctx, width, height, binValues, meanDeg, {
-    activeIndex,
-    deltaFn: (value, mean) => normalizeDeltaDegrees(value - mean),
+  const windowSeconds = clampLifterWindowSeconds(lifterWindowSeconds);
+  const windowMs = Math.max(1000, windowSeconds * 1000);
+  const endTs = lifterLastSampleTs;
+  const startTs = endTs - windowMs;
+  const samples = lifterPlotHistory.filter(
+    (sample) => sample && Number.isFinite(sample.ts) && sample.ts >= startTs
+  );
+
+  if (!samples.length) {
+    ctx.fillStyle = LIFTER_PLOT_FG;
+    ctx.font = LIFTER_PLOT_FONT_MAIN;
+    ctx.fillText("No heading", 12, 24);
+    return;
+  }
+
+  renderSignedLinePlot(ctx, {
+    samples,
+    startTs,
+    endTs,
+    rect: { left: 0, right: width, top: 0, bottom: height },
+    orientation: "vertical",
+    scaleStep: LIFTER_PLOT_MIN_SCALE_DEG,
+    padding: LIFTER_PLOT_PADDING,
+    minHalfExtent: LIFTER_PLOT_MIN_HALF_WIDTH,
+    colors: {
+      fg: LIFTER_PLOT_FG,
+      posFill: LIFTER_PLOT_POS_FILL,
+      negFill: LIFTER_PLOT_NEG_FILL,
+      posLine: LIFTER_PLOT_POS_LINE,
+      negLine: LIFTER_PLOT_NEG_LINE,
+    },
+    lineWidth: LIFTER_PLOT_LINE_WIDTH,
+    zeroLineWidth: LIFTER_PLOT_LINE_WIDTH,
+    showGrid: false,
+    lineBySign: true,
   });
 }
 
@@ -278,13 +260,9 @@ function bindLifterEvents() {
   if (els.lifterWindow) {
     lifterWindowSeconds = clampLifterWindowSeconds(els.lifterWindow.value);
     syncLifterWindowUi();
-    lifterBinDurationMs = getLifterBinDurationMs(lifterWindowSeconds);
-    rebuildLifterBins();
     const onWindowChange = () => {
       lifterWindowSeconds = clampLifterWindowSeconds(els.lifterWindow.value);
       syncLifterWindowUi();
-      lifterBinDurationMs = getLifterBinDurationMs(lifterWindowSeconds);
-      rebuildLifterBins();
       requestLifterRender({ force: true });
     };
     els.lifterWindow.addEventListener("input", onWindowChange);
@@ -302,7 +280,6 @@ function bindLifterEvents() {
 
 function enterLifterView() {
   syncLifterWindowUi();
-  rebuildLifterBins();
   requestLifterRender({ force: true });
 }
 
