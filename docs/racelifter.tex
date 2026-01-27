@@ -57,16 +57,18 @@ set to two time constants. The vertical axis runs from oldest samples at the bot
 ``now'' at the top. The
 horizontal axis is the signed deviation \(\Delta h\): line segments are green when they
 fall to the right of center and red when they fall to the left, with the area to the
-centerline filled in the same color. The center line marks zero deviation.
+centerline filled in the same color. The center line marks zero deviation, and vertical
+grid lines mark every \(5^\circ\) of deviation.
 
 \subsection{Heading sources and device motion}
 
 This subsection summarizes which heading signal is used for the baseline and plot.
 
-RaceLifter uses the same heading pipeline as the rest of the app, but the source is chosen
-explicitly for the lifter view: either the boat model/Kalman heading or a GPS-derived
-heading. When GPS is selected, the lifter only updates when the reported speed is above
-the minimum threshold, keeping low-speed noise from dominating the baseline.
+RaceLifter always uses the Kalman-derived heading, matching the pipeline used in
+RacePerformance. The device motion sensor toggle controls whether yaw-rate integration is
+blended into the Kalman heading between GPS updates. Regardless of that choice, the
+lifter only updates when the reported speed is above the minimum threshold, keeping
+low-speed noise from dominating the baseline.
 
 \subsection{Debug playback}
 

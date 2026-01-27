@@ -54,22 +54,23 @@ export const lifterView = `
     <div class="lifter-settings-panel">
       <h2>Lifter settings</h2>
       <div class="lifter-settings-group">
-        <div class="hint">Enhance heading and speed estimate using:</div>
+        <div class="hint">Enhance heading estimate using:</div>
         <button
-          id="lifter-model-toggle"
+          id="lifter-imu-toggle"
           class="check-toggle"
           type="button"
-          aria-pressed="true"
+          aria-pressed="false"
         >
-          <span class="check-label">Boat model</span>
+          <span class="check-label">Device motion sensor</span>
           <span class="check-box" aria-hidden="true"></span>
         </button>
       </div>
       <div class="lifter-settings-group">
         <div class="lifter-control-head">
-          <h2 id="lifter-window-title">Window</h2>
+          <h2 id="lifter-window-title">Baseline smoothing</h2>
           <div id="lifter-window-value" class="lifter-window-value">5 min</div>
         </div>
+        <div class="hint">Higher = steadier baseline.</div>
         <input
           id="lifter-window"
           class="lifter-window-slider"

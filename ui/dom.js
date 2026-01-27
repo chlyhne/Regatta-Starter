@@ -78,7 +78,7 @@ const els = {
   vmgCapToggle: document.getElementById("vmg-cap-toggle"),
   vmgImuModal: document.getElementById("vmg-imu-modal"),
   closeVmgImu: document.getElementById("close-vmg-imu"),
-  lifterModelToggle: document.getElementById("lifter-model-toggle"),
+  lifterImuToggle: document.getElementById("lifter-imu-toggle"),
   vmgGpsIcon: document.getElementById("vmg-gps-icon"),
   vmgPlot: document.getElementById("vmg-plot"),
   vmgCanvas: document.getElementById("vmg-canvas"),

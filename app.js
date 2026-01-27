@@ -25,7 +25,6 @@ import {
   saveSettings as saveSettingsToStorage,
 } from "./core/settings.js";
 import { KALMAN_TUNING } from "./core/tuning.js";
-import { getHeadingSourcePreference, normalizeHeadingSource } from "./core/heading.js";
 import { getNowMs } from "./core/clock.js";
 import {
   applyVmgSettings,
@@ -45,10 +44,10 @@ import {
   bindLifterEvents,
   getLifterSettingsSnapshot,
   initLifter,
+  updateLifterImuToggle,
   resetLifterHistory,
   recordLifterHeadingFromPosition,
   requestLifterRender,
-  setLifterHeadingSource,
 } from "./features/lifter/lifter.js";
 import { clamp, headingFromVelocity } from "./core/common.js";
 import {
@@ -694,6 +693,7 @@ async function setImuEnabled(enabled) {
     stopImu();
     updateDebugControls();
     updateVmgImuToggle();
+    updateLifterImuToggle();
     return;
   }
   if (!isImuCalibrated()) {
@@ -712,6 +712,7 @@ async function setImuEnabled(enabled) {
   }
   updateDebugControls();
   updateVmgImuToggle();
+  updateLifterImuToggle();
 }
 
 function updateImuCalibrationUi() {
@@ -850,6 +851,7 @@ async function startImuCalibration() {
     stopImu();
     updateDebugControls();
     updateVmgImuToggle();
+    updateLifterImuToggle();
   }
   const granted = await requestImuPermission();
   if (!granted) {
@@ -893,30 +895,6 @@ function releaseWakeLock() {
   state.wakeLock = null;
 }
 
-function updateHeadingSourceToggles() {
-  const lifterSource = getHeadingSourcePreference("lifter");
-  if (els.lifterModelToggle) {
-    els.lifterModelToggle.setAttribute(
-      "aria-pressed",
-      lifterSource === "kalman" ? "true" : "false"
-    );
-  }
-}
-
-function setHeadingSourcePreference(mode, source) {
-  const normalized = normalizeHeadingSource(source);
-  if (!state.headingSourceByMode) {
-    state.headingSourceByMode = {};
-  }
-  if (state.headingSourceByMode[mode] === normalized) return;
-  state.headingSourceByMode[mode] = normalized;
-  saveSettings();
-  updateHeadingSourceToggles();
-  if (mode === "lifter") {
-    setLifterHeadingSource(normalized);
-  }
-}
-
 function loadSettings() {
   const settings = loadSettingsFromStorage();
   state.line = settings.line;
@@ -926,7 +904,6 @@ function loadSettings() {
   state.debugGpsEnabled = settings.debugGpsEnabled;
   state.useKalman = true;
   state.headingSourceByMode = settings.headingSourceByMode;
-  setLifterHeadingSource(normalizeHeadingSource(state.headingSourceByMode?.lifter));
   state.bowOffsetMeters = settings.bowOffsetMeters;
   state.boatLengthMeters = settings.boatLengthMeters;
   state.boatModel = settings.boatModel || "";
@@ -982,8 +959,8 @@ function updateInputs() {
   syncStarterInputs();
   syncSettingsInputs();
   syncVmgWindowUi();
-  updateHeadingSourceToggles();
   updateVmgImuToggle();
+  updateLifterImuToggle();
   updateVmgSmoothToggle();
   updateVmgCapToggle();
   updateStatusUnitLabels();
@@ -1029,6 +1006,7 @@ function prepareReplaySession(info = {}) {
   requestLifterRender({ force: true });
   updateDebugControls();
   updateVmgImuToggle();
+  updateLifterImuToggle();
 }
 
 function resumeFromReplay() {
@@ -1047,6 +1025,7 @@ function resumeFromReplay() {
   replayPrevImuEnabled = false;
   updateDebugControls();
   updateVmgImuToggle();
+  updateLifterImuToggle();
 }
 
 function recordSpeedSample(speed, timestamp) {
@@ -1313,8 +1292,7 @@ initVmg({
   saveSettings,
 });
 initLifter({
-  setHeadingSourcePreference,
-  updateHeadingSourceToggles,
+  setImuEnabled,
 });
 bindEvents();
 initGeolocation();

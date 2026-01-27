@@ -2,17 +2,14 @@ import { els } from "../../ui/dom.js";
 import { state } from "../../core/state.js";
 import {
   clamp,
+  headingFromVelocity,
   normalizeDeltaDegrees,
   normalizeHeadingDegrees,
   resizeCanvasToCssPixels,
   formatWindowSeconds,
   renderSignedLinePlot,
 } from "../../core/common.js";
-import {
-  getHeadingSampleForMode,
-  getHeadingSourcePreference,
-  normalizeHeadingSource,
-} from "../../core/heading.js";
+import { canUseKalmanHeading } from "../../core/heading.js";
 
 const LIFTER_DEFAULT_WINDOW_SECONDS = 300;
 const LIFTER_MIN_SPEED = 0.5;
@@ -37,13 +34,10 @@ let lifterWindowSeconds = LIFTER_DEFAULT_WINDOW_SECONDS;
 let lifterLastSampleTs = null;
 let lifterLastRenderAt = 0;
 let lifterRenderTimer = null;
-let lifterLastRawPosition = null;
-let lifterHeadingSource = "kalman";
 let lifterHeadingBaseline = null;
 
 let lifterDeps = {
-  setHeadingSourcePreference: null,
-  updateHeadingSourceToggles: null,
+  setImuEnabled: null,
 };
 
 function initLifter(deps = {}) {
@@ -92,7 +86,6 @@ function requestLifterRender(options = {}) {
 function resetLifterHistory() {
   lifterPlotHistory.length = 0;
   lifterLastSampleTs = null;
-  lifterLastRawPosition = null;
   lifterHeadingBaseline = null;
 }
 
@@ -120,7 +113,7 @@ function recordLifterPlotSample(value, timestampMs) {
   }
 }
 
-function recordLifterHeadingFromSource(source, heading, timestamp) {
+function recordLifterHeadingFromSource(heading, timestamp) {
   const safeHeading = normalizeHeadingDegrees(heading);
   if (!Number.isFinite(safeHeading)) return;
   const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
@@ -143,22 +136,21 @@ function recordLifterHeadingFromSource(source, heading, timestamp) {
   requestLifterRender();
 }
 
-function recordLifterHeadingFromPosition(position) {
-  const sample = getHeadingSampleForMode("lifter", position, lifterLastRawPosition);
-  if (!sample) return;
-  if (sample.source === "gps") {
-    lifterLastRawPosition = position;
-  }
-  if (!Number.isFinite(sample.speed) || sample.speed < LIFTER_MIN_SPEED) return;
-  recordLifterHeadingFromSource(sample.source, sample.heading, sample.ts);
+function getLifterSample(position) {
+  if (!position || !position.coords) return null;
+  if (!canUseKalmanHeading(position)) return null;
+  if (!state.velocity || !Number.isFinite(state.speed)) return null;
+  const heading = headingFromVelocity(state.velocity);
+  if (!Number.isFinite(heading)) return null;
+  const ts = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+  return { speed: state.speed, heading, ts };
 }
 
-function setLifterHeadingSource(nextSource) {
-  const normalized = normalizeHeadingSource(nextSource);
-  if (normalized === lifterHeadingSource) return;
-  lifterHeadingSource = normalized;
-  resetLifterHistory();
-  requestLifterRender({ force: true });
+function recordLifterHeadingFromPosition(position) {
+  const sample = getLifterSample(position);
+  if (!sample) return;
+  if (!Number.isFinite(sample.speed) || sample.speed < LIFTER_MIN_SPEED) return;
+  recordLifterHeadingFromSource(sample.heading, sample.ts);
 }
 
 function renderLifterPlot() {
@@ -230,7 +222,9 @@ function renderLifterPlot() {
     },
     lineWidth: LIFTER_PLOT_LINE_WIDTH,
     zeroLineWidth: LIFTER_PLOT_LINE_WIDTH,
-    showGrid: false,
+    showGrid: true,
+    gridStepSmall: 5,
+    gridStepLarge: 5,
     lineBySign: true,
   });
 }
@@ -242,11 +236,17 @@ function setLifterSettingsOpen(open) {
   }
   document.body.classList.toggle("lifter-settings-open", next);
   if (next) {
-    if (lifterDeps.updateHeadingSourceToggles) {
-      lifterDeps.updateHeadingSourceToggles();
-    }
+    updateLifterImuToggle();
     syncLifterWindowUi();
   }
+}
+
+function setLifterImuWarningOpen(open) {
+  const next = Boolean(open);
+  if (els.vmgImuModal) {
+    els.vmgImuModal.setAttribute("aria-hidden", next ? "false" : "true");
+  }
+  document.body.classList.toggle("vmg-imu-open", next);
 }
 
 function bindLifterEvents() {
@@ -275,11 +275,16 @@ function bindLifterEvents() {
     els.lifterWindow.addEventListener("change", onWindowChange);
   }
 
-  if (els.lifterModelToggle) {
-    els.lifterModelToggle.addEventListener("click", () => {
-      if (!lifterDeps.setHeadingSourcePreference) return;
-      const enabled = getHeadingSourcePreference("lifter") === "kalman";
-      lifterDeps.setHeadingSourcePreference("lifter", enabled ? "gps" : "kalman");
+  if (els.lifterImuToggle) {
+    els.lifterImuToggle.addEventListener("click", async () => {
+      if (!lifterDeps.setImuEnabled) return;
+      await lifterDeps.setImuEnabled(!state.imuEnabled);
+      updateLifterImuToggle();
+      if (state.imuEnabled) {
+        setLifterImuWarningOpen(true);
+      } else {
+        setLifterImuWarningOpen(false);
+      }
     });
   }
 }
@@ -287,6 +292,12 @@ function bindLifterEvents() {
 function enterLifterView() {
   syncLifterWindowUi();
   requestLifterRender({ force: true });
+}
+
+function updateLifterImuToggle() {
+  if (els.lifterImuToggle) {
+    els.lifterImuToggle.setAttribute("aria-pressed", state.imuEnabled ? "true" : "false");
+  }
 }
 
 function leaveLifterView() {
@@ -299,7 +310,7 @@ function leaveLifterView() {
 function getLifterSettingsSnapshot() {
   return {
     windowSeconds: lifterWindowSeconds,
-    headingSource: lifterHeadingSource,
+    imuEnabled: state.imuEnabled,
   };
 }
 
@@ -307,10 +318,10 @@ export {
   initLifter,
   bindLifterEvents,
   getLifterSettingsSnapshot,
+  updateLifterImuToggle,
   resetLifterHistory,
   recordLifterHeadingFromPosition,
   requestLifterRender,
-  setLifterHeadingSource,
   setLifterSettingsOpen,
   enterLifterView,
   leaveLifterView,
