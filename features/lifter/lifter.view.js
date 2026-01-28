@@ -43,9 +43,6 @@ export const lifterView = `
       <div class="lifter-plot" aria-label="Heading history plot">
         <canvas id="lifter-canvas"></canvas>
       </div>
-      <div class="lifter-mean" aria-label="Heading">
-        Heading <span id="lifter-mean-value">--°</span>
-      </div>
     </section>
 
   </div>

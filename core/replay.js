@@ -157,24 +157,6 @@ function normalizeCoords(payload) {
   };
 }
 
-function normalizeVector(vector) {
-  if (!vector) return null;
-  const x = toNumber(vector.x);
-  const y = toNumber(vector.y);
-  const z = toNumber(vector.z);
-  if (x === null && y === null && z === null) return null;
-  return { x, y, z };
-}
-
-function normalizeRotation(rotation) {
-  if (!rotation) return null;
-  const alpha = toNumber(rotation.alpha);
-  const beta = toNumber(rotation.beta);
-  const gamma = toNumber(rotation.gamma);
-  if (alpha === null && beta === null && gamma === null) return null;
-  return { alpha, beta, gamma };
-}
-
 function buildReplayEventsFromRecords(records) {
   const events = [];
   const derived = [];
@@ -202,27 +184,21 @@ function buildReplayEventsFromRecords(records) {
       return;
     }
     if (record.type === "imu") {
+      return;
+    }
+    if (record.type === "imu-delta") {
       const payload = record.payload || {};
       const deviceTimeMs = toNumber(payload.deviceTimeMs);
       const tsDevice = Number.isFinite(deviceTimeMs) ? deviceTimeMs : toNumber(record.ts);
       if (!Number.isFinite(tsDevice)) return;
-      const rotation = normalizeRotation(
-        payload.rotationRate || payload.rotationDeg || payload.rotation
+      const deltaHeadingRad = toNumber(
+        payload.deltaHeadingRad ?? payload.deltaRad ?? payload.delta
       );
-      const accel = normalizeVector(payload.acceleration);
-      const accelGravity = normalizeVector(
-        payload.accelerationIncludingGravity || payload.gravity
-      );
-      if (!rotation || !accelGravity) return;
+      if (!Number.isFinite(deltaHeadingRad)) return;
       events.push({
-        type: "imu",
+        type: "imu-delta",
         tsDevice,
-        eventTimeMs: toNumber(payload.eventTimeMs),
-        intervalMs: toNumber(payload.intervalMs),
-        rotationRate: rotation,
-        acceleration: accel,
-        accelerationIncludingGravity: accelGravity,
-        mapping: payload.mapping || null,
+        deltaHeadingRad,
       });
       return;
     }
@@ -275,7 +251,7 @@ function buildReplayEventsFromRecords(records) {
   });
 
   const hasGps = events.some((event) => event.type === "gps");
-  const hasImu = events.some((event) => event.type === "imu");
+  const hasImu = events.some((event) => event.type === "imu-delta");
   const output = events.length ? events : derived;
   return {
     events: finalizeReplayEvents(output),
@@ -297,7 +273,7 @@ function finalizeReplayEvents(events) {
     if (event.type === "gps" || event.type === "derived") {
       event.gpsOffsetMs = event.offsetMs;
     }
-    if (event.type === "imu") {
+    if (event.type === "imu-delta") {
       event.imuOffsetMs = event.offsetMs;
     }
   });

@@ -57,6 +57,7 @@ const state = {
     lastTimestamp: null,
     lastRotation: null,
     lastYawRate: null,
+    pendingHeadingDeltaRad: 0,
   },
   debugIntervalId: null,
   geoWatchId: null,

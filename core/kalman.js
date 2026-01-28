@@ -422,19 +422,22 @@ function predictKalmanState(targetTimestamp) {
   return formatKalmanOutput(filter, timestamp);
 }
 
-function applyImuYawRate(yawRateRad, dtSeconds) {
-  // Integrate yaw rate to keep heading responsive between GPS updates.
-  // We rotate the velocity state so the model and heading stay aligned.
-  if (!state.imuEnabled || !state.kalman) return;
-  if (!Number.isFinite(yawRateRad) || !Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
+function applyImuHeadingDelta(deltaRad) {
+  // Apply a pre-integrated heading delta and rotate velocity to match.
+  if (!state.kalman) return;
+  if (!Number.isFinite(deltaRad) || deltaRad === 0) return;
   const filter = state.kalman;
   if (!Number.isFinite(filter.headingRad)) {
     filter.headingRad = getVelocityHeadingRad(filter.x[2], filter.x[3]) ?? 0;
   }
-  const delta = yawRateRad * dtSeconds;
-  if (!Number.isFinite(delta) || delta === 0) return;
-  filter.headingRad = normalizeAngleRad(filter.headingRad + delta);
-  rotateVelocityState(filter, delta);
+  filter.headingRad = normalizeAngleRad(filter.headingRad + deltaRad);
+  rotateVelocityState(filter, deltaRad);
+}
+
+function applyImuYawRate(yawRateRad, dtSeconds) {
+  // Integrate yaw rate to keep heading responsive between GPS updates.
+  if (!Number.isFinite(yawRateRad) || !Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
+  applyImuHeadingDelta(yawRateRad * dtSeconds);
 }
 
 function getKalmanPositionCovariance() {
@@ -558,6 +561,7 @@ function getKalmanPredictedPositionCovariance(seconds) {
 export {
   applyKalmanFilter,
   applyImuYawRate,
+  applyImuHeadingDelta,
   predictKalmanState,
   getKalmanPositionCovariance,
   getKalmanProcessPositionCovariance,

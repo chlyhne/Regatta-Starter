@@ -7,7 +7,7 @@ import {
 } from "./core/state.js";
 import { unlockAudio } from "./core/audio.js";
 import { applyForwardOffset, toRadians } from "./core/geo.js";
-import { applyKalmanFilter, applyImuYawRate, predictKalmanState } from "./core/kalman.js";
+import { applyKalmanFilter, applyImuHeadingDelta, predictKalmanState } from "./core/kalman.js";
 import { recordTrackPoints, renderTrack } from "./features/starter/track.js";
 import { updateGPSDisplay, updateDebugControls } from "./ui/gps-ui.js";
 import {
@@ -339,23 +339,14 @@ function applyReplayEvent(sample, playback = {}) {
     handlePosition(position, { source: "replay" });
     return;
   }
+  if (sample.type === "imu-delta") {
+    const delta = Number(sample.deltaHeadingRad);
+    if (Number.isFinite(delta)) {
+      queueImuHeadingDelta(delta);
+    }
+    return;
+  }
   if (sample.type === "imu") {
-    const timestamp = Number.isFinite(playback.imuTimeMs)
-      ? playback.imuTimeMs
-      : playback.deviceTimeMs;
-    const event = {
-      accelerationIncludingGravity: sample.accelerationIncludingGravity || null,
-      acceleration: sample.acceleration || null,
-      rotationRate: sample.rotationRate || null,
-      timeStamp: timestamp,
-      interval: Number.isFinite(sample.intervalMs) ? sample.intervalMs : null,
-    };
-    processImuEvent(event, {
-      force: true,
-      mapping: sample.mapping || null,
-      record: false,
-      deviceTimeMs: playback.deviceTimeMs,
-    });
     return;
   }
   if (sample.type === "derived") {
@@ -553,51 +544,20 @@ function readImuSample(event) {
   };
 }
 
-function formatImuVector(vector) {
-  if (!vector) return null;
-  const x = Number(vector.x);
-  const y = Number(vector.y);
-  const z = Number(vector.z);
-  return {
-    x: Number.isFinite(x) ? x : null,
-    y: Number.isFinite(y) ? y : null,
-    z: Number.isFinite(z) ? z : null,
-  };
-}
-
-function formatImuRotation(rotation) {
-  if (!rotation) return null;
-  const alpha = Number(rotation.alpha);
-  const beta = Number(rotation.beta);
-  const gamma = Number(rotation.gamma);
-  return {
-    alpha: Number.isFinite(alpha) ? alpha : null,
-    beta: Number.isFinite(beta) ? beta : null,
-    gamma: Number.isFinite(gamma) ? gamma : null,
-  };
-}
-
-function buildImuRecordPayload(event, sample, yawRate, dtRaw, mapping, deviceTimeMs) {
-  return {
-    deviceTimeMs: Number.isFinite(deviceTimeMs) ? deviceTimeMs : null,
-    eventTimeMs: Number.isFinite(event?.timeStamp) ? event.timeStamp : null,
-    intervalMs: Number.isFinite(event?.interval) ? event.interval : null,
-    rotationRate: formatImuRotation(event?.rotationRate),
-    rotationDeg: formatImuRotation(sample?.rotation),
-    acceleration: formatImuVector(event?.acceleration),
-    accelerationIncludingGravity: formatImuVector(event?.accelerationIncludingGravity),
-    gravity: sample?.gravity ? formatImuVector(sample.gravity) : null,
-    yawRateRad: Number.isFinite(yawRate) ? yawRate : null,
-    dtSeconds: Number.isFinite(dtRaw) ? dtRaw : null,
-    mapping: mapping || null,
-  };
-}
-
 function resetImuState() {
   state.imu.gravity = null;
   state.imu.lastTimestamp = null;
   state.imu.lastRotation = null;
   state.imu.lastYawRate = null;
+  state.imu.pendingHeadingDeltaRad = 0;
+}
+
+function queueImuHeadingDelta(deltaRad) {
+  if (!Number.isFinite(deltaRad) || deltaRad === 0) return;
+  const current = Number.isFinite(state.imu.pendingHeadingDeltaRad)
+    ? state.imu.pendingHeadingDeltaRad
+    : 0;
+  state.imu.pendingHeadingDeltaRad = current + deltaRad;
 }
 
 function processImuEvent(event, options = {}) {
@@ -629,14 +589,7 @@ function processImuEvent(event, options = {}) {
   const dtClamp = KALMAN_TUNING.imu.dtClampSeconds;
   const dt = clamp(dtRaw, dtClamp.min, dtClamp.max);
   if (dt <= 0) return;
-  applyImuYawRate(yawRate, dt);
-  if (options.record !== false && isRecordingEnabled()) {
-    const deviceTimeMs = Number.isFinite(options.deviceTimeMs)
-      ? options.deviceTimeMs
-      : Date.now();
-    const payload = buildImuRecordPayload(event, sample, yawRate, dtRaw, mapping, deviceTimeMs);
-    recordSample("imu", payload, deviceTimeMs);
-  }
+  queueImuHeadingDelta(yawRate * dt);
 }
 
 function handleDeviceMotion(event) {
@@ -1116,11 +1069,25 @@ function startKalmanPredictionLoop() {
   if (kalmanPredictTimer) return;
   kalmanPredictTimer = setInterval(() => {
     if (!state.kalman) return;
-    const prediction = predictKalmanState(getNowMs());
+    const now = getNowMs();
+    if (!Number.isFinite(now)) return;
+    if (now <= state.kalman.lastTs || now <= lastKalmanPredictionTs) {
+      return;
+    }
+    const pendingDelta = Number.isFinite(state.imu.pendingHeadingDeltaRad)
+      ? state.imu.pendingHeadingDeltaRad
+      : 0;
+    state.imu.pendingHeadingDeltaRad = 0;
+    if (pendingDelta !== 0) {
+      applyImuHeadingDelta(pendingDelta);
+    }
+    const prediction = predictKalmanState(now);
     if (!prediction) return;
-    const ts = prediction.position?.timestamp || Date.now();
-    if (ts === lastKalmanPredictionTs) return;
+    const ts = prediction.position?.timestamp || now;
     lastKalmanPredictionTs = ts;
+    if (isRecordingEnabled() && state.imuEnabled) {
+      recordSample("imu-delta", { deltaHeadingRad: pendingDelta }, ts);
+    }
     applyKalmanEstimate(prediction, { source: "predict" });
   }, KALMAN_PREDICT_INTERVAL_MS);
 }

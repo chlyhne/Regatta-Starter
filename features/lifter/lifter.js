@@ -21,6 +21,7 @@ const LIFTER_PLOT_MIN_RANGE_DEG = 2;
 const LIFTER_PLOT_LINE_WIDTH = 2;
 const LIFTER_PLOT_POINT_SIZE = 4;
 const LIFTER_PLOT_FONT_MAIN = "16px sans-serif";
+const LIFTER_PLOT_FONT_LABEL = "12px sans-serif";
 const LIFTER_PLOT_FG = "#000000";
 
 const lifterPlotHistory = [];
@@ -140,27 +141,11 @@ function renderLifterPlot() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  if (els.lifterMeanValue) {
-    els.lifterMeanValue.textContent = "--°";
-  }
-
   if (!Number.isFinite(lifterLastSampleTs)) {
     ctx.fillStyle = LIFTER_PLOT_FG;
     ctx.font = LIFTER_PLOT_FONT_MAIN;
     ctx.fillText("No heading", 12, 24);
     return;
-  }
-
-  const headingDeg = normalizeHeadingDegrees(lifterLastHeading);
-  if (!Number.isFinite(headingDeg)) {
-    ctx.fillStyle = LIFTER_PLOT_FG;
-    ctx.font = LIFTER_PLOT_FONT_MAIN;
-    ctx.fillText("No heading", 12, 24);
-    return;
-  }
-
-  if (els.lifterMeanValue) {
-    els.lifterMeanValue.textContent = `${Math.round(headingDeg)}°`;
   }
 
   const windowSeconds = clampLifterWindowSeconds(lifterWindowSeconds);
@@ -214,6 +199,10 @@ function renderLifterPlot() {
     ctx.strokeStyle = LIFTER_PLOT_FG;
     ctx.lineWidth = LIFTER_PLOT_LINE_WIDTH;
     ctx.setLineDash(LIFTER_PLOT_GRID_DASH);
+    ctx.fillStyle = LIFTER_PLOT_FG;
+    ctx.font = LIFTER_PLOT_FONT_LABEL;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     const firstGrid = Math.ceil(minValue / LIFTER_PLOT_GRID_STEP_DEG) * LIFTER_PLOT_GRID_STEP_DEG;
     for (let value = firstGrid; value <= maxValue; value += LIFTER_PLOT_GRID_STEP_DEG) {
       const x = mapX(value);
@@ -222,6 +211,10 @@ function renderLifterPlot() {
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
+      const label = normalizeHeadingDegrees(value);
+      if (Number.isFinite(label)) {
+        ctx.fillText(`${Math.round(label)}°`, x, 6);
+      }
     }
     ctx.restore();
   }
