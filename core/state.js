@@ -38,6 +38,7 @@ const state = {
   imuCalibration: null,
   diagUploadToken: "",
   imuEnabled: false,
+  gpsEnabled: true,
   replay: {
     active: false,
     loading: false,

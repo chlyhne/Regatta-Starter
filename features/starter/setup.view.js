@@ -13,9 +13,15 @@ export const setupView = `
         </button>
       </div>
       <div class="head-right">
-        <div class="gps-status">
-          <span>GPS</span>
-          <div id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></div>
+        <div class="sensor-row">
+          <button class="status-toggle" type="button" data-sensor="gps" aria-pressed="true">
+            <span>GPS</span>
+            <span id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></span>
+          </button>
+          <button class="status-toggle" type="button" data-sensor="imu" aria-pressed="false">
+            <span>IMU</span>
+            <span id="imu-icon" class="imu-icon" aria-label="IMU status" title="IMU status"></span>
+          </button>
         </div>
       </div>
     </div>

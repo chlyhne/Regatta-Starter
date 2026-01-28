@@ -15,25 +15,27 @@ export const lifterView = `
         </div>
         <div class="head-right">
           <button id="open-lifter-settings" class="icon-btn" type="button" aria-label="Lifter settings">
-            <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
-              <path
-                d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-width="2"
-              />
-            </svg>
+            <img src="settings-cog.svg" class="icon-gear" alt="" aria-hidden="true" />
           </button>
-          <div class="gps-status">
-            <span>GPS</span>
-            <div
-              id="lifter-gps-icon"
-              class="gps-icon"
-              aria-label="GPS status"
-              title="GPS status"
-            ></div>
+          <div class="sensor-row">
+            <button class="status-toggle" type="button" data-sensor="gps" aria-pressed="true">
+              <span>GPS</span>
+              <span
+                id="lifter-gps-icon"
+                class="gps-icon"
+                aria-label="GPS status"
+                title="GPS status"
+              ></span>
+            </button>
+            <button class="status-toggle" type="button" data-sensor="imu" aria-pressed="false">
+              <span>IMU</span>
+              <span
+                id="lifter-imu-icon"
+                class="imu-icon"
+                aria-label="IMU status"
+                title="IMU status"
+              ></span>
+            </button>
           </div>
         </div>
       </div>

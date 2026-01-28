@@ -17,12 +17,14 @@ let homeDeps = {
 
 let replayEntries = [];
 let replaySelectedId = null;
+let replayPanelOpen = false;
 
 function initHome(deps = {}) {
   homeDeps = { ...homeDeps, ...deps };
   syncRecordingUi();
   syncReplayUi();
   syncHomeQr();
+  setReplayPanelOpen(false);
 }
 
 function syncRecordingUi() {
@@ -98,6 +100,17 @@ function syncReplayUi() {
     els.replayLoop.setAttribute("aria-pressed", replay.loop ? "true" : "false");
   }
   syncReplaySpeedUi(replay.speed);
+}
+
+function setReplayPanelOpen(open) {
+  replayPanelOpen = Boolean(open);
+  if (els.replayPanel) {
+    els.replayPanel.hidden = !replayPanelOpen;
+    els.replayPanel.setAttribute("aria-hidden", replayPanelOpen ? "false" : "true");
+  }
+  if (els.toggleReplayPanel) {
+    els.toggleReplayPanel.setAttribute("aria-pressed", replayPanelOpen ? "true" : "false");
+  }
 }
 
 function buildHomeQrUrl() {
@@ -261,6 +274,12 @@ function bindHomeEvents() {
       if (homeDeps.setView) {
         homeDeps.setView("track");
       }
+    });
+  }
+
+  if (els.toggleReplayPanel) {
+    els.toggleReplayPanel.addEventListener("click", () => {
+      setReplayPanelOpen(!replayPanelOpen);
     });
   }
 

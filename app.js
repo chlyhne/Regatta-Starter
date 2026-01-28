@@ -4,7 +4,7 @@ import { unlockAudio } from "./core/audio.js";
 import { applyForwardOffset, toRadians } from "./core/geo.js";
 import { applyKalmanFilter, applyImuHeadingDelta, predictKalmanState } from "./core/kalman.js";
 import { recordTrackPoints, renderTrack } from "./features/starter/track.js";
-import { updateGPSDisplay } from "./ui/gps-ui.js";
+import { updateGPSDisplay, updateImuDisplay } from "./ui/gps-ui.js";
 import {
   updateStatusUnitLabels,
   updateRaceMetricLabels,
@@ -119,7 +119,43 @@ function updateViewportHeight() {
   document.documentElement.style.setProperty("--app-height", `${height}px`);
 }
 
+function updateSensorToggleButtons() {
+  const gpsButtons = Array.from(els.gpsStatusToggles || []);
+  const imuButtons = Array.from(els.imuStatusToggles || []);
+  const disable = state.replay.active || state.replay.loading;
+  gpsButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", state.gpsEnabled ? "true" : "false");
+    button.disabled = disable;
+  });
+  imuButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", state.imuEnabled ? "true" : "false");
+    button.disabled = disable;
+  });
+}
+
+function bindSensorStatusEvents() {
+  const gpsButtons = Array.from(els.gpsStatusToggles || []);
+  const imuButtons = Array.from(els.imuStatusToggles || []);
+  gpsButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (state.replay.active || state.replay.loading) return;
+      setGpsEnabled(!state.gpsEnabled);
+    });
+  });
+  imuButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (state.replay.active || state.replay.loading) return;
+      await setImuEnabled(!state.imuEnabled);
+      updateSensorToggleButtons();
+    });
+  });
+}
+
 function markGpsUnavailable() {
+  if (!state.gpsEnabled) {
+    updateGPSDisplay();
+    return;
+  }
   const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   icons.forEach((icon) => {
@@ -624,6 +660,8 @@ async function setImuEnabled(enabled) {
     stopImu();
     updateVmgImuToggle();
     updateLifterImuToggle();
+    updateImuDisplay();
+    updateSensorToggleButtons();
     return;
   }
   if (!isImuCalibrated()) {
@@ -642,6 +680,8 @@ async function setImuEnabled(enabled) {
   }
   updateVmgImuToggle();
   updateLifterImuToggle();
+  updateImuDisplay();
+  updateSensorToggleButtons();
 }
 
 function updateImuCalibrationUi() {
@@ -928,6 +968,8 @@ function prepareReplaySession(info = {}) {
   requestLifterRender({ force: true });
   updateVmgImuToggle();
   updateLifterImuToggle();
+  updateImuDisplay();
+  updateSensorToggleButtons();
 }
 
 function resumeFromReplay() {
@@ -940,6 +982,8 @@ function resumeFromReplay() {
   replayPrevImuEnabled = false;
   updateVmgImuToggle();
   updateLifterImuToggle();
+  updateImuDisplay();
+  updateSensorToggleButtons();
 }
 
 function recordSpeedSample(speed, timestamp) {
@@ -952,6 +996,27 @@ function recordSpeedSample(speed, timestamp) {
   }
 }
 
+function setGpsEnabled(enabled) {
+  const next = Boolean(enabled);
+  if (next === state.gpsEnabled) return;
+  state.gpsEnabled = next;
+  if (!next) {
+    stopRealGps();
+    clearGpsRetryTimer();
+    updateGPSDisplay();
+    updateSensorToggleButtons();
+    return;
+  }
+  if (state.replay.active || state.replay.loading) {
+    updateGPSDisplay();
+    updateSensorToggleButtons();
+    return;
+  }
+  setGpsMode(state.gpsMode, { force: true });
+  updateGPSDisplay();
+  updateSensorToggleButtons();
+}
+
 function setGpsMode(mode, options = {}) {
   const prev = state.gpsMode;
   const next = mode === "race" ? "race" : "setup";
@@ -960,6 +1025,12 @@ function setGpsMode(mode, options = {}) {
   const recordingHighAccuracy = isRecordingEnabled();
   const wantsHighAccuracy = highAccuracy || recordingHighAccuracy;
   state.gpsMode = next;
+  if (!state.gpsEnabled) {
+    stopRealGps();
+    clearGpsRetryTimer();
+    updateGPSDisplay();
+    return;
+  }
   if (state.replay.active) {
     return;
   }
@@ -1063,6 +1134,10 @@ function handlePosition(position, options = {}) {
 }
 
 function handlePositionError(err) {
+  if (!state.gpsEnabled) {
+    updateGPSDisplay();
+    return;
+  }
   const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   icons.forEach((icon) => {
@@ -1076,7 +1151,7 @@ function handlePositionError(err) {
 }
 
 function initGeolocation() {
-  if (state.replay.active) {
+  if (state.replay.active || !state.gpsEnabled) {
     return;
   }
   setGpsMode(state.gpsMode, { force: true });
@@ -1096,6 +1171,7 @@ function bindEvents() {
   bindSettingsEvents();
   bindVmgEvents();
   bindLifterEvents();
+  bindSensorStatusEvents();
   window.addEventListener("hashchange", syncViewFromHash);
 }
 
@@ -1106,7 +1182,7 @@ function tick() {
   if (document.body.classList.contains("track-mode")) {
     renderTrack();
   }
-  if (isGpsStale()) {
+  if (state.gpsEnabled && isGpsStale()) {
     scheduleGpsRetry(handlePosition, handlePositionError, markGpsUnavailable);
   }
   requestAnimationFrame(() => {
@@ -1190,7 +1266,9 @@ registerServiceWorker();
 clearNoCacheParam();
 updateStartDisplay();
 updateGPSDisplay();
+updateImuDisplay();
 updateImuCalibrationUi();
+updateSensorToggleButtons();
 syncViewFromHash();
 tick();
 updateViewportHeight();

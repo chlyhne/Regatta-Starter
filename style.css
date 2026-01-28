@@ -883,6 +883,7 @@ body {
   width: 20px;
   height: 20px;
   display: block;
+  object-fit: contain;
 }
 
 .icon-btn .icon-boat {
@@ -957,12 +958,42 @@ body {
   letter-spacing: 0.12em;
 }
 
-.gps-icon {
+.sensor-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  min-height: 44px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.status-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gps-icon,
+.imu-icon {
   width: 18px;
   height: 18px;
   border-radius: 50%;
   border: 2px solid #000000;
-  background: #ff0000;
+  background: #ffffff;
 }
 
 .gps-icon.ok {
@@ -975,6 +1006,18 @@ body {
 
 .gps-icon.bad {
   background: #ff0000;
+}
+
+.gps-icon.off {
+  background: #ffffff;
+}
+
+.imu-icon.ok {
+  background: #00ff00;
+}
+
+.imu-icon.off {
+  background: #ffffff;
 }
 
 .eyebrow {
@@ -1760,6 +1803,11 @@ button:active {
   display: grid;
   gap: 8px;
   z-index: 2;
+}
+
+.track-title {
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 
 .track-view canvas {

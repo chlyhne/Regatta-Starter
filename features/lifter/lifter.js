@@ -18,11 +18,13 @@ const LIFTER_PLOT_PADDING = 10;
 const LIFTER_PLOT_GRID_STEP_DEG = 10;
 const LIFTER_PLOT_GRID_DASH = [6, 8];
 const LIFTER_PLOT_MIN_RANGE_DEG = 2;
+const LIFTER_PLOT_MAX_RANGE_DEG = 45;
 const LIFTER_PLOT_LINE_WIDTH = 2;
 const LIFTER_PLOT_POINT_SIZE = 4;
 const LIFTER_PLOT_FONT_MAIN = "16px sans-serif";
 const LIFTER_PLOT_FONT_LABEL = "12px sans-serif";
 const LIFTER_PLOT_FG = "#000000";
+const LIFTER_PLOT_LABEL_AREA_PX = 28;
 
 const lifterPlotHistory = [];
 let lifterWindowSeconds = LIFTER_DEFAULT_WINDOW_SECONDS;
@@ -136,6 +138,7 @@ function renderLifterPlot() {
   const canvasInfo = resizeCanvasToCssPixels(els.lifterCanvas);
   if (!canvasInfo) return;
   const { ctx, width, height } = canvasInfo;
+  const plotHeight = Math.max(0, height - LIFTER_PLOT_LABEL_AREA_PX);
 
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#ffffff";
@@ -163,29 +166,28 @@ function renderLifterPlot() {
     return;
   }
 
-  let minValue = null;
-  let maxValue = null;
-  samples.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.value)) return;
-    if (!Number.isFinite(minValue) || sample.value < minValue) minValue = sample.value;
-    if (!Number.isFinite(maxValue) || sample.value > maxValue) maxValue = sample.value;
-  });
+  let latestValue = null;
+  for (let i = samples.length - 1; i >= 0; i -= 1) {
+    const value = samples[i]?.value;
+    if (Number.isFinite(value)) {
+      latestValue = value;
+      break;
+    }
+  }
 
-  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+  if (!Number.isFinite(latestValue)) {
     ctx.fillStyle = LIFTER_PLOT_FG;
     ctx.font = LIFTER_PLOT_FONT_MAIN;
     ctx.fillText("No heading", 12, 24);
     return;
   }
 
+  let minValue = latestValue - LIFTER_PLOT_MAX_RANGE_DEG;
+  let maxValue = latestValue + LIFTER_PLOT_MAX_RANGE_DEG;
   if (minValue === maxValue) {
     const pad = Math.max(1, LIFTER_PLOT_MIN_RANGE_DEG / 2);
     minValue -= pad;
     maxValue += pad;
-  } else if (maxValue - minValue < LIFTER_PLOT_MIN_RANGE_DEG) {
-    const center = (minValue + maxValue) / 2;
-    minValue = center - LIFTER_PLOT_MIN_RANGE_DEG / 2;
-    maxValue = center + LIFTER_PLOT_MIN_RANGE_DEG / 2;
   }
 
   const left = LIFTER_PLOT_PADDING;
@@ -209,11 +211,11 @@ function renderLifterPlot() {
       if (!Number.isFinite(x) || x < 0 || x > width) continue;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
+      ctx.lineTo(x, plotHeight);
       ctx.stroke();
       const label = normalizeHeadingDegrees(value);
       if (Number.isFinite(label)) {
-        ctx.fillText(`${Math.round(label)}°`, x, 6);
+        ctx.fillText(`${Math.round(label)}°`, x, plotHeight + 6);
       }
     }
     ctx.restore();
@@ -231,7 +233,7 @@ function renderLifterPlot() {
   samples.forEach((sample) => {
     if (!sample || !Number.isFinite(sample.value) || !Number.isFinite(sample.ts)) return;
     const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
-    const y = height - t * height;
+    const y = plotHeight - t * plotHeight;
     const x = mapX(sample.value);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     lastX = x;

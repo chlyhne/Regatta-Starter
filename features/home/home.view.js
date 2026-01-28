@@ -35,16 +35,7 @@ export const homeView = `
           </svg>
         </button>
         <button id="open-settings" class="icon-btn" type="button" aria-label="Settings">
-          <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
-            <path
-              d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-width="2"
-            />
-          </svg>
+          <img src="settings-cog.svg" class="icon-gear" alt="" aria-hidden="true" />
         </button>
       </div>
       <div class="head-right"></div>
@@ -66,10 +57,13 @@ export const homeView = `
       <button id="open-track" class="home-entry brand-btn brand-mark brand-light" type="button">
         <span class="brand-label">GPS</span><span class="brand-accent">Track</span>
       </button>
+      <button id="toggle-replay-panel" class="home-entry brand-btn brand-mark brand-light" type="button" aria-pressed="false">
+        <span class="brand-label">Race</span><span class="brand-accent">Replay</span>
+      </button>
     </div>
   </section>
 
-  <section class="panel">
+  <section id="replay-panel" class="panel" aria-hidden="true" hidden>
     <h2>Replay</h2>
     <div class="row stack">
       <button id="replay-open" type="button">Replay data</button>
@@ -99,7 +93,6 @@ export const homeView = `
   </section>
 
   <section id="home-qr-panel" class="panel home-qr" aria-hidden="true">
-    <h2>QR code</h2>
     <div class="home-qr-wrap">
       <img id="home-qr" class="home-qr-img" alt="QR code for app URL" />
     </div>
