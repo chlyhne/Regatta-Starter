@@ -3,7 +3,7 @@ const STORE_NAME = "chunks";
 const DB_VERSION = 2;
 const DEFAULT_MAX_QUEUE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_CHUNK_BYTES = 512 * 1024;
-const FLUSH_INTERVAL_MS = 2000;
+const FLUSH_INTERVAL_MS = 20000;
 const UPLOAD_RETRY_DELAY_MS = 10000;
 const DEVICE_ID_KEY = "racetimer-device-id";
 
