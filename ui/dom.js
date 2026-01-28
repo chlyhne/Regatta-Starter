@@ -112,6 +112,8 @@ const els = {
   replaySpeed: document.getElementById("replay-speed"),
   replaySpeedValue: document.getElementById("replay-speed-value"),
   replayLoop: document.getElementById("replay-loop"),
+  homeQrPanel: document.getElementById("home-qr-panel"),
+  homeQr: document.getElementById("home-qr"),
   replayModal: document.getElementById("replay-modal"),
   replayList: document.getElementById("replay-list"),
   replayConfirm: document.getElementById("replay-confirm"),

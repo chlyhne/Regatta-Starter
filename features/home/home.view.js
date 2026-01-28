@@ -95,5 +95,12 @@ export const homeView = `
       <span class="check-box" aria-hidden="true"></span>
     </button>
   </section>
+
+  <section id="home-qr-panel" class="panel home-qr" aria-hidden="true">
+    <h2>QR code</h2>
+    <div class="home-qr-wrap">
+      <img id="home-qr" class="home-qr-img" alt="QR code for app URL" />
+    </div>
+  </section>
 </section>
 `;

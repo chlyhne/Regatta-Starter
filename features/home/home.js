@@ -23,6 +23,7 @@ function initHome(deps = {}) {
   homeDeps = { ...homeDeps, ...deps };
   syncRecordingUi();
   syncReplayUi();
+  syncHomeQr();
 }
 
 function syncRecordingUi() {
@@ -98,6 +99,25 @@ function syncReplayUi() {
     els.replayLoop.setAttribute("aria-pressed", replay.loop ? "true" : "false");
   }
   syncReplaySpeedUi(replay.speed);
+}
+
+function buildHomeQrUrl() {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.searchParams.delete("nocache");
+  return url.toString();
+}
+
+function syncHomeQr() {
+  if (!els.homeQrPanel || !els.homeQr) return;
+  const show = document.body.classList.contains("debug-mode");
+  els.homeQrPanel.setAttribute("aria-hidden", show ? "false" : "true");
+  if (!show) return;
+  const url = buildHomeQrUrl();
+  const size = 200;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&data=${encodeURIComponent(url)}`;
+  els.homeQr.src = qrUrl;
+  els.homeQr.alt = `QR code for ${url}`;
 }
 
 function renderReplayList() {

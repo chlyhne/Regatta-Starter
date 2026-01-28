@@ -757,6 +757,28 @@ body {
   border-radius: 0;
   padding: 0;
 }
+
+.home-qr {
+  display: none;
+}
+
+.debug-mode .home-qr {
+  display: grid;
+  gap: 16px;
+}
+
+.home-qr-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.home-qr-img {
+  width: 200px;
+  height: 200px;
+  border: 2px solid #000000;
+  background: #ffffff;
+  image-rendering: pixelated;
+}
 .page-head {
   display: grid;
   gap: 14px;
