@@ -3,38 +3,33 @@ import { state } from "../../core/state.js";
 import {
   clamp,
   headingFromVelocity,
-  normalizeDeltaDegrees,
+  unwrapHeadingDegrees,
   normalizeHeadingDegrees,
   resizeCanvasToCssPixels,
   formatWindowSeconds,
-  renderSignedLinePlot,
 } from "../../core/common.js";
 import { canUseKalmanHeading } from "../../core/heading.js";
 
 const LIFTER_DEFAULT_WINDOW_SECONDS = 300;
 const LIFTER_MIN_SPEED = 0.5;
-const LIFTER_PLOT_WINDOW_TAU_FACTOR = 2;
 const LIFTER_PLOT_HISTORY_PAD_MS = 5000;
 const LIFTER_PLOT_RENDER_INTERVAL_MS = 200;
 const LIFTER_PLOT_PADDING = 10;
-const LIFTER_PLOT_MIN_HALF_WIDTH = 1;
-const LIFTER_PLOT_MIN_HEIGHT = 1;
-const LIFTER_PLOT_MIN_SCALE_DEG = 2;
+const LIFTER_PLOT_GRID_STEP_DEG = 10;
+const LIFTER_PLOT_GRID_DASH = [6, 8];
+const LIFTER_PLOT_MIN_RANGE_DEG = 2;
 const LIFTER_PLOT_LINE_WIDTH = 2;
+const LIFTER_PLOT_POINT_SIZE = 4;
 const LIFTER_PLOT_FONT_MAIN = "16px sans-serif";
-const LIFTER_PLOT_BG = "#ffffff";
 const LIFTER_PLOT_FG = "#000000";
-const LIFTER_PLOT_POS_FILL = "rgba(0, 120, 0, 0.25)";
-const LIFTER_PLOT_NEG_FILL = "rgba(160, 0, 0, 0.25)";
-const LIFTER_PLOT_POS_LINE = "rgb(0, 120, 0)";
-const LIFTER_PLOT_NEG_LINE = "rgb(160, 0, 0)";
 
 const lifterPlotHistory = [];
 let lifterWindowSeconds = LIFTER_DEFAULT_WINDOW_SECONDS;
 let lifterLastSampleTs = null;
 let lifterLastRenderAt = 0;
 let lifterRenderTimer = null;
-let lifterHeadingBaseline = null;
+let lifterLastHeading = null;
+let lifterLastHeadingUnwrapped = null;
 
 let lifterDeps = {
   setImuEnabled: null,
@@ -86,16 +81,8 @@ function requestLifterRender(options = {}) {
 function resetLifterHistory() {
   lifterPlotHistory.length = 0;
   lifterLastSampleTs = null;
-  lifterHeadingBaseline = null;
-}
-
-function applyHeadingBaselineFilter(prevHeading, nextHeading, dtSec, tauSec) {
-  if (!Number.isFinite(nextHeading)) return prevHeading;
-  if (!Number.isFinite(tauSec) || tauSec <= 0) return nextHeading;
-  if (!Number.isFinite(prevHeading)) return nextHeading;
-  const alpha = dtSec / (tauSec + dtSec);
-  const delta = normalizeDeltaDegrees(nextHeading - prevHeading);
-  return prevHeading + alpha * delta;
+  lifterLastHeading = null;
+  lifterLastHeadingUnwrapped = null;
 }
 
 function recordLifterPlotSample(value, timestampMs) {
@@ -103,10 +90,7 @@ function recordLifterPlotSample(value, timestampMs) {
   const ts = Number.isFinite(timestampMs) ? timestampMs : Date.now();
   lifterPlotHistory.push({ ts, value });
   lifterLastSampleTs = ts;
-  const windowMs =
-    clampLifterWindowSeconds(lifterWindowSeconds) *
-    LIFTER_PLOT_WINDOW_TAU_FACTOR *
-    1000;
+  const windowMs = clampLifterWindowSeconds(lifterWindowSeconds) * 1000;
   const cutoff = ts - (windowMs + LIFTER_PLOT_HISTORY_PAD_MS);
   while (lifterPlotHistory.length && lifterPlotHistory[0].ts < cutoff) {
     lifterPlotHistory.shift();
@@ -117,22 +101,14 @@ function recordLifterHeadingFromSource(heading, timestamp) {
   const safeHeading = normalizeHeadingDegrees(heading);
   if (!Number.isFinite(safeHeading)) return;
   const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
-  if (!Number.isFinite(lifterLastSampleTs)) {
-    lifterHeadingBaseline = safeHeading;
-  } else {
-    const dtSec = Math.max(0, (ts - lifterLastSampleTs) / 1000);
-    const tauSec = clampLifterWindowSeconds(lifterWindowSeconds);
-    lifterHeadingBaseline = applyHeadingBaselineFilter(
-      lifterHeadingBaseline,
-      safeHeading,
-      dtSec,
-      tauSec
-    );
-  }
-  const delta = Number.isFinite(lifterHeadingBaseline)
-    ? normalizeDeltaDegrees(safeHeading - lifterHeadingBaseline)
-    : 0;
-  recordLifterPlotSample(delta, ts);
+  const unwrapped = unwrapHeadingDegrees(
+    safeHeading,
+    lifterLastHeading,
+    lifterLastHeadingUnwrapped
+  );
+  lifterLastHeading = safeHeading;
+  lifterLastHeadingUnwrapped = unwrapped;
+  recordLifterPlotSample(unwrapped, ts);
   requestLifterRender();
 }
 
@@ -175,8 +151,8 @@ function renderLifterPlot() {
     return;
   }
 
-  const meanDeg = normalizeHeadingDegrees(lifterHeadingBaseline);
-  if (!Number.isFinite(meanDeg)) {
+  const headingDeg = normalizeHeadingDegrees(lifterLastHeading);
+  if (!Number.isFinite(headingDeg)) {
     ctx.fillStyle = LIFTER_PLOT_FG;
     ctx.font = LIFTER_PLOT_FONT_MAIN;
     ctx.fillText("No heading", 12, 24);
@@ -184,12 +160,10 @@ function renderLifterPlot() {
   }
 
   if (els.lifterMeanValue) {
-    els.lifterMeanValue.textContent = `${Math.round(meanDeg)}°`;
+    els.lifterMeanValue.textContent = `${Math.round(headingDeg)}°`;
   }
 
-  const windowSeconds =
-    clampLifterWindowSeconds(lifterWindowSeconds) *
-    LIFTER_PLOT_WINDOW_TAU_FACTOR;
+  const windowSeconds = clampLifterWindowSeconds(lifterWindowSeconds);
   const windowMs = Math.max(1000, windowSeconds * 1000);
   const endTs = lifterLastSampleTs;
   const startTs = endTs - windowMs;
@@ -204,29 +178,88 @@ function renderLifterPlot() {
     return;
   }
 
-  renderSignedLinePlot(ctx, {
-    samples,
-    startTs,
-    endTs,
-    rect: { left: 0, right: width, top: 0, bottom: height },
-    orientation: "vertical",
-    scaleStep: LIFTER_PLOT_MIN_SCALE_DEG,
-    padding: LIFTER_PLOT_PADDING,
-    minHalfExtent: LIFTER_PLOT_MIN_HALF_WIDTH,
-    colors: {
-      fg: LIFTER_PLOT_FG,
-      posFill: LIFTER_PLOT_POS_FILL,
-      negFill: LIFTER_PLOT_NEG_FILL,
-      posLine: LIFTER_PLOT_POS_LINE,
-      negLine: LIFTER_PLOT_NEG_LINE,
-    },
-    lineWidth: LIFTER_PLOT_LINE_WIDTH,
-    zeroLineWidth: LIFTER_PLOT_LINE_WIDTH,
-    showGrid: true,
-    gridStepSmall: 5,
-    gridStepLarge: 5,
-    lineBySign: true,
+  let minValue = null;
+  let maxValue = null;
+  samples.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.value)) return;
+    if (!Number.isFinite(minValue) || sample.value < minValue) minValue = sample.value;
+    if (!Number.isFinite(maxValue) || sample.value > maxValue) maxValue = sample.value;
   });
+
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    ctx.fillStyle = LIFTER_PLOT_FG;
+    ctx.font = LIFTER_PLOT_FONT_MAIN;
+    ctx.fillText("No heading", 12, 24);
+    return;
+  }
+
+  if (minValue === maxValue) {
+    const pad = Math.max(1, LIFTER_PLOT_MIN_RANGE_DEG / 2);
+    minValue -= pad;
+    maxValue += pad;
+  } else if (maxValue - minValue < LIFTER_PLOT_MIN_RANGE_DEG) {
+    const center = (minValue + maxValue) / 2;
+    minValue = center - LIFTER_PLOT_MIN_RANGE_DEG / 2;
+    maxValue = center + LIFTER_PLOT_MIN_RANGE_DEG / 2;
+  }
+
+  const left = LIFTER_PLOT_PADDING;
+  const right = width - LIFTER_PLOT_PADDING;
+  const span = maxValue - minValue;
+  const scale = span > 0 ? (right - left) / span : 0;
+  const mapX = (value) => left + (value - minValue) * scale;
+
+  if (LIFTER_PLOT_GRID_STEP_DEG > 0) {
+    ctx.save();
+    ctx.strokeStyle = LIFTER_PLOT_FG;
+    ctx.lineWidth = LIFTER_PLOT_LINE_WIDTH;
+    ctx.setLineDash(LIFTER_PLOT_GRID_DASH);
+    const firstGrid = Math.ceil(minValue / LIFTER_PLOT_GRID_STEP_DEG) * LIFTER_PLOT_GRID_STEP_DEG;
+    for (let value = firstGrid; value <= maxValue; value += LIFTER_PLOT_GRID_STEP_DEG) {
+      const x = mapX(value);
+      if (!Number.isFinite(x) || x < 0 || x > width) continue;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.strokeStyle = LIFTER_PLOT_FG;
+  ctx.lineWidth = LIFTER_PLOT_LINE_WIDTH;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  let started = false;
+  let pointCount = 0;
+  let lastX = null;
+  let lastY = null;
+  samples.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.value) || !Number.isFinite(sample.ts)) return;
+    const t = clamp((sample.ts - startTs) / windowMs, 0, 1);
+    const y = height - t * height;
+    const x = mapX(sample.value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    lastX = x;
+    lastY = y;
+    pointCount += 1;
+    if (!started) {
+      ctx.moveTo(x, y);
+      started = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  if (started) {
+    ctx.stroke();
+    if (pointCount === 1 && Number.isFinite(lastX) && Number.isFinite(lastY)) {
+      const halfPoint = LIFTER_PLOT_POINT_SIZE / 2;
+      ctx.fillStyle = LIFTER_PLOT_FG;
+      ctx.fillRect(lastX - halfPoint, lastY - halfPoint, LIFTER_PLOT_POINT_SIZE, LIFTER_PLOT_POINT_SIZE);
+    }
+  }
+  ctx.restore();
 }
 
 function setLifterSettingsOpen(open) {

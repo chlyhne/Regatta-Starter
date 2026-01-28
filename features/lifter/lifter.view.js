@@ -43,8 +43,8 @@ export const lifterView = `
       <div class="lifter-plot" aria-label="Heading history plot">
         <canvas id="lifter-canvas"></canvas>
       </div>
-      <div class="lifter-mean" aria-label="Mean heading">
-        Mean <span id="lifter-mean-value">--°</span>
+      <div class="lifter-mean" aria-label="Heading">
+        Heading <span id="lifter-mean-value">--°</span>
       </div>
     </section>
 
@@ -67,10 +67,10 @@ export const lifterView = `
       </div>
       <div class="lifter-settings-group">
         <div class="lifter-control-head">
-          <h2 id="lifter-window-title">Baseline smoothing</h2>
+          <h2 id="lifter-window-title">History window</h2>
           <div id="lifter-window-value" class="lifter-window-value">5 min</div>
         </div>
-        <div class="hint">Higher = steadier baseline.</div>
+        <div class="hint">Longer = more history.</div>
         <input
           id="lifter-window"
           class="lifter-window-slider"
