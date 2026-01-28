@@ -1,12 +1,8 @@
 import { SPEED_UNITS, DISTANCE_UNITS } from "./units.js";
 
 const EARTH_RADIUS = 6371000;
-const DEBUG_GPS_DEFAULT = false;
-const DEBUG_COORDS = { lat: 55.0, lon: 12.0 };
 const COORD_DECIMAL_DIGITS = 10;
 const COORD_DD_DIGITS = 6;
-const DEBUG_SPEED = 3.5;
-const DEBUG_HEADING = 90;
 const BEEP_FREQUENCY = 880;
 const START_BEEP_FREQUENCY = 1320;
 const LONG_BEEP_DURATION_MS = 750;
@@ -37,7 +33,6 @@ const state = {
   boatShape: "",
   boatWeightKg: 0,
   soundEnabled: true,
-  debugGpsEnabled: DEBUG_GPS_DEFAULT,
   useKalman: true,
   headingSourceByMode: { lifter: "kalman" },
   imuCalibration: null,
@@ -59,7 +54,6 @@ const state = {
     lastYawRate: null,
     pendingHeadingDeltaRad: 0,
   },
-  debugIntervalId: null,
   geoWatchId: null,
   gpsRetryTimer: null,
   lastGpsFixAt: null,
@@ -100,12 +94,8 @@ const state = {
 
 export {
   EARTH_RADIUS,
-  DEBUG_GPS_DEFAULT,
-  DEBUG_COORDS,
   COORD_DECIMAL_DIGITS,
   COORD_DD_DIGITS,
-  DEBUG_SPEED,
-  DEBUG_HEADING,
   BEEP_FREQUENCY,
   START_BEEP_FREQUENCY,
   LONG_BEEP_DURATION_MS,

@@ -99,18 +99,5 @@ export const setupView = `
     </div>
   </section>
 
-  <section id="debug-panel" class="panel">
-    <h2>Debug</h2>
-    <div class="row stack">
-      <button id="debug-gps-toggle">Simulate GPS: off</button>
-      <button id="debug-imu-toggle">IMU: OFF</button>
-      <button id="open-track" class="ghost">View GPS track</button>
-      <button id="debug-refresh">Reload</button>
-    </div>
-    <div id="debug-gps-status" class="hint">GPS: --</div>
-    <div id="debug-gps-delta" class="hint">Δ: --</div>
-    <div id="debug-imu-rotation" class="hint">IMU rot: --</div>
-    <div id="debug-imu-yaw" class="hint">IMU yaw: --</div>
-  </section>
 </main>
 `;

@@ -759,10 +759,6 @@ body {
 }
 
 .home-qr {
-  display: none;
-}
-
-.debug-mode .home-qr {
   display: grid;
   gap: 16px;
 }
@@ -860,14 +856,6 @@ body {
   color: #000000;
 }
 
-.home-reload {
-  min-height: 2.2rem;
-  padding: 6px 12px;
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: none;
-  font-weight: 700;
-}
 
 .icon-btn {
   border: 2px solid #000000;
@@ -1119,15 +1107,6 @@ h1 {
   font-weight: 600;
   letter-spacing: 0.04em;
 }
-
-.debug-only {
-  display: none;
-}
-
-.debug-mode .debug-only {
-  display: block;
-}
-
 
 .grid {
   display: grid;

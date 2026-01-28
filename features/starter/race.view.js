@@ -20,7 +20,6 @@ export const raceView = `
     <div class="race-quad race-quad-controls">
       <div class="race-controls">
         <div class="race-stack">
-          <button id="race-imu-toggle" class="race-btn">IMU: OFF</button>
           <div class="race-toggle horizontal race-toggle-full" role="group" aria-label="m/s">
             <button
               id="race-metric-distance"

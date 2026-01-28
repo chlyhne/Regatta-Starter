@@ -21,12 +21,6 @@ function clearGpsRetryTimer() {
   state.gpsRetryTimer = null;
 }
 
-function stopDebugGps() {
-  if (!state.debugIntervalId) return;
-  clearInterval(state.debugIntervalId);
-  state.debugIntervalId = null;
-}
-
 function stopRealGps() {
   if (state.geoWatchId !== null && navigator.geolocation) {
     navigator.geolocation.clearWatch(state.geoWatchId);
@@ -35,22 +29,12 @@ function stopRealGps() {
   clearGpsRetryTimer();
 }
 
-function startDebugGps(handlePosition, createDebugPosition) {
-  stopRealGps();
-  if (state.debugIntervalId) return;
-  handlePosition(createDebugPosition());
-  state.debugIntervalId = setInterval(() => {
-    handlePosition(createDebugPosition());
-  }, 1000);
-}
-
 function startRealGps(
   handlePosition,
   handlePositionError,
   options = GPS_OPTIONS_SETUP,
   onUnavailable
 ) {
-  stopDebugGps();
   if (!navigator.geolocation) {
     if (typeof onUnavailable === "function") {
       onUnavailable();
@@ -70,18 +54,15 @@ function startRealGps(
 }
 
 function isGpsStale() {
-  if (state.debugGpsEnabled) return false;
   if (state.geoWatchId === null) return false;
   if (!state.lastGpsFixAt) return true;
   return Date.now() - state.lastGpsFixAt > GPS_STALE_MS;
 }
 
 function scheduleGpsRetry(handlePosition, handlePositionError, onUnavailable) {
-  if (state.debugGpsEnabled) return;
   if (state.gpsRetryTimer) return;
   state.gpsRetryTimer = setTimeout(() => {
     state.gpsRetryTimer = null;
-    if (state.debugGpsEnabled) return;
     startRealGps(handlePosition, handlePositionError, GPS_OPTIONS_RACE, onUnavailable);
   }, GPS_RETRY_DELAY_MS);
 }
@@ -105,8 +86,6 @@ export {
   GPS_OPTIONS_RACE,
   getGpsOptionsForMode,
   clearGpsRetryTimer,
-  stopDebugGps,
-  startDebugGps,
   startRealGps,
   isGpsStale,
   scheduleGpsRetry,

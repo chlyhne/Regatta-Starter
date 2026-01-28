@@ -34,8 +34,6 @@ let starterDeps = {
   setView: null,
   setGpsMode: null,
   setImuEnabled: null,
-  setDebugGpsEnabled: null,
-  hardReload: null,
   handlePosition: null,
   handlePositionError: null,
   openImuCalibrationModal: null,
@@ -1338,30 +1336,6 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.raceImuToggle) {
-    els.raceImuToggle.addEventListener("click", () => {
-      if (starterDeps.setImuEnabled) {
-        starterDeps.setImuEnabled(!state.imuEnabled);
-      }
-    });
-  }
-
-  if (els.debugGpsToggle) {
-    els.debugGpsToggle.addEventListener("click", () => {
-      if (starterDeps.setDebugGpsEnabled) {
-        starterDeps.setDebugGpsEnabled(!state.debugGpsEnabled);
-      }
-    });
-  }
-
-  if (els.debugImuToggle) {
-    els.debugImuToggle.addEventListener("click", () => {
-      if (starterDeps.setImuEnabled) {
-        starterDeps.setImuEnabled(!state.imuEnabled);
-      }
-    });
-  }
-
   if (els.openImuCalibration) {
     els.openImuCalibration.addEventListener("click", () => {
       if (starterDeps.openImuCalibrationModal) {
@@ -1386,13 +1360,6 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.debugRefresh) {
-    els.debugRefresh.addEventListener("click", () => {
-      if (starterDeps.hardReload) {
-        starterDeps.hardReload();
-      }
-    });
-  }
 }
 
 export {

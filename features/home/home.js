@@ -2,7 +2,6 @@ import { els } from "../../ui/dom.js";
 
 let homeDeps = {
   setView: null,
-  hardReload: null,
   getNoCacheQuery: null,
   startRecording: null,
   stopRecording: null,
@@ -110,9 +109,6 @@ function buildHomeQrUrl() {
 
 function syncHomeQr() {
   if (!els.homeQrPanel || !els.homeQr) return;
-  const show = document.body.classList.contains("debug-mode");
-  els.homeQrPanel.setAttribute("aria-hidden", show ? "false" : "true");
-  if (!show) return;
   const url = buildHomeQrUrl();
   const size = 200;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&data=${encodeURIComponent(url)}`;
@@ -246,14 +242,6 @@ function bindHomeEvents() {
     els.openBoat.addEventListener("click", () => {
       if (homeDeps.setView) {
         homeDeps.setView("boat");
-      }
-    });
-  }
-
-  if (els.homeRefresh) {
-    els.homeRefresh.addEventListener("click", () => {
-      if (homeDeps.hardReload) {
-        homeDeps.hardReload();
       }
     });
   }

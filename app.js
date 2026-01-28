@@ -1,15 +1,10 @@
 import { els } from "./ui/dom.js";
-import {
-  state,
-  DEBUG_COORDS,
-  DEBUG_SPEED,
-  DEBUG_HEADING,
-} from "./core/state.js";
+import { state } from "./core/state.js";
 import { unlockAudio } from "./core/audio.js";
 import { applyForwardOffset, toRadians } from "./core/geo.js";
 import { applyKalmanFilter, applyImuHeadingDelta, predictKalmanState } from "./core/kalman.js";
 import { recordTrackPoints, renderTrack } from "./features/starter/track.js";
-import { updateGPSDisplay, updateDebugControls } from "./ui/gps-ui.js";
+import { updateGPSDisplay } from "./ui/gps-ui.js";
 import {
   updateStatusUnitLabels,
   updateRaceMetricLabels,
@@ -103,8 +98,6 @@ const {
   GPS_OPTIONS_RACE,
   getGpsOptionsForMode,
   clearGpsRetryTimer,
-  stopDebugGps,
-  startDebugGps,
   startRealGps,
   isGpsStale,
   scheduleGpsRetry,
@@ -118,26 +111,12 @@ let imuCalibrationActive = false;
 let imuCalibrationSamples = [];
 let imuCalibrationTimer = null;
 let imuCalibrationError = "";
-let replayPrevDebugGps = false;
 let replayPrevImuEnabled = false;
 
 function updateViewportHeight() {
   const height = window.visualViewport?.height || window.innerHeight;
   if (!Number.isFinite(height)) return;
   document.documentElement.style.setProperty("--app-height", `${height}px`);
-}
-
-function createDebugPosition() {
-  return {
-    coords: {
-      latitude: DEBUG_COORDS.lat,
-      longitude: DEBUG_COORDS.lon,
-      accuracy: 3,
-      speed: DEBUG_SPEED,
-      heading: DEBUG_HEADING,
-    },
-    timestamp: Date.now(),
-  };
 }
 
 function markGpsUnavailable() {
@@ -385,7 +364,6 @@ function readDebugFlagFromUrl() {
 function applyDebugFlagFromUrl() {
   const flag = readDebugFlagFromUrl();
   if (flag === null) return;
-  state.debugGpsEnabled = flag;
   document.body.classList.toggle("debug-mode", flag === true);
 }
 
@@ -644,7 +622,6 @@ async function setImuEnabled(enabled) {
   if (next === state.imuEnabled) return;
   if (!next) {
     stopImu();
-    updateDebugControls();
     updateVmgImuToggle();
     updateLifterImuToggle();
     return;
@@ -663,7 +640,6 @@ async function setImuEnabled(enabled) {
   if (!started) {
     window.alert("IMU permission was not granted on this device.");
   }
-  updateDebugControls();
   updateVmgImuToggle();
   updateLifterImuToggle();
 }
@@ -802,7 +778,6 @@ async function startImuCalibration() {
   imuCalibrationError = "";
   if (state.imuEnabled) {
     stopImu();
-    updateDebugControls();
     updateVmgImuToggle();
     updateLifterImuToggle();
   }
@@ -854,7 +829,6 @@ function loadSettings() {
   state.coordsFormat = settings.coordsFormat;
   state.lineName = settings.lineMeta?.name || null;
   state.lineSourceId = settings.lineMeta?.sourceId || null;
-  state.debugGpsEnabled = settings.debugGpsEnabled;
   state.useKalman = true;
   state.headingSourceByMode = settings.headingSourceByMode;
   state.bowOffsetMeters = settings.bowOffsetMeters;
@@ -882,7 +856,6 @@ function saveSettings() {
       sourceId: state.lineSourceId,
     },
     coordsFormat: state.coordsFormat,
-    debugGpsEnabled: state.debugGpsEnabled,
     useKalman: true,
     headingSourceByMode: state.headingSourceByMode,
     bowOffsetMeters: state.bowOffsetMeters,
@@ -920,7 +893,6 @@ function updateInputs() {
 }
 
 function handleReplayStatus() {
-  updateDebugControls();
   syncReplayUi();
 }
 
@@ -944,11 +916,8 @@ function resetPositionState() {
 }
 
 function prepareReplaySession(info = {}) {
-  replayPrevDebugGps = state.debugGpsEnabled;
   replayPrevImuEnabled = state.imuEnabled;
-  stopDebugGps();
   stopRealGps();
-  state.debugGpsEnabled = false;
   if (replayPrevImuEnabled) {
     stopImu();
   }
@@ -957,7 +926,6 @@ function prepareReplaySession(info = {}) {
   resetPositionState();
   resetLifterHistory();
   requestLifterRender({ force: true });
-  updateDebugControls();
   updateVmgImuToggle();
   updateLifterImuToggle();
 }
@@ -968,15 +936,8 @@ function resumeFromReplay() {
   } else {
     stopImu();
   }
-  if (replayPrevDebugGps) {
-    state.debugGpsEnabled = true;
-    startDebugGps(handlePosition, createDebugPosition);
-  } else {
-    setGpsMode(state.gpsMode, { force: true });
-  }
-  replayPrevDebugGps = false;
+  setGpsMode(state.gpsMode, { force: true });
   replayPrevImuEnabled = false;
-  updateDebugControls();
   updateVmgImuToggle();
   updateLifterImuToggle();
 }
@@ -991,34 +952,6 @@ function recordSpeedSample(speed, timestamp) {
   }
 }
 
-function setDebugGpsEnabled(enabled) {
-  const next = Boolean(enabled);
-  if (next && state.replay.active) {
-    stopReplay({ silent: true, skipResume: true });
-    handleReplayStatus();
-  }
-  if (state.debugGpsEnabled === next) {
-    updateDebugControls();
-    return;
-  }
-  state.debugGpsEnabled = next;
-  saveSettings();
-  state.kalman = null;
-  if (state.debugGpsEnabled) {
-    startDebugGps(handlePosition, createDebugPosition);
-  } else {
-    stopDebugGps();
-    resetPositionState();
-    startRealGps(
-      handlePosition,
-      handlePositionError,
-      getGpsOptionsForMode(state.gpsMode),
-      markGpsUnavailable
-    );
-  }
-  updateDebugControls();
-}
-
 function setGpsMode(mode, options = {}) {
   const prev = state.gpsMode;
   const next = mode === "race" ? "race" : "setup";
@@ -1028,9 +961,6 @@ function setGpsMode(mode, options = {}) {
   const wantsHighAccuracy = highAccuracy || recordingHighAccuracy;
   state.gpsMode = next;
   if (state.replay.active) {
-    return;
-  }
-  if (state.debugGpsEnabled) {
     return;
   }
   if (!force && state.geoWatchId !== null && prev === next && !wantsHighAccuracy && !isGpsStale()) {
@@ -1140,17 +1070,13 @@ function handlePositionError(err) {
     icon.classList.remove("ok", "warn");
     icon.title = `GPS error: ${err.message}`;
   });
-  if (!state.debugGpsEnabled && err && (err.code === 2 || err.code === 3)) {
+  if (err && (err.code === 2 || err.code === 3)) {
     scheduleGpsRetry(handlePosition, handlePositionError, markGpsUnavailable);
   }
 }
 
 function initGeolocation() {
   if (state.replay.active) {
-    return;
-  }
-  if (state.debugGpsEnabled) {
-    startDebugGps(handlePosition, createDebugPosition);
     return;
   }
   setGpsMode(state.gpsMode, { force: true });
@@ -1176,7 +1102,6 @@ function bindEvents() {
 function tick() {
   updateLineProjection();
   updateStartDisplay();
-  updateDebugControls();
   updateVmgGpsState();
   if (document.body.classList.contains("track-mode")) {
     renderTrack();
@@ -1212,7 +1137,6 @@ updateInputs();
 updateRaceMetricLabels();
 initHome({
   setView,
-  hardReload,
   getNoCacheQuery,
   startRecording: startRecordingSession,
   stopRecording: stopRecordingSession,
@@ -1238,8 +1162,6 @@ initStarter({
   setView,
   setGpsMode,
   setImuEnabled,
-  setDebugGpsEnabled,
-  hardReload,
   handlePosition,
   handlePositionError,
   openImuCalibrationModal,
@@ -1290,7 +1212,6 @@ if (window.visualViewport) {
 document.addEventListener("click", unlockAudio, { once: true });
 document.addEventListener("touchstart", unlockAudio, { once: true });
 document.addEventListener("pointerdown", unlockAudio, { once: true });
-updateDebugControls();
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && document.body.classList.contains("race-mode")) {
