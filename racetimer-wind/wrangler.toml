@@ -3,3 +3,17 @@ main = "src/index.js"
 compatibility_date = "2024-10-01"
 workers_dev = true
 routes = ["regatta-starter.pages.dev/wind*"]
+
+kv_namespaces = [
+  { binding = "WIND_KV", id = "9bbb20e217f540e7bc575fcc5cd7ad24", preview_id = "b5b74c1ccce04824b4f2e043fdc4b001" }
+]
+
+[triggers]
+crons = ["* * * * *"]
+
+[durable_objects]
+bindings = [{ name = "WIND_SAMPLER", class_name = "WindSampler" }]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["WindSampler"]

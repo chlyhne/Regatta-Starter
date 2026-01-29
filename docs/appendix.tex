@@ -61,6 +61,28 @@ order, which is enough to reconstruct a full session on demand without requiring
 operation on the storage backend. If an upload key is configured, the app includes it as a
 bearer token so only authorized clients can post data.
 
+\subsection{Wind data pipeline and history}
+
+This subsection explains how the wind service collects samples, deduplicates them, and
+serves a 24-hour history without requiring active clients.
+
+Wind data is sourced from the Weather Display \texttt{clientraw.txt} feed and processed by
+a dedicated worker. Each fetch parses wind speed, gust, and direction, and also extracts
+the station time fields so the response can report both the worker timestamp and the source
+clock. The raw payload is hashed before parsing so the worker can recognize repeated samples
+and avoid appending identical points to history. The latest sample and a rolling 24-hour
+array are stored in a KV namespace under stable keys, and the response includes the
+\texttt{sampleHash} and an \texttt{ageSeconds} field so clients can see when the last change
+arrived.
+
+Because cron triggers only run once per minute, a Durable Object alarm is used to maintain
+15\,s sampling. The sampler schedules its own alarm every 15\,s and calls the same history
+update routine used by the on-demand fetch path, so the history remains dense even when no
+clients are active. A one-minute cron trigger is still configured as a safety net and also
+boots the sampler if it has been idle. The public endpoint remains \texttt{/wind}, which
+supports optional query flags such as \texttt{history=1} and \texttt{hours=24} for returning
+the stored history, or \texttt{refresh=1} to force an immediate upstream pull.
+
 \subsection{Replay pipeline and timing model}
 
 This subsection explains how recorded sessions are fed back into the app so algorithms
