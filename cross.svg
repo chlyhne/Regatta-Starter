@@ -24,9 +24,9 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      showguides="true"
-     inkscape:zoom="0.53102946"
-     inkscape:cx="256.10632"
-     inkscape:cy="108.28025"
+     inkscape:zoom="0.18774726"
+     inkscape:cx="-825.57794"
+     inkscape:cy="-588.55718"
      inkscape:window-width="1920"
      inkscape:window-height="1023"
      inkscape:window-x="0"
@@ -41,24 +41,12 @@
      id="layer1"
      transform="translate(-17.936842,-19.680711)">
     <path
-       style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       d="M 62.225393,19.680711 V 63.969247 H 17.936842 v 5.536074 h 49.824619 v -49.82461 z"
-       id="path1"
-       sodipodi:nodetypes="ccccccc" />
-    <path
-       style="fill:#18ff00;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       d="m 73.297528,19.680711 v 44.288536 h 44.288552 v 5.536074 H 67.761461 v -49.82461 z"
-       id="path1-3"
-       sodipodi:nodetypes="ccccccc" />
-    <path
-       style="fill:#18ff00;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       d="M 62.225394,119.32993 V 75.041395 H 17.936843 v -5.536074 h 49.824619 v 49.824609 z"
-       id="path1-1"
-       sodipodi:nodetypes="ccccccc" />
+       style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       d="m 62.225392,19.680705 h 11.07213 l 1e-5,44.288538 h 44.288548 v 11.07214 H 73.297532 V 119.32992 H 62.225392 V 75.041383 H 17.936843 l -1e-6,-11.07214 h 44.28855 z"
+       id="path9" />
     <path
        style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       d="M 73.297529,119.32993 V 75.041395 H 117.58608 V 69.505321 H 67.761462 v 49.824609 z"
-       id="path1-3-2"
-       sodipodi:nodetypes="ccccccc" />
+       d="M 64.993424,22.448738 V 66.737282 H 20.70488 l -4e-6,5.536076 h 44.288548 l -1e-5,44.288532 h 5.53608 V 72.273358 H 114.81805 V 66.737282 H 70.529494 V 22.448744 Z"
+       id="path23" />
   </g>
 </svg>
