@@ -44,6 +44,12 @@ import {
   recordLifterHeadingFromPosition,
   requestLifterRender,
 } from "./features/lifter/lifter.js";
+import {
+  initRaceKbl,
+  bindRaceKblEvents,
+  syncRaceKblInputs,
+  requestRaceKblRender,
+} from "./features/racekbl/racekbl.js";
 import { clamp, headingFromVelocity } from "./core/common.js";
 import {
   initReplay,
@@ -878,6 +884,7 @@ function loadSettings() {
   state.boatWeightKg = settings.boatWeightKg || 0;
   state.imuCalibration = settings.imuCalibration || null;
   state.diagUploadToken = settings.diagUploadToken || "";
+  state.windEndpoint = settings.windEndpoint || "/wind";
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
@@ -905,6 +912,7 @@ function saveSettings() {
     boatWeightKg: state.boatWeightKg,
     imuCalibration: state.imuCalibration,
     diagUploadToken: state.diagUploadToken,
+    windEndpoint: state.windEndpoint,
     replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,
@@ -930,6 +938,7 @@ function updateInputs() {
   updateVmgSmoothToggle();
   updateVmgCapToggle();
   updateStatusUnitLabels();
+  syncRaceKblInputs();
 }
 
 function handleReplayStatus() {
@@ -1171,6 +1180,7 @@ function bindEvents() {
   bindSettingsEvents();
   bindVmgEvents();
   bindLifterEvents();
+  bindRaceKblEvents();
   bindSensorStatusEvents();
   window.addEventListener("hashchange", syncViewFromHash);
 }
@@ -1259,6 +1269,9 @@ initVmg({
 initLifter({
   setImuEnabled,
 });
+initRaceKbl({
+  saveSettings,
+});
 bindEvents();
 initGeolocation();
 startKalmanPredictionLoop();
@@ -1277,6 +1290,9 @@ window.addEventListener("resize", () => {
   updateViewportHeight();
   if (document.body.classList.contains("lifter-mode")) {
     requestLifterRender({ force: true });
+  }
+  if (document.body.classList.contains("racekbl-mode")) {
+    requestRaceKblRender();
   }
   if (document.body.classList.contains("track-mode")) {
     renderTrack();

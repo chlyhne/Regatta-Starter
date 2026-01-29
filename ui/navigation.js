@@ -4,6 +4,7 @@ import {
   leaveLifterView,
   setLifterSettingsOpen,
 } from "../features/lifter/lifter.js";
+import { enterRaceKblView, leaveRaceKblView } from "../features/racekbl/racekbl.js";
 import { renderTrack } from "../features/starter/track.js";
 import { fitRaceText } from "../features/starter/race-fit.js";
 
@@ -44,6 +45,16 @@ const VIEW_CONFIG = {
     releaseWakeLock: true,
     onEnter: enterLifterView,
     onLeave: leaveLifterView,
+  },
+  racekbl: {
+    id: "racekbl-view",
+    hash: "#racekbl",
+    bodyClass: "racekbl-mode",
+    scrollTop: true,
+    gpsMode: "setup",
+    releaseWakeLock: true,
+    onEnter: enterRaceKblView,
+    onLeave: leaveRaceKblView,
   },
   race: {
     id: "race-view",

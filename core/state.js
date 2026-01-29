@@ -37,6 +37,7 @@ const state = {
   headingSourceByMode: { lifter: "kalman" },
   imuCalibration: null,
   diagUploadToken: "",
+  windEndpoint: "/wind",
   imuEnabled: false,
   gpsEnabled: true,
   replay: {

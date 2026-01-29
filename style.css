@@ -94,6 +94,7 @@ body {
 
 .vmg-mode #setup-view,
 .lifter-mode #setup-view,
+.racekbl-mode #setup-view,
 .race-mode #setup-view,
 .coords-mode #setup-view,
 .location-mode #setup-view,
@@ -157,6 +158,10 @@ body {
 }
 
 .lifter-mode .lifter-view {
+  display: flex;
+}
+
+.racekbl-mode .racekbl-view {
   display: flex;
 }
 
@@ -1786,6 +1791,17 @@ button:active {
   color: #000000;
 }
 
+.racekbl-view {
+  display: none;
+  min-height: var(--app-height);
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+  background: #ffffff;
+  color: #000000;
+}
+
 .track-view {
   display: none;
   position: fixed;
@@ -1817,6 +1833,67 @@ button:active {
   height: 100%;
   display: block;
   touch-action: none;
+}
+
+.racekbl-now-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: center;
+}
+
+.racekbl-metric {
+  display: grid;
+  gap: 6px;
+  align-items: center;
+}
+
+.racekbl-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.racekbl-value {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 700;
+}
+
+.racekbl-direction {
+  justify-items: start;
+}
+
+.racekbl-compass {
+  width: 72px;
+  height: 72px;
+  border: 2px solid #000000;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.racekbl-arrow {
+  width: 40px;
+  height: 40px;
+  color: #000000;
+  transform-origin: 50% 50%;
+  transition: transform 0.2s ease-out;
+}
+
+.racekbl-plot {
+  width: 100%;
+  height: 260px;
+  border: 2px solid #000000;
+  border-radius: 16px;
+  padding: 8px;
+  background: #ffffff;
+}
+
+.racekbl-plot canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .track-close {

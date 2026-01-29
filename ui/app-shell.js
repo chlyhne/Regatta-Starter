@@ -2,6 +2,7 @@ import { homeView } from "../features/home/home.view.js";
 import { setupView } from "../features/starter/setup.view.js";
 import { vmgView } from "../features/vmg/vmg.view.js";
 import { lifterView } from "../features/lifter/lifter.view.js";
+import { raceKblView } from "../features/racekbl/racekbl.view.js";
 import { raceView } from "../features/starter/race.view.js";
 import { coordsView } from "../features/starter/coords.view.js";
 import { locationView } from "../features/starter/location.view.js";
@@ -16,6 +17,7 @@ const appShell = [
   setupView,
   vmgView,
   lifterView,
+  raceKblView,
   raceView,
   coordsView,
   locationView,

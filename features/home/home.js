@@ -226,6 +226,14 @@ function bindHomeEvents() {
     });
   }
 
+  if (els.openRaceKbl) {
+    els.openRaceKbl.addEventListener("click", () => {
+      if (homeDeps.setView) {
+        homeDeps.setView("racekbl");
+      }
+    });
+  }
+
   if (els.openHomeButtons && els.openHomeButtons.length) {
     els.openHomeButtons.forEach((button) => {
       button.addEventListener("click", () => {
