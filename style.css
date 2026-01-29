@@ -488,7 +488,8 @@ body {
 }
 
 .vmg-settings-view,
-.lifter-settings-view {
+.lifter-settings-view,
+.racekbl-settings-view {
   display: none;
   position: fixed;
   inset: 0;
@@ -509,13 +510,19 @@ body {
   overflow: hidden;
 }
 
+.racekbl-settings-open {
+  overflow: hidden;
+}
+
 .vmg-settings-open .vmg-settings-view,
-.lifter-settings-open .lifter-settings-view {
+.lifter-settings-open .lifter-settings-view,
+.racekbl-settings-open .racekbl-settings-view {
   display: flex;
 }
 
 .vmg-settings-panel,
-.lifter-settings-panel {
+.lifter-settings-panel,
+.racekbl-settings-panel {
   border: 3px solid #000000;
   border-radius: 24px;
   padding: 24px;
@@ -526,7 +533,8 @@ body {
 }
 
 .vmg-settings-panel h2,
-.lifter-settings-panel h2 {
+.lifter-settings-panel h2,
+.racekbl-settings-panel h2 {
   margin: 0;
   font-size: 1.2rem;
   font-weight: 700;
@@ -535,7 +543,8 @@ body {
 }
 
 .vmg-settings-group,
-.lifter-settings-group {
+.lifter-settings-group,
+.racekbl-settings-group {
   display: grid;
   gap: 12px;
 }
@@ -875,7 +884,8 @@ body {
 }
 
 #open-vmg-settings,
-#open-lifter-settings {
+#open-lifter-settings,
+#open-racekbl-settings {
   min-width: 44px;
   min-height: 44px;
   flex-shrink: 0;
@@ -1835,12 +1845,6 @@ button:active {
   touch-action: none;
 }
 
-.racekbl-controls {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-}
-
 .racekbl-control-head {
   display: flex;
   justify-content: space-between;
@@ -1930,7 +1934,7 @@ button:active {
 }
 
 .racekbl-dir-plot {
-  height: 260px;
+  height: 420px;
 }
 
 .track-close {

@@ -4,7 +4,11 @@ import {
   leaveLifterView,
   setLifterSettingsOpen,
 } from "../features/lifter/lifter.js";
-import { enterRaceKblView, leaveRaceKblView } from "../features/racekbl/racekbl.js";
+import {
+  enterRaceKblView,
+  leaveRaceKblView,
+  setRaceKblSettingsOpen,
+} from "../features/racekbl/racekbl.js";
 import { renderTrack } from "../features/starter/track.js";
 import { fitRaceText } from "../features/starter/race-fit.js";
 
@@ -165,6 +169,7 @@ function setView(view) {
 
   setVmgSettingsOpen(false);
   setLifterSettingsOpen(false);
+  setRaceKblSettingsOpen(false);
 
   BODY_CLASSES.forEach((name) => document.body.classList.remove(name));
   VIEW_IDS.forEach((id) => {

@@ -65,37 +65,14 @@ function formatHistoryMinutes(value) {
   return `${hours} h ${extra} m`;
 }
 
-function normalizeEndpoint(value) {
-  const text = typeof value === "string" ? value.trim() : "";
-  return text || "/wind";
-}
-
 function buildWindUrl() {
-  const endpoint = normalizeEndpoint(state.windEndpoint);
-  try {
-    const url = new URL(endpoint, window.location.href);
-    url.searchParams.set("t", String(Date.now()));
-    return url.toString();
-  } catch {
-    return `/wind?t=${Date.now()}`;
-  }
+  return `/wind?t=${Date.now()}`;
 }
 
 function buildWindHistoryUrl() {
-  const endpoint = normalizeEndpoint(state.windEndpoint);
-  try {
-    const url = new URL(endpoint, window.location.href);
-    url.searchParams.set("history", "1");
-    const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
-    const hours = Math.max(1, Math.ceil(minutes / 60));
-    url.searchParams.set("hours", String(hours));
-    url.searchParams.set("t", String(Date.now()));
-    return url.toString();
-  } catch {
-    const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
-    const hours = Math.max(1, Math.ceil(minutes / 60));
-    return `/wind?history=1&hours=${hours}&t=${Date.now()}`;
-  }
+  const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const hours = Math.max(1, Math.ceil(minutes / 60));
+  return `/wind?history=1&hours=${hours}&t=${Date.now()}`;
 }
 
 function resetWindHistory() {
@@ -555,9 +532,6 @@ function renderRaceKblPlots() {
 }
 
 function syncRaceKblInputs() {
-  if (els.raceKblEndpoint) {
-    els.raceKblEndpoint.value = normalizeEndpoint(state.windEndpoint);
-  }
   if (els.raceKblHistory) {
     const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
     els.raceKblHistory.value = String(minutes);
@@ -566,21 +540,6 @@ function syncRaceKblInputs() {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(
       state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
     );
-  }
-}
-
-function saveWindEndpoint() {
-  if (!els.raceKblEndpoint) return;
-  const value = normalizeEndpoint(els.raceKblEndpoint.value);
-  state.windEndpoint = value;
-  if (raceKblDeps.saveSettings) {
-    raceKblDeps.saveSettings();
-  }
-  syncRaceKblInputs();
-  if (document.body.classList.contains("racekbl-mode")) {
-    resetWindHistory();
-    stopWindPolling();
-    startWindPolling();
   }
 }
 
@@ -601,17 +560,31 @@ function setHistoryWindow(minutes) {
   updateRaceKblUi();
 }
 
+function setRaceKblSettingsOpen(open) {
+  const next = Boolean(open);
+  if (els.raceKblSettingsView) {
+    els.raceKblSettingsView.setAttribute("aria-hidden", next ? "false" : "true");
+  }
+  document.body.classList.toggle("racekbl-settings-open", next);
+  if (next) {
+    syncRaceKblInputs();
+  }
+}
+
 function bindRaceKblEvents() {
-  if (els.raceKblSaveEndpoint) {
-    els.raceKblSaveEndpoint.addEventListener("click", () => {
-      saveWindEndpoint();
+  if (els.openRaceKblSettings) {
+    els.openRaceKblSettings.addEventListener("click", () => {
+      const isOpen = document.body.classList.contains("racekbl-settings-open");
+      setRaceKblSettingsOpen(!isOpen);
     });
   }
-  if (els.raceKblEndpoint) {
-    els.raceKblEndpoint.addEventListener("change", () => {
-      saveWindEndpoint();
+
+  if (els.closeRaceKblSettings) {
+    els.closeRaceKblSettings.addEventListener("click", () => {
+      setRaceKblSettingsOpen(false);
     });
   }
+
   if (els.raceKblHistory) {
     els.raceKblHistory.addEventListener("input", () => {
       setHistoryWindow(els.raceKblHistory.value);
@@ -651,4 +624,5 @@ export {
   leaveRaceKblView,
   requestRaceKblRender,
   renderRaceKblPlots,
+  setRaceKblSettingsOpen,
 };

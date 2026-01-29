@@ -14,6 +14,14 @@ export const raceKblView = `
           </button>
         </div>
         <div class="head-right">
+          <button
+            id="open-racekbl-settings"
+            class="icon-btn"
+            type="button"
+            aria-label="Wind settings"
+          >
+            <img src="settings-cog.svg" class="icon-gear" alt="" aria-hidden="true" />
+          </button>
           <div id="racekbl-status" class="hint" aria-live="polite">Waiting</div>
         </div>
       </div>
@@ -24,7 +32,36 @@ export const raceKblView = `
       <div class="racekbl-plot racekbl-speed-plot" aria-label="Wind speed history plot">
         <canvas id="racekbl-speed-canvas"></canvas>
       </div>
-      <div class="racekbl-controls">
+      <div id="racekbl-updated" class="hint" aria-live="polite">Waiting for wind</div>
+    </section>
+
+    <section class="panel racekbl-dir-panel">
+      <h2>Wind direction</h2>
+      <div class="racekbl-plot racekbl-dir-plot" aria-label="Wind direction history plot">
+        <canvas id="racekbl-dir-canvas"></canvas>
+      </div>
+    </section>
+
+    <section class="panel racekbl-source">
+      <h2>Source</h2>
+      <label class="setting-label" for="racekbl-endpoint">Endpoint</label>
+      <input
+        id="racekbl-endpoint"
+        type="text"
+        inputmode="url"
+        placeholder="/wind"
+        autocomplete="off"
+      />
+      <div class="row">
+        <button id="racekbl-save-endpoint" class="ghost" type="button">Save</button>
+      </div>
+    </section>
+  </div>
+
+  <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">
+    <div class="racekbl-settings-panel">
+      <h2>Wind settings</h2>
+      <div class="racekbl-settings-group">
         <div class="racekbl-control-head">
           <h3 id="racekbl-history-title">History window</h3>
           <div id="racekbl-history-value" class="racekbl-window-value">1 h</div>
@@ -60,30 +97,10 @@ export const raceKblView = `
           <span>24h</span>
         </div>
       </div>
-      <div id="racekbl-updated" class="hint" aria-live="polite">Waiting for wind</div>
-    </section>
-
-    <section class="panel racekbl-dir-panel">
-      <h2>Wind direction</h2>
-      <div class="racekbl-plot racekbl-dir-plot" aria-label="Wind direction history plot">
-        <canvas id="racekbl-dir-canvas"></canvas>
+      <div class="row stack">
+        <button id="close-racekbl-settings" class="ghost">Done</button>
       </div>
-    </section>
-
-    <section class="panel racekbl-source">
-      <h2>Source</h2>
-      <label class="setting-label" for="racekbl-endpoint">Endpoint</label>
-      <input
-        id="racekbl-endpoint"
-        type="text"
-        inputmode="url"
-        placeholder="/wind"
-        autocomplete="off"
-      />
-      <div class="row">
-        <button id="racekbl-save-endpoint" class="ghost" type="button">Save</button>
-      </div>
-    </section>
-  </div>
+    </div>
+  </section>
 </section>
 `;
