@@ -1930,11 +1930,11 @@ button:active {
 }
 
 .racekbl-speed-plot {
-  height: 160px;
+  height: 300px;
 }
 
 .racekbl-dir-plot {
-  height: 420px;
+  height: 300px;
 }
 
 .track-close {

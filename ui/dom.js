@@ -102,7 +102,6 @@ const els = {
   lifterWindow: document.getElementById("lifter-window"),
   lifterWindowValue: document.getElementById("lifter-window-value"),
   raceKblStatus: document.getElementById("racekbl-status"),
-  raceKblUpdated: document.getElementById("racekbl-updated"),
   openRaceKblSettings: document.getElementById("open-racekbl-settings"),
   raceKblSettingsView: document.getElementById("racekbl-settings-view"),
   closeRaceKblSettings: document.getElementById("close-racekbl-settings"),

@@ -32,7 +32,6 @@ export const raceKblView = `
       <div class="racekbl-plot racekbl-speed-plot" aria-label="Wind speed history plot">
         <canvas id="racekbl-speed-canvas"></canvas>
       </div>
-      <div id="racekbl-updated" class="hint" aria-live="polite">Waiting for wind</div>
     </section>
 
     <section class="panel racekbl-dir-panel">

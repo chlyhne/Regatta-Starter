@@ -1,6 +1,5 @@
 import { els } from "../../ui/dom.js";
 import { state } from "../../core/state.js";
-import { formatClockTime } from "../../core/format.js";
 import {
   normalizeHeadingDegrees,
   resizeCanvasToCssPixels,
@@ -15,9 +14,13 @@ const WIND_HISTORY_WINDOW_MS = WIND_HISTORY_MINUTES_MAX * 60 * 1000;
 const WIND_PLOT_PADDING = 14;
 const WIND_PLOT_GAP = 18;
 const WIND_PLOT_LABEL_GUTTER = 48;
+const WIND_PLOT_TIME_GUTTER = 32;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_GUST_DASH = [8, 6];
+const WIND_PLOT_TIME_FONT = "12px sans-serif";
+const TIME_TICK_OPTIONS_MIN = [5, 15, 20, 30, 60, 120, 240, 360];
+const TIME_TICK_TARGET = 7;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -133,16 +136,6 @@ function updateRaceKblStatus() {
       els.raceKblStatus.textContent = "Live";
     } else {
       els.raceKblStatus.textContent = "Waiting";
-    }
-  }
-  if (els.raceKblUpdated) {
-    if (lastFetchAt) {
-      const stamp = formatClockTime(new Date(lastFetchAt), true);
-      els.raceKblUpdated.textContent = `Updated ${stamp}`;
-    } else if (lastError) {
-      els.raceKblUpdated.textContent = "No wind yet";
-    } else {
-      els.raceKblUpdated.textContent = "Waiting for wind";
     }
   }
 }
@@ -361,6 +354,62 @@ function drawYAxisGrid(ctx, rect, min, max, step, labelFn) {
   ctx.restore();
 }
 
+function chooseTimeTickMinutes(windowMinutes) {
+  const safe = Math.max(1, windowMinutes);
+  let best = TIME_TICK_OPTIONS_MIN[0];
+  let bestDiff = Infinity;
+  TIME_TICK_OPTIONS_MIN.forEach((candidate) => {
+    const count = safe / candidate;
+    const diff = Math.abs(count - TIME_TICK_TARGET);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = candidate;
+    }
+  });
+  return best;
+}
+
+function formatTimeTickLabel(ts) {
+  const date = new Date(ts);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes) {
+  if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return;
+  const windowMs = endTs - startTs;
+  if (!Number.isFinite(windowMs) || windowMs <= 0) return;
+
+  const tickMinutes = chooseTimeTickMinutes(windowMinutes);
+  const tickMs = tickMinutes * 60 * 1000;
+  if (!Number.isFinite(tickMs) || tickMs <= 0) return;
+
+  const firstTick = Math.ceil(startTs / tickMs) * tickMs;
+  const width = rect.right - rect.left;
+  if (width <= 0) return;
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.fillStyle = "#000000";
+  ctx.font = WIND_PLOT_TIME_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+
+  for (let ts = firstTick; ts <= endTs + 1; ts += tickMs) {
+    const x = rect.left + ((ts - startTs) / windowMs) * width;
+    if (!Number.isFinite(x)) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, rect.top);
+    ctx.lineTo(x, rect.bottom);
+    ctx.stroke();
+    ctx.fillText(formatTimeTickLabel(ts), x, rect.bottom + 6);
+  }
+  ctx.restore();
+}
+
 function getWindowSamples() {
   const windowMinutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
   const windowMs = windowMinutes * 60 * 1000;
@@ -383,7 +432,7 @@ function renderSpeedPlot() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, windowMs, samples } = getWindowSamples();
+  const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
@@ -425,11 +474,12 @@ function renderSpeedPlot() {
     left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
     right: width - WIND_PLOT_PADDING,
     top: WIND_PLOT_PADDING,
-    bottom: height - WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
   };
 
   const tickStep = computeTickStep(max - min, 1);
   drawYAxisGrid(ctx, rect, min, max, tickStep, (value) => formatWindValue(value));
+  drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes);
 
   ctx.save();
   ctx.fillStyle = "#000000";
@@ -467,7 +517,7 @@ function renderDirectionPlot() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, windowMs, samples } = getWindowSamples();
+  const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
@@ -502,13 +552,14 @@ function renderDirectionPlot() {
     left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
     right: width - WIND_PLOT_PADDING,
     top: WIND_PLOT_PADDING,
-    bottom: height - WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
   };
 
   const tickStep = computeTickStep(max - min, 5);
   drawYAxisGrid(ctx, rect, min, max, tickStep, (value) =>
     formatDirection(normalizeHeadingDegrees(value))
   );
+  drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes);
 
   ctx.save();
   ctx.fillStyle = "#000000";
