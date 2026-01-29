@@ -65,6 +65,20 @@ const ASSETS = [
   "./docs/plots/gain-gravity-alpha.pdf",
 ];
 
+const SAME_ORIGIN = self.location.origin;
+
+async function stripRedirect(response) {
+  if (!response || !response.redirected || response.type !== "basic") {
+    return response;
+  }
+  const body = await response.blob();
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 self.addEventListener("message", (event) => {
   if (event && event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
@@ -94,10 +108,13 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== SAME_ORIGIN) {
+    return;
+  }
   event.respondWith(
     (async () => {
       let bypassCache = false;
-      const requestUrl = new URL(event.request.url);
       if (requestUrl.searchParams.has("nocache")) {
         bypassCache = true;
       } else if (event.clientId) {
@@ -117,27 +134,29 @@ self.addEventListener("fetch", (event) => {
 
       if (bypassCache) {
         try {
-          return await fetch(event.request, { cache: "reload" });
+          const response = await fetch(event.request, { cache: "reload" });
+          return await stripRedirect(response);
         } catch {
           const stripped = stripNoCache(event.request);
           if (stripped) {
             const cachedStripped = await caches.match(stripped);
-            if (cachedStripped) return cachedStripped;
+            if (cachedStripped) return await stripRedirect(cachedStripped);
           }
           const cached = await caches.match(event.request);
-          if (cached) return cached;
+          if (cached) return await stripRedirect(cached);
           const fallback = await caches.match("./index.html");
-          return fallback || Response.error();
+          return (await stripRedirect(fallback)) || Response.error();
         }
       }
 
       const cached = await caches.match(event.request);
-      if (cached) return cached;
+      if (cached) return await stripRedirect(cached);
       try {
-        return await fetch(event.request);
+        const response = await fetch(event.request);
+        return await stripRedirect(response);
       } catch {
         const fallback = await caches.match("./index.html");
-        return fallback || Response.error();
+        return (await stripRedirect(fallback)) || Response.error();
       }
     })()
   );
