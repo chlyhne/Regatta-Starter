@@ -38,6 +38,7 @@ const state = {
   imuCalibration: null,
   diagUploadToken: "",
   windEndpoint: "/wind",
+  windHistoryMinutes: 60,
   imuEnabled: false,
   gpsEnabled: true,
   replay: {

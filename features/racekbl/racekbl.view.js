@@ -19,41 +19,54 @@ export const raceKblView = `
       </div>
     </header>
 
-    <section class="panel racekbl-now">
-      <h2>Wind now</h2>
-      <div class="racekbl-now-grid">
-        <div class="racekbl-metric">
-          <div class="racekbl-label">Speed</div>
-          <div class="racekbl-value">
-            <span id="racekbl-speed">--</span>
-            <span class="racekbl-unit">kn</span>
-          </div>
+    <section class="panel racekbl-speed-panel">
+      <h2>Wind speed</h2>
+      <div class="racekbl-plot racekbl-speed-plot" aria-label="Wind speed history plot">
+        <canvas id="racekbl-speed-canvas"></canvas>
+      </div>
+      <div class="racekbl-controls">
+        <div class="racekbl-control-head">
+          <h3 id="racekbl-history-title">History window</h3>
+          <div id="racekbl-history-value" class="racekbl-window-value">1 h</div>
         </div>
-        <div class="racekbl-metric">
-          <div class="racekbl-label">Gust</div>
-          <div class="racekbl-value">
-            <span id="racekbl-gust">--</span>
-            <span class="racekbl-unit">kn</span>
-          </div>
-        </div>
-        <div class="racekbl-metric racekbl-direction">
-          <div class="racekbl-label">Dir</div>
-          <div id="racekbl-dir" class="racekbl-value">--</div>
-          <div class="racekbl-compass" aria-hidden="true">
-            <svg id="racekbl-arrow" class="racekbl-arrow" viewBox="0 0 24 24">
-              <path d="M12 2l4 8h-8l4-8z" fill="currentColor" />
-              <path d="M12 10v10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-            </svg>
-          </div>
+        <input
+          id="racekbl-history"
+          class="racekbl-window-slider"
+          type="range"
+          min="20"
+          max="1440"
+          step="10"
+          value="60"
+          list="racekbl-history-ticks"
+          aria-labelledby="racekbl-history-title racekbl-history-value"
+        />
+        <datalist id="racekbl-history-ticks">
+          <option value="20" label="20m"></option>
+          <option value="30" label="30m"></option>
+          <option value="60" label="1h"></option>
+          <option value="120" label="2h"></option>
+          <option value="240" label="4h"></option>
+          <option value="480" label="8h"></option>
+          <option value="720" label="12h"></option>
+          <option value="1440" label="24h"></option>
+        </datalist>
+        <div class="racekbl-history-scale" aria-hidden="true">
+          <span>20m</span>
+          <span>1h</span>
+          <span>2h</span>
+          <span>4h</span>
+          <span>8h</span>
+          <span>12h</span>
+          <span>24h</span>
         </div>
       </div>
       <div id="racekbl-updated" class="hint" aria-live="polite">Waiting for wind</div>
     </section>
 
-    <section class="panel racekbl-plot-panel">
-      <h2>Wind history</h2>
-      <div class="racekbl-plot" aria-label="Wind history plot">
-        <canvas id="racekbl-canvas"></canvas>
+    <section class="panel racekbl-dir-panel">
+      <h2>Wind direction</h2>
+      <div class="racekbl-plot racekbl-dir-plot" aria-label="Wind direction history plot">
+        <canvas id="racekbl-dir-canvas"></canvas>
       </div>
     </section>
 

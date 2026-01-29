@@ -210,6 +210,8 @@ function getSettingsSnapshot() {
     boatShape: state.boatShape,
     boatWeightKg: state.boatWeightKg,
     imuCalibration: state.imuCalibration,
+    windEndpoint: state.windEndpoint,
+    windHistoryMinutes: state.windHistoryMinutes,
     replayLoop: state.replay?.loop,
     start: { ...state.start },
     vmg: getVmgSettingsSnapshot(),
@@ -885,6 +887,7 @@ function loadSettings() {
   state.imuCalibration = settings.imuCalibration || null;
   state.diagUploadToken = settings.diagUploadToken || "";
   state.windEndpoint = settings.windEndpoint || "/wind";
+  state.windHistoryMinutes = settings.windHistoryMinutes || 60;
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
@@ -913,6 +916,7 @@ function saveSettings() {
     imuCalibration: state.imuCalibration,
     diagUploadToken: state.diagUploadToken,
     windEndpoint: state.windEndpoint,
+    windHistoryMinutes: state.windHistoryMinutes,
     replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,

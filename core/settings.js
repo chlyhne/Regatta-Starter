@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 10;
+const SETTINGS_VERSION = 11;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS = {
   imuCalibration: null,
   diagUploadToken: "",
   windEndpoint: "/wind",
+  windHistoryMinutes: 60,
   replayLoop: false,
   vmg: {
     baselineTauSeconds: VMG_BASELINE_TAU_DEFAULT_SEC,
@@ -174,6 +175,12 @@ function normalizeWindEndpoint(value) {
   return trimmed || DEFAULT_SETTINGS.windEndpoint;
 }
 
+function normalizeWindHistoryMinutes(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windHistoryMinutes;
+  return Math.min(1440, Math.max(20, parsed));
+}
+
 function normalizeStart(start) {
   return {
     mode: start?.mode === "absolute" ? "absolute" : "countdown",
@@ -226,6 +233,7 @@ function normalizeSettings(raw) {
     imuCalibration: normalizeImuCalibration(raw?.imuCalibration),
     diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
     windEndpoint: normalizeWindEndpoint(raw?.windEndpoint),
+    windHistoryMinutes: normalizeWindHistoryMinutes(raw?.windHistoryMinutes),
     replayLoop: Boolean(raw?.replayLoop),
     vmg: normalizeVmgSettings(raw?.vmg),
     start: normalizeStart(raw?.start),
@@ -321,6 +329,10 @@ function migrateSettings(raw) {
   if (version < 10) {
     migrated.windEndpoint = DEFAULT_SETTINGS.windEndpoint;
     migrated.version = 10;
+  }
+  if (version < 11) {
+    migrated.windHistoryMinutes = DEFAULT_SETTINGS.windHistoryMinutes;
+    migrated.version = 11;
   }
   return migrated;
 }

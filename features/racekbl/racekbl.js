@@ -8,10 +8,13 @@ import {
   unwrapHeadingDegrees,
 } from "../../core/common.js";
 
-const WIND_POLL_INTERVAL_MS = 5000;
-const WIND_HISTORY_WINDOW_MS = 20 * 60 * 1000;
+const WIND_POLL_INTERVAL_MS = 15000;
+const WIND_HISTORY_MINUTES_MIN = 20;
+const WIND_HISTORY_MINUTES_MAX = 24 * 60;
+const WIND_HISTORY_WINDOW_MS = WIND_HISTORY_MINUTES_MAX * 60 * 1000;
 const WIND_PLOT_PADDING = 14;
 const WIND_PLOT_GAP = 18;
+const WIND_PLOT_LABEL_GUTTER = 48;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_GUST_DASH = [8, 6];
@@ -23,8 +26,10 @@ let lastFetchAt = null;
 let lastError = "";
 let lastDir = null;
 let lastDirUnwrapped = null;
+let lastSampleHash = null;
 let lastRenderAt = 0;
 let renderTimer = null;
+let historyLoadedHours = 0;
 
 let raceKblDeps = {
   saveSettings: null,
@@ -39,6 +44,25 @@ function formatWindValue(value) {
 function formatDirection(value) {
   if (!Number.isFinite(value)) return "--";
   return `${Math.round(value)}°`;
+}
+
+function clampHistoryMinutes(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return WIND_HISTORY_MINUTES_MIN;
+  return Math.min(WIND_HISTORY_MINUTES_MAX, Math.max(WIND_HISTORY_MINUTES_MIN, parsed));
+}
+
+function formatHistoryMinutes(value) {
+  const minutes = clampHistoryMinutes(value);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const extra = minutes % 60;
+  if (!extra) {
+    return `${hours} h`;
+  }
+  return `${hours} h ${extra} m`;
 }
 
 function normalizeEndpoint(value) {
@@ -57,8 +81,36 @@ function buildWindUrl() {
   }
 }
 
+function buildWindHistoryUrl() {
+  const endpoint = normalizeEndpoint(state.windEndpoint);
+  try {
+    const url = new URL(endpoint, window.location.href);
+    url.searchParams.set("history", "1");
+    const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+    const hours = Math.max(1, Math.ceil(minutes / 60));
+    url.searchParams.set("hours", String(hours));
+    url.searchParams.set("t", String(Date.now()));
+    return url.toString();
+  } catch {
+    const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+    const hours = Math.max(1, Math.ceil(minutes / 60));
+    return `/wind?history=1&hours=${hours}&t=${Date.now()}`;
+  }
+}
+
+function resetWindHistory() {
+  windSamples.length = 0;
+  lastDir = null;
+  lastDirUnwrapped = null;
+  lastSampleHash = null;
+  historyLoadedHours = 0;
+}
+
 function recordWindSample(sample) {
   if (!sample) return;
+  if (sample.sampleHash && sample.sampleHash === lastSampleHash) {
+    return;
+  }
   const ts = Number.isFinite(sample.ts) ? sample.ts : Date.now();
   const speed = Number.isFinite(sample.speed) ? sample.speed : null;
   const gust = Number.isFinite(sample.gust) ? sample.gust : null;
@@ -71,7 +123,10 @@ function recordWindSample(sample) {
     lastDirUnwrapped = dirUnwrapped;
   }
   if (!Number.isFinite(speed) && !Number.isFinite(gust) && !Number.isFinite(dir)) return;
-  windSamples.push({ ts, speed, gust, dir, dirUnwrapped });
+  windSamples.push({ ts, speed, gust, dir, dirUnwrapped, sampleHash: sample.sampleHash || null });
+  if (sample.sampleHash) {
+    lastSampleHash = sample.sampleHash;
+  }
   const cutoff = ts - WIND_HISTORY_WINDOW_MS;
   while (windSamples.length && windSamples[0].ts < cutoff) {
     windSamples.shift();
@@ -91,24 +146,6 @@ function getLatestSample() {
     }
   }
   return null;
-}
-
-function updateRaceKblNumbers() {
-  const latest = getLatestSample();
-  if (els.raceKblSpeed) {
-    els.raceKblSpeed.textContent = formatWindValue(latest?.speed);
-  }
-  if (els.raceKblGust) {
-    els.raceKblGust.textContent = formatWindValue(latest?.gust);
-  }
-  if (els.raceKblDir) {
-    els.raceKblDir.textContent = formatDirection(latest?.dir);
-  }
-  if (els.raceKblArrow) {
-    const rotation = Number.isFinite(latest?.dir) ? latest.dir : 0;
-    els.raceKblArrow.style.transform = `rotate(${rotation}deg)`;
-    els.raceKblArrow.style.opacity = Number.isFinite(latest?.dir) ? "1" : "0.25";
-  }
 }
 
 function updateRaceKblStatus() {
@@ -134,9 +171,68 @@ function updateRaceKblStatus() {
 }
 
 function updateRaceKblUi() {
-  updateRaceKblNumbers();
   updateRaceKblStatus();
   requestRaceKblRender();
+}
+
+function parseLatestSample(data) {
+  if (!data || typeof data !== "object") return null;
+  const speed = Number.parseFloat(data.windSpeed ?? data.speed ?? data.wind_speed);
+  const gust = Number.parseFloat(data.windGust ?? data.gust ?? data.wind_gust);
+  const dir = Number.parseFloat(data.windDirDeg ?? data.windDir ?? data.dir);
+  const ts = data.updatedAt ? Date.parse(data.updatedAt) : Date.now();
+  const sampleHash = typeof data.sampleHash === "string" ? data.sampleHash : null;
+  return {
+    speed,
+    gust,
+    dir,
+    ts: Number.isFinite(ts) ? ts : Date.now(),
+    sampleHash,
+  };
+}
+
+function parseHistoryEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const speed = Number.parseFloat(entry.windSpeed ?? entry.speed ?? entry.wind_speed);
+  const gust = Number.parseFloat(entry.windGust ?? entry.gust ?? entry.wind_gust);
+  const dir = Number.parseFloat(entry.windDirDeg ?? entry.windDir ?? entry.dir);
+  const ts = Number.isFinite(entry.ts) ? entry.ts : Date.now();
+  return {
+    speed,
+    gust,
+    dir,
+    ts,
+  };
+}
+
+function applyLatestPayload(data) {
+  const latest = parseLatestSample(data);
+  if (!latest) return;
+  recordWindSample(latest);
+  lastFetchAt = latest.ts;
+  lastError = "";
+}
+
+function applyHistoryPayload(data) {
+  if (!data || !Array.isArray(data.history)) return false;
+  const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  historyLoadedHours = Math.max(historyLoadedHours, Math.max(1, Math.ceil(minutes / 60)));
+  resetWindHistory();
+  const entries = data.history
+    .map(parseHistoryEntry)
+    .filter(Boolean)
+    .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  entries.forEach((entry) => recordWindSample(entry));
+  const latest = parseLatestSample(data);
+  if (latest) {
+    const lastSample = getLatestSample();
+    if (!lastSample || lastSample.ts !== latest.ts) {
+      recordWindSample(latest);
+    }
+    lastFetchAt = latest.ts;
+    lastError = "";
+  }
+  return true;
 }
 
 async function fetchWindSample() {
@@ -149,12 +245,28 @@ async function fetchWindSample() {
       throw new Error(`Wind error ${response.status}`);
     }
     const data = await response.json();
-    const speed = Number.parseFloat(data.windSpeed ?? data.speed ?? data.wind_speed);
-    const gust = Number.parseFloat(data.windGust ?? data.gust ?? data.wind_gust);
-    const dir = Number.parseFloat(data.windDirDeg ?? data.windDir ?? data.dir);
-    recordWindSample({ speed, gust, dir, ts: Date.now() });
-    lastFetchAt = Date.now();
-    lastError = "";
+    applyLatestPayload(data);
+  } catch (err) {
+    lastError = err instanceof Error ? err.message : "Wind fetch failed";
+  } finally {
+    windPollInFlight = false;
+    updateRaceKblUi();
+  }
+}
+
+async function fetchWindHistory() {
+  if (windPollInFlight) return;
+  windPollInFlight = true;
+  try {
+    const url = buildWindHistoryUrl();
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Wind error ${response.status}`);
+    }
+    const data = await response.json();
+    if (!applyHistoryPayload(data)) {
+      applyLatestPayload(data);
+    }
   } catch (err) {
     lastError = err instanceof Error ? err.message : "Wind fetch failed";
   } finally {
@@ -165,7 +277,7 @@ async function fetchWindSample() {
 
 function startWindPolling() {
   if (windPollTimer) return;
-  fetchWindSample();
+  fetchWindHistory();
   windPollTimer = setInterval(fetchWindSample, WIND_POLL_INTERVAL_MS);
 }
 
@@ -185,14 +297,14 @@ function requestRaceKblRender() {
       renderTimer = null;
     }
     lastRenderAt = now;
-    renderRaceKblPlot();
+    renderRaceKblPlots();
     return;
   }
   if (renderTimer) return;
   renderTimer = setTimeout(() => {
     renderTimer = null;
     lastRenderAt = Date.now();
-    renderRaceKblPlot();
+    renderRaceKblPlots();
   }, 200 - elapsed);
 }
 
@@ -231,10 +343,62 @@ function drawLine(ctx, samples, key, rect, options = {}) {
   ctx.restore();
 }
 
-function renderRaceKblPlot() {
+function computeTickStep(range, baseStep) {
+  let step = baseStep;
+  if (!Number.isFinite(range) || range <= 0) return step;
+  let lines = Math.floor(range / step) + 1;
+  while (lines >= 7) {
+    step *= 2;
+    lines = Math.floor(range / step) + 1;
+  }
+  return step;
+}
+
+function drawYAxisGrid(ctx, rect, min, max, step, labelFn) {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step)) return;
+  if (min === max) return;
+  const range = max - min;
+  const mapY = (value) => rect.bottom - ((value - min) / range) * (rect.bottom - rect.top);
+  const firstTick = Math.ceil(min / step) * step;
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.fillStyle = "#000000";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+
+  for (let value = firstTick; value <= max + 1e-6; value += step) {
+    const y = mapY(value);
+    if (!Number.isFinite(y)) continue;
+    ctx.beginPath();
+    ctx.moveTo(rect.left, y);
+    ctx.lineTo(rect.right, y);
+    ctx.stroke();
+    if (typeof labelFn === "function") {
+      ctx.fillText(labelFn(value), rect.left - 8, y);
+    }
+  }
+  ctx.restore();
+}
+
+function getWindowSamples() {
+  const windowMinutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const windowMs = windowMinutes * 60 * 1000;
+  const startTs = Date.now() - windowMs;
+  return {
+    startTs,
+    windowMs,
+    samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
+  };
+}
+
+function renderSpeedPlot() {
   if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!els.raceKblCanvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(els.raceKblCanvas);
+  if (!els.raceKblSpeedCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceKblSpeedCanvas);
   if (!canvasInfo) return;
   const { ctx, width, height } = canvasInfo;
 
@@ -242,17 +406,7 @@ function renderRaceKblPlot() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  if (!windSamples.length) {
-    ctx.fillStyle = "#000000";
-    ctx.font = WIND_PLOT_LABEL_FONT;
-    ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
-    return;
-  }
-
-  const now = Date.now();
-  const windowMs = WIND_HISTORY_WINDOW_MS;
-  const startTs = now - windowMs;
-  const samples = windSamples.filter((sample) => sample && sample.ts >= startTs);
+  const { startTs, windowMs, samples } = getWindowSamples();
   if (!samples.length) {
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
@@ -260,149 +414,158 @@ function renderRaceKblPlot() {
     return;
   }
 
-  const innerHeight = Math.max(0, height - WIND_PLOT_PADDING * 2 - WIND_PLOT_GAP);
-  const speedHeight = Math.max(80, Math.round(innerHeight * 0.6));
-  const dirHeight = Math.max(60, innerHeight - speedHeight);
-
-  const speedRect = {
-    left: WIND_PLOT_PADDING,
-    right: width - WIND_PLOT_PADDING,
-    top: WIND_PLOT_PADDING,
-    bottom: WIND_PLOT_PADDING + speedHeight,
-  };
-  const dirRect = {
-    left: WIND_PLOT_PADDING,
-    right: width - WIND_PLOT_PADDING,
-    top: speedRect.bottom + WIND_PLOT_GAP,
-    bottom: speedRect.bottom + WIND_PLOT_GAP + dirHeight,
-  };
-
   const speedValues = [];
   const gustValues = [];
-  const dirValues = [];
   samples.forEach((sample) => {
     if (Number.isFinite(sample.speed)) speedValues.push(sample.speed);
     if (Number.isFinite(sample.gust)) gustValues.push(sample.gust);
-    if (Number.isFinite(sample.dirUnwrapped)) dirValues.push(sample.dirUnwrapped);
   });
 
-  if (speedValues.length || gustValues.length) {
-    const combined = speedValues.concat(gustValues);
-    let min = Math.min(...combined);
-    let max = Math.max(...combined);
-    if (!Number.isFinite(min) || !Number.isFinite(max)) {
-      min = 0;
-      max = 1;
-    }
-    if (min === max) {
-      min -= 0.5;
-      max += 0.5;
-    } else {
-      const pad = Math.max(0.2, (max - min) * 0.1);
-      min -= pad;
-      max += pad;
-    }
-
-    ctx.save();
+  if (!speedValues.length && !gustValues.length) {
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
-    ctx.fillText("Speed", speedRect.left, speedRect.top + 12);
-    ctx.restore();
-
-    drawLine(ctx, samples, "speed", speedRect, {
-      min,
-      max,
-      startTs,
-      windowMs,
-      color: "#000000",
-      lineWidth: WIND_PLOT_LINE_WIDTH,
-    });
-    drawLine(ctx, samples, "gust", speedRect, {
-      min,
-      max,
-      startTs,
-      windowMs,
-      color: "#000000",
-      lineWidth: WIND_PLOT_LINE_WIDTH,
-      dash: WIND_PLOT_GUST_DASH,
-    });
-
-    ctx.save();
-    ctx.fillStyle = "#000000";
-    ctx.font = "12px sans-serif";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "top";
-    ctx.fillText(formatWindValue(max), speedRect.right, speedRect.top + 12);
-    ctx.textBaseline = "bottom";
-    ctx.fillText(formatWindValue(min), speedRect.right, speedRect.bottom - 4);
-    ctx.restore();
-  } else {
-    ctx.save();
-    ctx.fillStyle = "#000000";
-    ctx.font = WIND_PLOT_LABEL_FONT;
-    ctx.fillText("No speed data", speedRect.left, speedRect.top + 12);
-    ctx.restore();
+    ctx.fillText("No speed data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
+    return;
   }
 
-  if (dirValues.length) {
-    let min = Math.min(...dirValues);
-    let max = Math.max(...dirValues);
-    const latest = dirValues[dirValues.length - 1];
-    const span = max - min;
-    if (!Number.isFinite(span) || span < 10) {
-      min = latest - 5;
-      max = latest + 5;
-    } else if (span > 180) {
-      min = latest - 90;
-      max = latest + 90;
-    }
-
-    ctx.save();
-    ctx.fillStyle = "#000000";
-    ctx.font = WIND_PLOT_LABEL_FONT;
-    ctx.fillText("Dir", dirRect.left, dirRect.top + 12);
-    ctx.restore();
-
-    drawLine(ctx, samples, "dirUnwrapped", dirRect, {
-      min,
-      max,
-      startTs,
-      windowMs,
-      color: "#000000",
-      lineWidth: WIND_PLOT_LINE_WIDTH,
-    });
-
-    ctx.save();
-    ctx.fillStyle = "#000000";
-    ctx.font = "12px sans-serif";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "top";
-    ctx.fillText(formatDirection(normalizeHeadingDegrees(max)), dirRect.right, dirRect.top + 12);
-    ctx.textBaseline = "bottom";
-    ctx.fillText(formatDirection(normalizeHeadingDegrees(min)), dirRect.right, dirRect.bottom - 4);
-    ctx.restore();
-  } else {
-    ctx.save();
-    ctx.fillStyle = "#000000";
-    ctx.font = WIND_PLOT_LABEL_FONT;
-    ctx.fillText("No dir data", dirRect.left, dirRect.top + 12);
-    ctx.restore();
+  const combined = speedValues.concat(gustValues);
+  let min = Math.min(...combined);
+  let max = Math.max(...combined);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    min = 0;
+    max = 1;
   }
+  if (min === max) {
+    min -= 0.5;
+    max += 0.5;
+  } else {
+    const pad = Math.max(0.2, (max - min) * 0.1);
+    min -= pad;
+    max += pad;
+  }
+
+  const rect = {
+    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
+    right: width - WIND_PLOT_PADDING,
+    top: WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING,
+  };
+
+  const tickStep = computeTickStep(max - min, 1);
+  drawYAxisGrid(ctx, rect, min, max, tickStep, (value) => formatWindValue(value));
 
   ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(speedRect.left, speedRect.bottom + WIND_PLOT_GAP / 2);
-  ctx.lineTo(speedRect.right, speedRect.bottom + WIND_PLOT_GAP / 2);
-  ctx.stroke();
+  ctx.fillStyle = "#000000";
+  ctx.font = WIND_PLOT_LABEL_FONT;
+  ctx.fillText("Speed", rect.left, rect.top + 12);
   ctx.restore();
+
+  drawLine(ctx, samples, "speed", rect, {
+    min,
+    max,
+    startTs,
+    windowMs,
+    color: "#000000",
+    lineWidth: WIND_PLOT_LINE_WIDTH,
+  });
+  drawLine(ctx, samples, "gust", rect, {
+    min,
+    max,
+    startTs,
+    windowMs,
+    color: "#000000",
+    lineWidth: WIND_PLOT_LINE_WIDTH,
+    dash: WIND_PLOT_GUST_DASH,
+  });
+}
+
+function renderDirectionPlot() {
+  if (!document.body.classList.contains("racekbl-mode")) return;
+  if (!els.raceKblDirCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceKblDirCanvas);
+  if (!canvasInfo) return;
+  const { ctx, width, height } = canvasInfo;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const { startTs, windowMs, samples } = getWindowSamples();
+  if (!samples.length) {
+    ctx.fillStyle = "#000000";
+    ctx.font = WIND_PLOT_LABEL_FONT;
+    ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
+    return;
+  }
+
+  const dirValues = [];
+  samples.forEach((sample) => {
+    if (Number.isFinite(sample.dirUnwrapped)) dirValues.push(sample.dirUnwrapped);
+  });
+  if (!dirValues.length) {
+    ctx.fillStyle = "#000000";
+    ctx.font = WIND_PLOT_LABEL_FONT;
+    ctx.fillText("No dir data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
+    return;
+  }
+
+  let min = Math.min(...dirValues);
+  let max = Math.max(...dirValues);
+  const latest = dirValues[dirValues.length - 1];
+  const span = max - min;
+  if (!Number.isFinite(span) || span < 10) {
+    min = latest - 5;
+    max = latest + 5;
+  } else if (span > 180) {
+    min = latest - 90;
+    max = latest + 90;
+  }
+
+  const rect = {
+    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
+    right: width - WIND_PLOT_PADDING,
+    top: WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING,
+  };
+
+  const tickStep = computeTickStep(max - min, 5);
+  drawYAxisGrid(ctx, rect, min, max, tickStep, (value) =>
+    formatDirection(normalizeHeadingDegrees(value))
+  );
+
+  ctx.save();
+  ctx.fillStyle = "#000000";
+  ctx.font = WIND_PLOT_LABEL_FONT;
+  ctx.fillText("Dir", rect.left, rect.top + 12);
+  ctx.restore();
+
+  drawLine(ctx, samples, "dirUnwrapped", rect, {
+    min,
+    max,
+    startTs,
+    windowMs,
+    color: "#000000",
+    lineWidth: WIND_PLOT_LINE_WIDTH,
+  });
+}
+
+function renderRaceKblPlots() {
+  renderSpeedPlot();
+  renderDirectionPlot();
 }
 
 function syncRaceKblInputs() {
   if (els.raceKblEndpoint) {
     els.raceKblEndpoint.value = normalizeEndpoint(state.windEndpoint);
+  }
+  if (els.raceKblHistory) {
+    const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+    els.raceKblHistory.value = String(minutes);
+  }
+  if (els.raceKblHistoryValue) {
+    els.raceKblHistoryValue.textContent = formatHistoryMinutes(
+      state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
+    );
   }
 }
 
@@ -415,9 +578,27 @@ function saveWindEndpoint() {
   }
   syncRaceKblInputs();
   if (document.body.classList.contains("racekbl-mode")) {
+    resetWindHistory();
     stopWindPolling();
     startWindPolling();
   }
+}
+
+function setHistoryWindow(minutes) {
+  const clamped = clampHistoryMinutes(minutes);
+  state.windHistoryMinutes = clamped;
+  if (raceKblDeps.saveSettings) {
+    raceKblDeps.saveSettings();
+  }
+  if (els.raceKblHistoryValue) {
+    els.raceKblHistoryValue.textContent = formatHistoryMinutes(clamped);
+  }
+  const requiredHours = Math.max(1, Math.ceil(clamped / 60));
+  if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
+    fetchWindHistory();
+    return;
+  }
+  updateRaceKblUi();
 }
 
 function bindRaceKblEvents() {
@@ -429,6 +610,11 @@ function bindRaceKblEvents() {
   if (els.raceKblEndpoint) {
     els.raceKblEndpoint.addEventListener("change", () => {
       saveWindEndpoint();
+    });
+  }
+  if (els.raceKblHistory) {
+    els.raceKblHistory.addEventListener("input", () => {
+      setHistoryWindow(els.raceKblHistory.value);
     });
   }
   document.addEventListener("visibilitychange", () => {
@@ -464,5 +650,5 @@ export {
   enterRaceKblView,
   leaveRaceKblView,
   requestRaceKblRender,
-  renderRaceKblPlot,
+  renderRaceKblPlots,
 };
