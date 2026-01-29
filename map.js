@@ -283,8 +283,10 @@ function updateMapOverlays() {
       };
       const labelLatLng = fromMeters(safeLabelPoint, origin);
       const arrowWeight = 6;
+      const outlineExtraPx = 6;
       const outlineColor = "#ffffff";
-      const outlineWeight = arrowWeight + 2;
+      const outlineWeight = arrowWeight + outlineExtraPx;
+      const outlineHeadWeight = 1 + outlineExtraPx;
       const outlineOpacity = 1;
       if (!state.arrowOutlineLine) {
         state.arrowOutlineLine = L.polyline(stemLatLngs, {
@@ -300,7 +302,7 @@ function updateMapOverlays() {
         state.arrowOutlineHead = L.polygon(headLatLngs, {
           color: outlineColor,
           fillColor: outlineColor,
-          weight: 2,
+          weight: outlineHeadWeight,
           fillOpacity: outlineOpacity,
           pane: "arrowPane",
         }).addTo(state.map);
