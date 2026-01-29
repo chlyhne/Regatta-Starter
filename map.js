@@ -21,6 +21,8 @@ const state = {
   lineOverlay: null,
   arrowLine: null,
   arrowHead: null,
+  arrowOutlineLine: null,
+  arrowOutlineHead: null,
   arrowLabel: null,
   arrowLabelHalfDiagonalPx: null,
   line: {
@@ -280,10 +282,35 @@ function updateMapOverlays() {
         y: labelPoint.y + normal.y * extraMeters,
       };
       const labelLatLng = fromMeters(safeLabelPoint, origin);
+      const arrowWeight = 6;
+      const outlineColor = "#ffffff";
+      const outlineWeight = arrowWeight + 2;
+      const outlineOpacity = 1;
+      if (!state.arrowOutlineLine) {
+        state.arrowOutlineLine = L.polyline(stemLatLngs, {
+          color: outlineColor,
+          weight: outlineWeight,
+          opacity: outlineOpacity,
+          pane: "arrowPane",
+        }).addTo(state.map);
+      } else {
+        state.arrowOutlineLine.setLatLngs(stemLatLngs);
+      }
+      if (!state.arrowOutlineHead) {
+        state.arrowOutlineHead = L.polygon(headLatLngs, {
+          color: outlineColor,
+          fillColor: outlineColor,
+          weight: 2,
+          fillOpacity: outlineOpacity,
+          pane: "arrowPane",
+        }).addTo(state.map);
+      } else {
+        state.arrowOutlineHead.setLatLngs(headLatLngs);
+      }
       if (!state.arrowLine) {
         state.arrowLine = L.polyline(stemLatLngs, {
           color: "#000000",
-          weight: 6,
+          weight: arrowWeight,
           opacity: 0.9,
           pane: "arrowPane",
         }).addTo(state.map);
@@ -316,6 +343,14 @@ function updateMapOverlays() {
         state.arrowLabel.setLatLng([labelLatLng.lat, labelLatLng.lon]);
       }
     } else {
+      if (state.arrowOutlineLine) {
+        state.map.removeLayer(state.arrowOutlineLine);
+        state.arrowOutlineLine = null;
+      }
+      if (state.arrowOutlineHead) {
+        state.map.removeLayer(state.arrowOutlineHead);
+        state.arrowOutlineHead = null;
+      }
       if (state.arrowLine) {
         state.map.removeLayer(state.arrowLine);
         state.arrowLine = null;
@@ -351,6 +386,14 @@ function updateMapOverlays() {
     if (state.arrowLine) {
       state.map.removeLayer(state.arrowLine);
       state.arrowLine = null;
+    }
+    if (state.arrowOutlineLine) {
+      state.map.removeLayer(state.arrowOutlineLine);
+      state.arrowOutlineLine = null;
+    }
+    if (state.arrowOutlineHead) {
+      state.map.removeLayer(state.arrowOutlineHead);
+      state.arrowOutlineHead = null;
     }
     if (state.arrowHead) {
       state.map.removeLayer(state.arrowHead);
