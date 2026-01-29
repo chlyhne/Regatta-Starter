@@ -107,34 +107,15 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 28px;
-  height: 28px;
+  width: 72px;
+  height: 72px;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 400;
-}
-
-.map-crosshair::before,
-.map-crosshair::after {
-  content: "";
-  position: absolute;
-  background: #000000;
-}
-
-.map-crosshair::before {
-  width: 2px;
-  height: 28px;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-}
-
-.map-crosshair::after {
-  height: 2px;
-  width: 28px;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
+  background-image: url("cross.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 
 .map-caption {
