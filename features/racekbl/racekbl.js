@@ -345,26 +345,38 @@ function drawYAxisGrid(ctx, rect, min, max, step, labelFn) {
   const mapY = (value) => rect.bottom - ((value - min) / range) * (rect.bottom - rect.top);
   const firstTick = Math.ceil(min / step) * step;
 
+  const ticks = [];
+  let maxLabelWidth = 0;
   ctx.save();
+  ctx.font = "12px sans-serif";
+  for (let value = firstTick; value <= max + 1e-6; value += step) {
+    const y = mapY(value);
+    if (!Number.isFinite(y)) continue;
+    const label = typeof labelFn === "function" ? String(labelFn(value)) : "";
+    if (label) {
+      const width = ctx.measureText(label).width || 0;
+      maxLabelWidth = Math.max(maxLabelWidth, width);
+    }
+    ticks.push({ y, label });
+  }
+  const labelX = Math.max(rect.left - 6, maxLabelWidth + 2);
+
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 6]);
   ctx.fillStyle = "#000000";
-  ctx.font = "12px sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
 
-  for (let value = firstTick; value <= max + 1e-6; value += step) {
-    const y = mapY(value);
-    if (!Number.isFinite(y)) continue;
+  ticks.forEach((tick) => {
     ctx.beginPath();
-    ctx.moveTo(rect.left, y);
-    ctx.lineTo(rect.right, y);
+    ctx.moveTo(rect.left, tick.y);
+    ctx.lineTo(rect.right, tick.y);
     ctx.stroke();
-    if (typeof labelFn === "function") {
-      ctx.fillText(labelFn(value), rect.left - 8, y);
+    if (tick.label) {
+      ctx.fillText(tick.label, labelX, tick.y);
     }
-  }
+  });
   ctx.restore();
 }
 
@@ -415,11 +427,17 @@ function drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes) {
   for (let ts = firstTick; ts <= endTs + 1; ts += tickMs) {
     const x = rect.left + ((ts - startTs) / windowMs) * width;
     if (!Number.isFinite(x)) continue;
+    const label = formatTimeTickLabel(ts);
+    const labelWidth = ctx.measureText(label).width || 0;
+    const half = labelWidth / 2;
+    if (x - half < rect.left || x + half > rect.right) {
+      continue;
+    }
     ctx.beginPath();
     ctx.moveTo(x, rect.top);
     ctx.lineTo(x, rect.bottom);
     ctx.stroke();
-    ctx.fillText(formatTimeTickLabel(ts), x, rect.bottom + 6);
+    ctx.fillText(label, x, rect.bottom + 6);
   }
   ctx.restore();
 }
