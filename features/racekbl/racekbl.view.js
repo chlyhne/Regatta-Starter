@@ -41,20 +41,6 @@ export const raceKblView = `
       </div>
     </section>
 
-    <section class="panel racekbl-source">
-      <h2>Source</h2>
-      <label class="setting-label" for="racekbl-endpoint">Endpoint</label>
-      <input
-        id="racekbl-endpoint"
-        type="text"
-        inputmode="url"
-        placeholder="/wind"
-        autocomplete="off"
-      />
-      <div class="row">
-        <button id="racekbl-save-endpoint" class="ghost" type="button">Save</button>
-      </div>
-    </section>
   </div>
 
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">

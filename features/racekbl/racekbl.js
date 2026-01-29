@@ -10,6 +10,7 @@ import {
 const WIND_POLL_INTERVAL_MS = 15000;
 const WIND_HISTORY_MINUTES_MIN = 20;
 const WIND_HISTORY_MINUTES_MAX = 24 * 60;
+const WIND_HISTORY_MARKS_MINUTES = [20, 30, 60, 120, 240, 480, 720, 1440];
 const WIND_HISTORY_WINDOW_MS = WIND_HISTORY_MINUTES_MAX * 60 * 1000;
 const WIND_PLOT_PADDING = 14;
 const WIND_PLOT_GAP = 18;
@@ -55,8 +56,22 @@ function clampHistoryMinutes(value) {
   return Math.min(WIND_HISTORY_MINUTES_MAX, Math.max(WIND_HISTORY_MINUTES_MIN, parsed));
 }
 
-function formatHistoryMinutes(value) {
+function snapHistoryMinutes(value) {
   const minutes = clampHistoryMinutes(value);
+  let best = WIND_HISTORY_MARKS_MINUTES[0];
+  let bestDiff = Math.abs(minutes - best);
+  WIND_HISTORY_MARKS_MINUTES.forEach((candidate) => {
+    const diff = Math.abs(minutes - candidate);
+    if (diff < bestDiff || (diff === bestDiff && candidate > best)) {
+      best = candidate;
+      bestDiff = diff;
+    }
+  });
+  return best;
+}
+
+function formatHistoryMinutes(value) {
+  const minutes = snapHistoryMinutes(value);
   if (minutes < 60) {
     return `${minutes} min`;
   }
@@ -73,7 +88,7 @@ function buildWindUrl() {
 }
 
 function buildWindHistoryUrl() {
-  const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const minutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
   const hours = Math.max(1, Math.ceil(minutes / 60));
   return `/wind?history=1&hours=${hours}&t=${Date.now()}`;
 }
@@ -359,9 +374,9 @@ function chooseTimeTickMinutes(windowMinutes) {
   let best = TIME_TICK_OPTIONS_MIN[0];
   let bestDiff = Infinity;
   TIME_TICK_OPTIONS_MIN.forEach((candidate) => {
-    const count = safe / candidate;
+    const count = Math.floor(safe / candidate) + 1;
     const diff = Math.abs(count - TIME_TICK_TARGET);
-    if (diff < bestDiff) {
+    if (diff < bestDiff || (diff === bestDiff && candidate > best)) {
       bestDiff = diff;
       best = candidate;
     }
@@ -411,12 +426,13 @@ function drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes) {
 }
 
 function getWindowSamples() {
-  const windowMinutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const windowMinutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
   const windowMs = windowMinutes * 60 * 1000;
   const startTs = Date.now() - windowMs;
   return {
     startTs,
     windowMs,
+    windowMinutes,
     samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
   };
 }
@@ -478,14 +494,8 @@ function renderSpeedPlot() {
   };
 
   const tickStep = computeTickStep(max - min, 1);
-  drawYAxisGrid(ctx, rect, min, max, tickStep, (value) => formatWindValue(value));
+  drawYAxisGrid(ctx, rect, min, max, tickStep, (value) => `${formatWindValue(value)} kn`);
   drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes);
-
-  ctx.save();
-  ctx.fillStyle = "#000000";
-  ctx.font = WIND_PLOT_LABEL_FONT;
-  ctx.fillText("Speed", rect.left, rect.top + 12);
-  ctx.restore();
 
   drawLine(ctx, samples, "speed", rect, {
     min,
@@ -561,12 +571,6 @@ function renderDirectionPlot() {
   );
   drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes);
 
-  ctx.save();
-  ctx.fillStyle = "#000000";
-  ctx.font = WIND_PLOT_LABEL_FONT;
-  ctx.fillText("Dir", rect.left, rect.top + 12);
-  ctx.restore();
-
   drawLine(ctx, samples, "dirUnwrapped", rect, {
     min,
     max,
@@ -583,22 +587,26 @@ function renderRaceKblPlots() {
 }
 
 function syncRaceKblInputs() {
+  const minutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  if (minutes !== state.windHistoryMinutes) {
+    state.windHistoryMinutes = minutes;
+  }
   if (els.raceKblHistory) {
-    const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
     els.raceKblHistory.value = String(minutes);
   }
   if (els.raceKblHistoryValue) {
-    els.raceKblHistoryValue.textContent = formatHistoryMinutes(
-      state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
-    );
+    els.raceKblHistoryValue.textContent = formatHistoryMinutes(minutes);
   }
 }
 
 function setHistoryWindow(minutes) {
-  const clamped = clampHistoryMinutes(minutes);
+  const clamped = snapHistoryMinutes(minutes);
   state.windHistoryMinutes = clamped;
   if (raceKblDeps.saveSettings) {
     raceKblDeps.saveSettings();
+  }
+  if (els.raceKblHistory) {
+    els.raceKblHistory.value = String(clamped);
   }
   if (els.raceKblHistoryValue) {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(clamped);
