@@ -1857,6 +1857,15 @@ button:active {
 .racekbl-value {
   font-size: clamp(1.8rem, 4vw, 2.6rem);
   font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.racekbl-unit {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 .racekbl-direction {

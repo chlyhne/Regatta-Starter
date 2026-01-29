@@ -24,11 +24,17 @@ export const raceKblView = `
       <div class="racekbl-now-grid">
         <div class="racekbl-metric">
           <div class="racekbl-label">Speed</div>
-          <div id="racekbl-speed" class="racekbl-value">--</div>
+          <div class="racekbl-value">
+            <span id="racekbl-speed">--</span>
+            <span class="racekbl-unit">kn</span>
+          </div>
         </div>
         <div class="racekbl-metric">
           <div class="racekbl-label">Gust</div>
-          <div id="racekbl-gust" class="racekbl-value">--</div>
+          <div class="racekbl-value">
+            <span id="racekbl-gust">--</span>
+            <span class="racekbl-unit">kn</span>
+          </div>
         </div>
         <div class="racekbl-metric racekbl-direction">
           <div class="racekbl-label">Dir</div>
