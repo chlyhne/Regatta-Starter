@@ -12,13 +12,12 @@ const WIND_HISTORY_MINUTES_MIN = 20;
 const WIND_HISTORY_MINUTES_MAX = 24 * 60;
 const WIND_HISTORY_MARKS_MINUTES = [20, 30, 60, 120, 240, 480, 720, 1440];
 const WIND_HISTORY_WINDOW_MS = WIND_HISTORY_MINUTES_MAX * 60 * 1000;
-const WIND_PLOT_PADDING = 14;
+const WIND_PLOT_PADDING = 8;
 const WIND_PLOT_GAP = 18;
-const WIND_PLOT_LABEL_GUTTER = 48;
-const WIND_PLOT_TIME_GUTTER = 32;
+const WIND_PLOT_LABEL_GUTTER = 36;
+const WIND_PLOT_TIME_GUTTER = 26;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
-const WIND_PLOT_GUST_DASH = [8, 6];
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
 const TIME_TICK_OPTIONS_MIN = [5, 15, 20, 30, 60, 120, 240, 360];
 const TIME_TICK_TARGET = 7;
@@ -457,22 +456,19 @@ function renderSpeedPlot() {
   }
 
   const speedValues = [];
-  const gustValues = [];
   samples.forEach((sample) => {
     if (Number.isFinite(sample.speed)) speedValues.push(sample.speed);
-    if (Number.isFinite(sample.gust)) gustValues.push(sample.gust);
   });
 
-  if (!speedValues.length && !gustValues.length) {
+  if (!speedValues.length) {
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No speed data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
     return;
   }
 
-  const combined = speedValues.concat(gustValues);
-  let min = Math.min(...combined);
-  let max = Math.max(...combined);
+  let min = Math.min(...speedValues);
+  let max = Math.max(...speedValues);
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
     min = 0;
     max = 1;
@@ -504,15 +500,6 @@ function renderSpeedPlot() {
     windowMs,
     color: "#000000",
     lineWidth: WIND_PLOT_LINE_WIDTH,
-  });
-  drawLine(ctx, samples, "gust", rect, {
-    min,
-    max,
-    startTs,
-    windowMs,
-    color: "#000000",
-    lineWidth: WIND_PLOT_LINE_WIDTH,
-    dash: WIND_PLOT_GUST_DASH,
   });
 }
 
