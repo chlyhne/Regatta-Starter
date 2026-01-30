@@ -1945,6 +1945,10 @@ button:active {
   height: 300px;
 }
 
+.racekbl-xcorr-plot {
+  height: 300px;
+}
+
 .track-close {
   position: absolute;
   left: 50%;

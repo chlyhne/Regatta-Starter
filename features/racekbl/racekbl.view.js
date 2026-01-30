@@ -55,6 +55,20 @@ export const raceKblView = `
       </div>
     </section>
 
+    <section class="panel racekbl-xcorr-dir-speed-panel">
+      <h2>Dir x speed</h2>
+      <div class="racekbl-plot racekbl-xcorr-plot" aria-label="Wind direction vs speed cross-correlation plot">
+        <canvas id="racekbl-xcorr-dir-speed-canvas"></canvas>
+      </div>
+    </section>
+
+    <section class="panel racekbl-xcorr-speed-dir-panel">
+      <h2>Speed x dir</h2>
+      <div class="racekbl-plot racekbl-xcorr-plot" aria-label="Wind speed vs direction cross-correlation plot">
+        <canvas id="racekbl-xcorr-speed-dir-canvas"></canvas>
+      </div>
+    </section>
+
   </div>
 
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">
@@ -106,8 +120,8 @@ export const raceKblView = `
           class="racekbl-window-slider"
           type="range"
           min="20"
-          max="1440"
-          step="10"
+          max="120"
+          step="1"
           value="60"
           list="racekbl-autocorr-ticks"
           aria-labelledby="racekbl-autocorr-title racekbl-autocorr-value"
@@ -117,19 +131,11 @@ export const raceKblView = `
           <option value="30" label="30m"></option>
           <option value="60" label="1h"></option>
           <option value="120" label="2h"></option>
-          <option value="240" label="4h"></option>
-          <option value="480" label="8h"></option>
-          <option value="720" label="12h"></option>
-          <option value="1440" label="24h"></option>
         </datalist>
         <div class="racekbl-history-scale" aria-hidden="true">
           <span>20m</span>
           <span>1h</span>
           <span>2h</span>
-          <span>4h</span>
-          <span>8h</span>
-          <span>12h</span>
-          <span>24h</span>
         </div>
       </div>
       <div class="row stack">

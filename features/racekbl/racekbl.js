@@ -21,9 +21,12 @@ const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
 const TIME_TICK_OPTIONS_MIN = [5, 15, 20, 30, 60, 120, 240, 360];
 const TIME_TICK_TARGET = 7;
+const WIND_AUTOCORR_MINUTES_MIN = 20;
+const WIND_AUTOCORR_MINUTES_MAX = 120;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
+const CROSS_CORR_LAG_FRACTION = 0.25;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -86,7 +89,9 @@ function formatHistoryMinutes(value) {
 }
 
 function snapAutoCorrMinutes(value) {
-  return snapHistoryMinutes(value);
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return WIND_AUTOCORR_MINUTES_MIN;
+  return Math.min(WIND_AUTOCORR_MINUTES_MAX, Math.max(WIND_AUTOCORR_MINUTES_MIN, parsed));
 }
 
 function buildWindUrl() {
@@ -634,7 +639,46 @@ function computeAutoCorrelation(values, maxLagCount) {
   return acf;
 }
 
+function computeCrossCorrelation(seriesA, seriesB, maxLagCount) {
+  const detrendedA = detrendSeries(seriesA);
+  const detrendedB = detrendSeries(seriesB);
+  const validA = detrendedA.filter((value) => Number.isFinite(value));
+  const validB = detrendedB.filter((value) => Number.isFinite(value));
+  if (validA.length < 4 || validB.length < 4) return null;
+  const meanA = validA.reduce((sum, value) => sum + value, 0) / validA.length;
+  const meanB = validB.reduce((sum, value) => sum + value, 0) / validB.length;
+  const maxLag = Math.min(
+    maxLagCount,
+    Math.max(0, detrendedA.length - 1),
+    Math.max(0, detrendedB.length - 1)
+  );
+  if (maxLag < 0) return null;
+  const values = [];
+
+  for (let lag = -maxLag; lag <= maxLag; lag += 1) {
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < detrendedA.length; i += 1) {
+      const j = i + lag;
+      if (j < 0 || j >= detrendedB.length) continue;
+      const first = detrendedA[i];
+      const second = detrendedB[j];
+      if (!Number.isFinite(first) || !Number.isFinite(second)) continue;
+      sum += (first - meanA) * (second - meanB);
+      count += 1;
+    }
+    values.push(count >= 2 ? sum / count : null);
+  }
+  return { values, maxLag };
+}
+
 function formatCorrValue(value) {
+  if (!Number.isFinite(value)) return "";
+  const rounded = Math.round(value * 100) / 100;
+  return trimTrailingZeros(rounded.toFixed(2));
+}
+
+function formatCovValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
   return trimTrailingZeros(rounded.toFixed(2));
@@ -645,6 +689,13 @@ function formatLagMinutes(minutes) {
   if (minutes < 60) return `${Math.round(minutes)}m`;
   if (minutes % 60 === 0) return `${Math.round(minutes / 60)}h`;
   return `${Math.round(minutes)}m`;
+}
+
+function formatLagMinutesSigned(minutes) {
+  if (!Number.isFinite(minutes)) return "";
+  if (minutes === 0) return "0";
+  const sign = minutes < 0 ? "-" : "";
+  return `${sign}${formatLagMinutes(Math.abs(minutes))}`;
 }
 
 function drawLagTicks(ctx, rect, maxLagMs, maxLagMinutes) {
@@ -683,6 +734,43 @@ function drawLagTicks(ctx, rect, maxLagMs, maxLagMinutes) {
   ctx.restore();
 }
 
+function drawLagTicksCentered(ctx, rect, maxLagMs, maxLagMinutes) {
+  if (!Number.isFinite(maxLagMs) || maxLagMs <= 0) return;
+  const tickMinutes = chooseTimeTickMinutes(maxLagMinutes * 2);
+  const tickMs = tickMinutes * 60 * 1000;
+  if (!Number.isFinite(tickMs) || tickMs <= 0) return;
+
+  const width = rect.right - rect.left;
+  if (width <= 0) return;
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.fillStyle = "#000000";
+  ctx.font = WIND_PLOT_TIME_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+
+  const firstTick = Math.ceil(-maxLagMs / tickMs) * tickMs;
+  for (let lag = firstTick; lag <= maxLagMs + 1; lag += tickMs) {
+    const x = rect.left + ((lag + maxLagMs) / (maxLagMs * 2)) * width;
+    if (!Number.isFinite(x)) continue;
+    const label = formatLagMinutesSigned(lag / (60 * 1000));
+    const labelWidth = ctx.measureText(label).width || 0;
+    const half = labelWidth / 2;
+    if (x - half < rect.left || x + half > rect.right) {
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x, rect.top);
+    ctx.lineTo(x, rect.bottom);
+    ctx.stroke();
+    ctx.fillText(label, x, rect.bottom + 6);
+  }
+  ctx.restore();
+}
+
 function drawZeroLine(ctx, rect, min, max) {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
   if (0 < min || 0 > max) return;
@@ -706,6 +794,16 @@ function buildLagSamples(acf, stepMs) {
     if (!Number.isFinite(value)) return;
     const clamped = Math.max(-1, Math.min(1, value));
     samples.push({ ts: index * stepMs, value: clamped });
+  });
+  return samples;
+}
+
+function buildLagSamplesWithStart(values, stepMs, startLag) {
+  const samples = [];
+  values.forEach((value, index) => {
+    if (!Number.isFinite(value)) return;
+    const lag = startLag + index;
+    samples.push({ ts: lag * stepMs, value });
   });
   return samples;
 }
@@ -947,6 +1045,100 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   drawZeroLine(ctx, rect, min, max);
 }
 
+function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
+  if (!document.body.classList.contains("racekbl-mode")) return;
+  if (!canvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(canvas);
+  if (!canvasInfo) return;
+  const { ctx, width, height } = canvasInfo;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getAutoCorrWindowSamples();
+  if (!samples.length) {
+    drawPlotMessage(ctx, "Waiting for wind");
+    return;
+  }
+
+  const hasA = samples.some((sample) => Number.isFinite(sample?.[keyA]));
+  const hasB = samples.some((sample) => Number.isFinite(sample?.[keyB]));
+  if (!hasA) {
+    drawPlotMessage(ctx, emptyLabelA);
+    return;
+  }
+  if (!hasB) {
+    drawPlotMessage(ctx, emptyLabelB);
+    return;
+  }
+
+  const stepMs = chooseAutoCorrStepMs(samples, windowMs);
+  const maxLagMs = windowMs * CROSS_CORR_LAG_FRACTION;
+  const maxLagCount = Math.floor(maxLagMs / stepMs);
+  if (maxLagCount < 1) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const seriesA = buildUniformSeries(samples, keyA, startTs, endTs, stepMs);
+  const seriesB = buildUniformSeries(samples, keyB, startTs, endTs, stepMs);
+  const cross = computeCrossCorrelation(seriesA, seriesB, maxLagCount);
+  if (!cross || !cross.values.length) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const lagRangeMs = cross.maxLag * stepMs;
+  if (!Number.isFinite(lagRangeMs) || lagRangeMs <= 0) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const lagSamples = buildLagSamplesWithStart(cross.values, stepMs, -cross.maxLag);
+  const finiteValues = lagSamples.map((sample) => sample.value).filter(Number.isFinite);
+  if (!finiteValues.length) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  let min = Math.min(...finiteValues);
+  let max = Math.max(...finiteValues);
+  if (min === max) {
+    const pad = Math.max(1, Math.abs(min) * 0.1);
+    min -= pad;
+    max += pad;
+  } else {
+    const pad = (max - min) * 0.1;
+    min -= pad;
+    max += pad;
+  }
+
+  const rect = {
+    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
+    right: width - WIND_PLOT_PADDING,
+    top: WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
+  };
+
+  const range = max - min;
+  const baseStep = range > 0 ? range / 4 : 1;
+  const tickStep = computeTickStep(range, baseStep);
+  drawYAxisGrid(ctx, rect, min, max, tickStep, formatCovValue);
+  drawLagTicksCentered(ctx, rect, lagRangeMs, windowMinutes * CROSS_CORR_LAG_FRACTION);
+
+  drawStemPlot(ctx, lagSamples, rect, {
+    min,
+    max,
+    startTs: -lagRangeMs,
+    windowMs: lagRangeMs * 2,
+    color: "#000000",
+    lineWidth: 1,
+    dotRadius: AUTO_CORR_DOT_SIZE / 2,
+  });
+  drawZeroLine(ctx, rect, min, max);
+}
+
 function renderSpeedAutoCorrPlot() {
   renderAutoCorrPlot(els.raceKblSpeedAcfCanvas, "speed", "No speed data");
 }
@@ -955,11 +1147,33 @@ function renderDirAutoCorrPlot() {
   renderAutoCorrPlot(els.raceKblDirAcfCanvas, "dirUnwrapped", "No dir data");
 }
 
+function renderDirSpeedCrossCorrPlot() {
+  renderCrossCorrPlot(
+    els.raceKblXcorrDirSpeedCanvas,
+    "dirUnwrapped",
+    "speed",
+    "No dir data",
+    "No speed data"
+  );
+}
+
+function renderSpeedDirCrossCorrPlot() {
+  renderCrossCorrPlot(
+    els.raceKblXcorrSpeedDirCanvas,
+    "speed",
+    "dirUnwrapped",
+    "No speed data",
+    "No dir data"
+  );
+}
+
 function renderRaceKblPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
   renderSpeedAutoCorrPlot();
   renderDirAutoCorrPlot();
+  renderDirSpeedCrossCorrPlot();
+  renderSpeedDirCrossCorrPlot();
 }
 
 function syncRaceKblInputs() {
