@@ -140,6 +140,48 @@ function drawYAxisGrid(ctx, rect, min, max, step, labelFn, options = {}) {
   ctx.restore();
 }
 
+function drawXAxisTicks(ctx, rect, min, max, step, labelFn, options = {}) {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step)) return;
+  if (min === max) return;
+  const range = max - min;
+  const mapX = (value) => rect.left + ((value - min) / range) * (rect.right - rect.left);
+  const firstTick = Math.ceil(min / step) * step;
+
+  const ticks = [];
+  ctx.save();
+  ctx.font = options.font || "12px sans-serif";
+  for (let value = firstTick; value <= max + 1e-6; value += step) {
+    const x = mapX(value);
+    if (!Number.isFinite(x)) continue;
+    const label = typeof labelFn === "function" ? String(labelFn(value)) : "";
+    const width = label ? ctx.measureText(label).width || 0 : 0;
+    ticks.push({ x, label, width });
+  }
+
+  ctx.strokeStyle = options.color || "#000000";
+  ctx.lineWidth = Number.isFinite(options.lineWidth) ? options.lineWidth : 1;
+  ctx.setLineDash(options.dash || [4, 6]);
+  ctx.fillStyle = options.color || "#000000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+
+  const labelOffset = Number.isFinite(options.labelOffset) ? options.labelOffset : 6;
+  ticks.forEach((tick) => {
+    const half = tick.width / 2;
+    if (tick.label && (tick.x - half < rect.left || tick.x + half > rect.right)) {
+      return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(tick.x, rect.top);
+    ctx.lineTo(tick.x, rect.bottom);
+    ctx.stroke();
+    if (tick.label) {
+      ctx.fillText(tick.label, tick.x, rect.bottom + labelOffset);
+    }
+  });
+  ctx.restore();
+}
+
 function chooseTimeTickMinutes(windowMinutes, options = {}) {
   const safe = Math.max(1, windowMinutes);
   const tickOptions = Array.isArray(options.tickOptions)
@@ -604,11 +646,13 @@ export {
   computeTickStep,
   drawLine,
   drawStemPlot,
+  drawXAxisTicks,
   drawYAxisGrid,
   drawTimeTicks,
   drawLagTicks,
   drawLagTicksCentered,
   drawZeroLine,
+  formatLagMinutes,
   renderDeviationBarPlot,
   renderSignedLinePlot,
 };

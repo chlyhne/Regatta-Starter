@@ -11,10 +11,12 @@ import {
   drawLagTicks,
   drawLagTicksCentered,
   drawLine,
+  drawXAxisTicks,
   drawStemPlot,
   drawTimeTicks,
   drawYAxisGrid,
   drawZeroLine,
+  formatLagMinutes,
 } from "../../core/plot.js";
 
 const WIND_POLL_INTERVAL_MS = 15000;
@@ -36,6 +38,9 @@ const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
 const CROSS_CORR_LAG_FRACTION = 0.25;
+const PERIODOGRAM_MIN_PERIOD_SEC = 60;
+const PERIODOGRAM_MIN_POINTS = 80;
+const PERIODOGRAM_MAX_POINTS = 240;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -411,6 +416,20 @@ function buildUniformSeries(samples, key, startTs, endTs, stepMs) {
   return values;
 }
 
+function buildIrregularSeries(samples, key, startTs, endTs) {
+  return samples
+    .filter(
+      (sample) =>
+        sample &&
+        Number.isFinite(sample.ts) &&
+        Number.isFinite(sample[key]) &&
+        sample.ts >= startTs &&
+        sample.ts <= endTs
+    )
+    .sort((a, b) => a.ts - b.ts)
+    .map((sample) => ({ ts: sample.ts, value: sample[key] }));
+}
+
 function detrendSeries(values) {
   const indices = [];
   const vals = [];
@@ -441,6 +460,59 @@ function detrendSeries(values) {
   return values.map((value, index) =>
     Number.isFinite(value) ? value - (intercept + slope * index) : null
   );
+}
+
+function detrendSeriesWithTimes(values, times) {
+  const indices = [];
+  const vals = [];
+  values.forEach((value, index) => {
+    const time = times[index];
+    if (!Number.isFinite(value) || !Number.isFinite(time)) return;
+    indices.push(time);
+    vals.push(value);
+  });
+  if (!indices.length) return values;
+
+  const offset = indices[0];
+  const count = indices.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  for (let i = 0; i < count; i += 1) {
+    const x = indices[i] - offset;
+    const y = vals[i];
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+  const denom = count * sumXX - sumX * sumX;
+  const slope = denom ? (count * sumXY - sumX * sumY) / denom : 0;
+  const intercept = (sumY - slope * sumX) / count;
+
+  return values.map((value, index) => {
+    const time = times[index];
+    if (!Number.isFinite(value) || !Number.isFinite(time)) return null;
+    return value - (intercept + slope * (time - offset));
+  });
+}
+
+function centerSeries(values) {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) {
+    return { values, mean: 0, variance: 0, count: 0 };
+  }
+  const mean = finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  let varianceSum = 0;
+  const centered = values.map((value) => {
+    if (!Number.isFinite(value)) return null;
+    const delta = value - mean;
+    varianceSum += delta * delta;
+    return delta;
+  });
+  const variance = varianceSum / finite.length;
+  return { values: centered, mean, variance, count: finite.length };
 }
 
 function computeAutoCorrelation(values, maxLagCount) {
@@ -513,6 +585,66 @@ function computeCrossCorrelation(seriesA, seriesB, maxLagCount) {
   return { values, maxLag };
 }
 
+function computeLombScarglePeriodogram(times, values, minFreq, maxFreq, pointCount, variance) {
+  if (!Array.isArray(times) || !Array.isArray(values)) return [];
+  if (!Number.isFinite(minFreq) || !Number.isFinite(maxFreq)) return [];
+  if (minFreq <= 0 || maxFreq <= 0 || maxFreq <= minFreq) return [];
+  if (!Number.isFinite(pointCount) || pointCount < 2) return [];
+
+  const samples = [];
+  const count = Math.max(2, Math.floor(pointCount));
+  const step = (maxFreq - minFreq) / (count - 1);
+  const useVariance = Number.isFinite(variance) && variance > 0 ? variance : null;
+
+  for (let i = 0; i < count; i += 1) {
+    const freq = minFreq + step * i;
+    const omega = 2 * Math.PI * freq;
+    let sumSin2 = 0;
+    let sumCos2 = 0;
+    for (let j = 0; j < times.length; j += 1) {
+      const time = times[j];
+      const value = values[j];
+      if (!Number.isFinite(time) || !Number.isFinite(value)) continue;
+      const angle = 2 * omega * time;
+      sumSin2 += Math.sin(angle);
+      sumCos2 += Math.cos(angle);
+    }
+    const tau = omega !== 0 ? Math.atan2(sumSin2, sumCos2) / (2 * omega) : 0;
+
+    let sumC = 0;
+    let sumS = 0;
+    let sumCC = 0;
+    let sumSS = 0;
+    for (let j = 0; j < times.length; j += 1) {
+      const time = times[j];
+      const value = values[j];
+      if (!Number.isFinite(time) || !Number.isFinite(value)) continue;
+      const angle = omega * (time - tau);
+      const cosVal = Math.cos(angle);
+      const sinVal = Math.sin(angle);
+      sumC += value * cosVal;
+      sumS += value * sinVal;
+      sumCC += cosVal * cosVal;
+      sumSS += sinVal * sinVal;
+    }
+
+    let power = 0;
+    if (sumCC > 1e-10) {
+      power += (sumC * sumC) / sumCC;
+    }
+    if (sumSS > 1e-10) {
+      power += (sumS * sumS) / sumSS;
+    }
+    power *= 0.5;
+    if (useVariance) {
+      power /= useVariance;
+    }
+    if (!Number.isFinite(power)) continue;
+    samples.push({ frequency: freq, power });
+  }
+  return samples;
+}
+
 function formatCorrValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
@@ -520,6 +652,12 @@ function formatCorrValue(value) {
 }
 
 function formatCovValue(value) {
+  if (!Number.isFinite(value)) return "";
+  const rounded = Math.round(value * 100) / 100;
+  return trimTrailingZeros(rounded.toFixed(2));
+}
+
+function formatPowerValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
   return trimTrailingZeros(rounded.toFixed(2));
@@ -898,12 +1036,161 @@ function renderDirSpeedCrossCorrPlot() {
   );
 }
 
+function renderSpeedPeriodogramPlot() {
+  if (!document.body.classList.contains("racekbl-mode")) return;
+  if (!els.raceKblSpeedPeriodogramCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceKblSpeedPeriodogramCanvas);
+  if (!canvasInfo) return;
+  const { ctx, width, height } = canvasInfo;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getAutoCorrWindowSamples();
+  if (!samples.length) {
+    drawPlotMessage(ctx, "Waiting for wind");
+    return;
+  }
+
+  const series = buildIrregularSeries(samples, "speed", startTs, endTs);
+  if (!series.length) {
+    drawPlotMessage(ctx, "No speed data");
+    return;
+  }
+  if (series.length < 4) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const baseTs = series[0].ts;
+  const times = [];
+  const values = [];
+  series.forEach((point) => {
+    const time = (point.ts - baseTs) / 1000;
+    if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
+    times.push(time);
+    values.push(point.value);
+  });
+
+  if (times.length < 4) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const detrended = detrendSeriesWithTimes(values, times);
+  const centered = centerSeries(detrended);
+  if (centered.count < 4 || !Number.isFinite(centered.variance) || centered.variance <= 1e-6) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const deltas = [];
+  for (let i = 1; i < times.length; i += 1) {
+    const dt = times[i] - times[i - 1];
+    if (Number.isFinite(dt) && dt > 0) {
+      deltas.push(dt);
+    }
+  }
+  const medianDelta = median(deltas);
+  const baseDelta = Number.isFinite(medianDelta)
+    ? medianDelta
+    : WIND_POLL_INTERVAL_MS / 1000;
+  const minPeriodSec = Math.max(PERIODOGRAM_MIN_PERIOD_SEC, baseDelta * 2);
+  const maxPeriodSec = windowMs / 1000;
+  if (!Number.isFinite(maxPeriodSec) || maxPeriodSec <= minPeriodSec) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const minFreq = 1 / maxPeriodSec;
+  const maxFreq = 1 / minPeriodSec;
+  const pointCount = Math.min(
+    PERIODOGRAM_MAX_POINTS,
+    Math.max(PERIODOGRAM_MIN_POINTS, Math.round(windowMinutes * 2))
+  );
+  const spectrum = computeLombScarglePeriodogram(
+    times,
+    centered.values,
+    minFreq,
+    maxFreq,
+    pointCount,
+    centered.variance
+  );
+  if (!spectrum.length) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const minPeriodMinutes = minPeriodSec / 60;
+  const maxPeriodMinutes = maxPeriodSec / 60;
+  const periodSamples = spectrum
+    .map(({ frequency, power }) => ({
+      ts: 1 / frequency / 60,
+      value: power,
+    }))
+    .filter(
+      (sample) =>
+        Number.isFinite(sample.ts) &&
+        Number.isFinite(sample.value) &&
+        sample.ts >= minPeriodMinutes &&
+        sample.ts <= maxPeriodMinutes
+    )
+    .sort((a, b) => a.ts - b.ts);
+
+  if (!periodSamples.length) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const powerValues = periodSamples.map((sample) => sample.value).filter(Number.isFinite);
+  if (!powerValues.length) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  let min = 0;
+  let max = Math.max(...powerValues);
+  if (!Number.isFinite(max) || max <= 0) {
+    max = 1;
+  } else {
+    max *= 1.1;
+  }
+
+  const rect = {
+    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
+    right: width - WIND_PLOT_PADDING,
+    top: WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
+  };
+
+  const yStep = computeTickStep(max - min, Math.max(0.1, max / 4));
+  drawYAxisGrid(ctx, rect, min, max, yStep, formatPowerValue);
+  const periodRange = maxPeriodMinutes - minPeriodMinutes;
+  const xStep = computeTickStep(periodRange, 5);
+  drawXAxisTicks(ctx, rect, minPeriodMinutes, maxPeriodMinutes, xStep, formatLagMinutes, {
+    font: WIND_PLOT_TIME_FONT,
+  });
+
+  drawStemPlot(ctx, periodSamples, rect, {
+    min,
+    max,
+    startTs: minPeriodMinutes,
+    windowMs: maxPeriodMinutes - minPeriodMinutes,
+    color: "#000000",
+    lineWidth: 1,
+    dotRadius: AUTO_CORR_DOT_SIZE / 2,
+  });
+  drawZeroLine(ctx, rect, min, max);
+}
+
 function renderRaceKblPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
   renderSpeedAutoCorrPlot();
   renderDirAutoCorrPlot();
   renderDirSpeedCrossCorrPlot();
+  renderSpeedPeriodogramPlot();
 }
 
 function syncRaceKblInputs() {

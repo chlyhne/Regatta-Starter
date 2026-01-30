@@ -62,6 +62,13 @@ export const raceKblView = `
       </div>
     </section>
 
+    <section class="panel racekbl-speed-periodogram-panel">
+      <h2>Wind speed periodogram</h2>
+      <div class="racekbl-plot racekbl-speed-periodogram-plot" aria-label="Wind speed periodogram plot">
+        <canvas id="racekbl-speed-periodogram-canvas"></canvas>
+      </div>
+    </section>
+
   </div>
 
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">

@@ -110,6 +110,7 @@ const els = {
   raceKblSpeedAcfCanvas: document.getElementById("racekbl-speed-acf-canvas"),
   raceKblDirAcfCanvas: document.getElementById("racekbl-dir-acf-canvas"),
   raceKblXcorrDirSpeedCanvas: document.getElementById("racekbl-xcorr-dir-speed-canvas"),
+  raceKblSpeedPeriodogramCanvas: document.getElementById("racekbl-speed-periodogram-canvas"),
   raceKblHistory: document.getElementById("racekbl-history"),
   raceKblHistoryValue: document.getElementById("racekbl-history-value"),
   raceKblAutoCorr: document.getElementById("racekbl-autocorr"),

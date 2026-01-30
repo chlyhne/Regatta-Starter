@@ -1949,6 +1949,10 @@ button:active {
   height: 300px;
 }
 
+.racekbl-speed-periodogram-plot {
+  height: 300px;
+}
+
 .track-close {
   position: absolute;
   left: 50%;
