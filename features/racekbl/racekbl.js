@@ -23,6 +23,7 @@ const TIME_TICK_OPTIONS_MIN = [5, 15, 20, 30, 60, 120, 240, 360];
 const TIME_TICK_TARGET = 7;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
+const AUTO_CORR_DOT_SIZE = 4;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -338,6 +339,49 @@ function drawLine(ctx, samples, key, rect, options = {}) {
     }
   });
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawStemPlot(ctx, samples, rect, options = {}) {
+  const min = options.min;
+  const max = options.max;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
+  const width = rect.right - rect.left;
+  const height = rect.bottom - rect.top;
+  if (width <= 0 || height <= 0) return;
+  const range = max - min;
+  const mapX = (ts) => rect.left + ((ts - options.startTs) / options.windowMs) * width;
+  const mapY = (value) => rect.bottom - ((value - min) / range) * height;
+  const baseY = mapY(0);
+  if (!Number.isFinite(baseY)) return;
+  const color = options.color || "#000000";
+  const dotRadius =
+    Number.isFinite(options.dotRadius) && options.dotRadius > 0
+      ? options.dotRadius
+      : AUTO_CORR_DOT_SIZE / 2;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = options.lineWidth || 1;
+  ctx.setLineDash([]);
+
+  samples.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.ts) || !Number.isFinite(sample.value)) return;
+    const x = mapX(sample.ts);
+    const y = mapY(sample.value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    ctx.beginPath();
+    ctx.moveTo(x, baseY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    if (dotRadius > 0) {
+      ctx.beginPath();
+      ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
   ctx.restore();
 }
 
@@ -884,7 +928,6 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   const tickStep = computeTickStep(max - min, 0.25);
   drawYAxisGrid(ctx, rect, min, max, tickStep, formatCorrValue);
   drawLagTicks(ctx, rect, maxLagMs, windowMinutes / 2);
-  drawZeroLine(ctx, rect, min, max);
 
   const lagSamples = buildLagSamples(acf, stepMs);
   if (!lagSamples.length) {
@@ -892,14 +935,16 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
     return;
   }
 
-  drawLine(ctx, lagSamples, "value", rect, {
+  drawStemPlot(ctx, lagSamples, rect, {
     min,
     max,
     startTs: 0,
     windowMs: maxLagMs,
     color: "#000000",
-    lineWidth: WIND_PLOT_LINE_WIDTH,
+    lineWidth: 1,
+    dotRadius: AUTO_CORR_DOT_SIZE / 2,
   });
+  drawZeroLine(ctx, rect, min, max);
 }
 
 function renderSpeedAutoCorrPlot() {
