@@ -31,10 +31,10 @@ const WIND_PLOT_TIME_GUTTER = 22;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
-const WIND_AUTOCORR_MINUTES_MIN = 20;
+const WIND_AUTOCORR_MINUTES_MIN = 0;
 const WIND_AUTOCORR_MINUTES_MAX = 120;
 const WIND_AUTOCORR_STEP_MINUTES = 10;
-const WIND_PERIODOGRAM_MINUTES_MIN = 20;
+const WIND_PERIODOGRAM_MINUTES_MIN = 0;
 const WIND_PERIODOGRAM_MINUTES_MAX = 120;
 const WIND_PERIODOGRAM_STEP_MINUTES = 10;
 const AUTO_CORR_MAX_POINTS = 600;
@@ -146,6 +146,28 @@ function snapPeriodogramMinutes(value) {
     WIND_PERIODOGRAM_MINUTES_MAX,
     Math.max(WIND_PERIODOGRAM_MINUTES_MIN, stepped)
   );
+}
+
+function resolveAutoCorrCapMinutes() {
+  const fallback = Number.isFinite(state.windHistoryMinutes)
+    ? state.windHistoryMinutes
+    : WIND_HISTORY_MINUTES_MIN;
+  const base = Number.isFinite(state.windAutoCorrMinutes)
+    ? state.windAutoCorrMinutes
+    : fallback;
+  return snapAutoCorrMinutes(base);
+}
+
+function resolvePeriodogramCapMinutes() {
+  const fallback = Number.isFinite(state.windAutoCorrMinutes)
+    ? state.windAutoCorrMinutes
+    : Number.isFinite(state.windHistoryMinutes)
+      ? state.windHistoryMinutes
+      : WIND_HISTORY_MINUTES_MIN;
+  const base = Number.isFinite(state.windPeriodogramMinutes)
+    ? state.windPeriodogramMinutes
+    : fallback;
+  return snapPeriodogramMinutes(base);
 }
 
 function buildWindUrl() {
@@ -875,9 +897,7 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
     return;
   }
 
-  const maxLagMinutes = snapAutoCorrMinutes(
-    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
-  );
+  const maxLagMinutes = resolveAutoCorrCapMinutes();
   const maxLagMs = Math.min(windowMs, maxLagMinutes * 60 * 1000);
   const stepMs = chooseAutoCorrStepMs(samples, maxLagMs);
   const maxLagCount = Math.floor(maxLagMs / stepMs);
@@ -953,9 +973,7 @@ function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
     return;
   }
 
-  const maxLagMinutes = snapAutoCorrMinutes(
-    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
-  );
+  const maxLagMinutes = resolveAutoCorrCapMinutes();
   const maxLagMs = Math.min(windowMs, maxLagMinutes * 60 * 1000);
   const stepMs = chooseAutoCorrStepMs(samples, maxLagMs);
   const maxLagCount = Math.floor(maxLagMs / stepMs);
@@ -1102,12 +1120,7 @@ function renderSpeedPeriodogramPlot() {
     ? medianDelta
     : WIND_POLL_INTERVAL_MS / 1000;
   const minPeriodSec = Math.max(PERIODOGRAM_MIN_PERIOD_SEC, baseDelta * 2);
-  const maxPeriodCapMinutes = snapPeriodogramMinutes(
-    state.windPeriodogramMinutes ||
-      state.windAutoCorrMinutes ||
-      state.windHistoryMinutes ||
-      WIND_HISTORY_MINUTES_MIN
-  );
+  const maxPeriodCapMinutes = resolvePeriodogramCapMinutes();
   const maxPeriodSec = Math.min(windowMs / 1000, maxPeriodCapMinutes * 60);
   if (!Number.isFinite(maxPeriodSec) || maxPeriodSec <= minPeriodSec) {
     drawPlotMessage(ctx, "Not enough data");
@@ -1215,9 +1228,7 @@ function syncRaceKblInputs() {
   if (els.raceKblHistoryValue) {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(minutes);
   }
-  const autoMinutes = snapAutoCorrMinutes(
-    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
-  );
+  const autoMinutes = resolveAutoCorrCapMinutes();
   if (autoMinutes !== state.windAutoCorrMinutes) {
     state.windAutoCorrMinutes = autoMinutes;
   }
@@ -1227,12 +1238,7 @@ function syncRaceKblInputs() {
   if (els.raceKblAutoCorrValue) {
     els.raceKblAutoCorrValue.textContent = formatWindowMinutes(autoMinutes);
   }
-  const periodMinutes = snapPeriodogramMinutes(
-    state.windPeriodogramMinutes ||
-      state.windAutoCorrMinutes ||
-      state.windHistoryMinutes ||
-      WIND_HISTORY_MINUTES_MIN
-  );
+  const periodMinutes = resolvePeriodogramCapMinutes();
   if (periodMinutes !== state.windPeriodogramMinutes) {
     state.windPeriodogramMinutes = periodMinutes;
   }

@@ -119,7 +119,7 @@ export const raceKblView = `
           id="racekbl-autocorr"
           class="racekbl-window-slider"
           type="range"
-          min="20"
+          min="0"
           max="120"
           step="10"
           value="60"
@@ -127,13 +127,14 @@ export const raceKblView = `
           aria-labelledby="racekbl-autocorr-title racekbl-autocorr-value"
         />
         <datalist id="racekbl-autocorr-ticks">
-          <option value="20" label="20m"></option>
+          <option value="0" label="0m"></option>
           <option value="30" label="30m"></option>
           <option value="60" label="1h"></option>
           <option value="120" label="2h"></option>
         </datalist>
         <div class="racekbl-history-scale" aria-hidden="true">
-          <span>20m</span>
+          <span>0m</span>
+          <span>30m</span>
           <span>1h</span>
           <span>2h</span>
         </div>
@@ -147,7 +148,7 @@ export const raceKblView = `
           id="racekbl-periodogram"
           class="racekbl-window-slider"
           type="range"
-          min="20"
+          min="0"
           max="120"
           step="10"
           value="60"
@@ -155,13 +156,14 @@ export const raceKblView = `
           aria-labelledby="racekbl-periodogram-title racekbl-periodogram-value"
         />
         <datalist id="racekbl-periodogram-ticks">
-          <option value="20" label="20m"></option>
+          <option value="0" label="0m"></option>
           <option value="30" label="30m"></option>
           <option value="60" label="1h"></option>
           <option value="120" label="2h"></option>
         </datalist>
         <div class="racekbl-history-scale" aria-hidden="true">
-          <span>20m</span>
+          <span>0m</span>
+          <span>30m</span>
           <span>1h</span>
           <span>2h</span>
         </div>

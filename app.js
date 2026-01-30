@@ -887,10 +887,15 @@ function loadSettings() {
   state.imuCalibration = settings.imuCalibration || null;
   state.diagUploadToken = settings.diagUploadToken || "";
   state.windEndpoint = settings.windEndpoint || "/wind";
-  state.windHistoryMinutes = settings.windHistoryMinutes || 60;
-  state.windAutoCorrMinutes = settings.windAutoCorrMinutes || state.windHistoryMinutes || 60;
-  state.windPeriodogramMinutes =
-    settings.windPeriodogramMinutes || state.windAutoCorrMinutes || state.windHistoryMinutes || 60;
+  state.windHistoryMinutes = Number.isFinite(settings.windHistoryMinutes)
+    ? settings.windHistoryMinutes
+    : 60;
+  state.windAutoCorrMinutes = Number.isFinite(settings.windAutoCorrMinutes)
+    ? settings.windAutoCorrMinutes
+    : state.windHistoryMinutes;
+  state.windPeriodogramMinutes = Number.isFinite(settings.windPeriodogramMinutes)
+    ? settings.windPeriodogramMinutes
+    : state.windAutoCorrMinutes;
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
