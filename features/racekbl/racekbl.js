@@ -33,10 +33,12 @@ const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
 const WIND_AUTOCORR_MINUTES_MIN = 0;
 const WIND_AUTOCORR_MINUTES_MAX = 120;
-const WIND_AUTOCORR_STEP_MINUTES = 10;
+const WIND_AUTOCORR_STEP_MINUTES = 2;
 const WIND_PERIODOGRAM_MINUTES_MIN = 0;
 const WIND_PERIODOGRAM_MINUTES_MAX = 120;
-const WIND_PERIODOGRAM_STEP_MINUTES = 10;
+const WIND_PERIODOGRAM_STEP_MINUTES = 2;
+const LAG_TICK_OPTIONS_MIN = [2, 5, 10, 15, 20, 30, 60, 90, 120];
+const LAG_TICK_TARGET = 6;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
@@ -925,7 +927,10 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   const tickStep = computeTickStep(max - min, 0.25);
   drawYAxisGrid(ctx, rect, min, max, tickStep, formatCorrValue);
   const lagLabelMinutes = Math.min(windowMinutes, maxLagMinutes);
-  drawLagTicks(ctx, rect, maxLagMs, lagLabelMinutes);
+  drawLagTicks(ctx, rect, maxLagMs, lagLabelMinutes, {
+    tickOptions: LAG_TICK_OPTIONS_MIN,
+    target: LAG_TICK_TARGET,
+  });
 
   const lagSamples = buildLagSamples(acf, stepMs);
   if (!lagSamples.length) {
@@ -1027,7 +1032,10 @@ function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
   const tickStep = computeTickStep(range, baseStep);
   drawYAxisGrid(ctx, rect, min, max, tickStep, formatCovValue);
   const lagLabelMinutes = Math.min(windowMinutes, maxLagMinutes);
-  drawLagTicksCentered(ctx, rect, lagRangeMs, lagLabelMinutes);
+  drawLagTicksCentered(ctx, rect, lagRangeMs, lagLabelMinutes, {
+    tickOptions: LAG_TICK_OPTIONS_MIN,
+    target: LAG_TICK_TARGET,
+  });
 
   drawStemPlot(ctx, lagSamples, rect, {
     min,
@@ -1191,7 +1199,7 @@ function renderSpeedPeriodogramPlot() {
   const yStep = computeTickStep(max - min, Math.max(0.1, max / 4));
   drawYAxisGrid(ctx, rect, min, max, yStep, formatPowerValue);
   const periodRange = maxPeriodMinutes - minPeriodMinutes;
-  const xStep = computeTickStep(periodRange, 5);
+  const xStep = computeTickStep(periodRange, WIND_PERIODOGRAM_STEP_MINUTES);
   drawXAxisTicks(ctx, rect, minPeriodMinutes, maxPeriodMinutes, xStep, formatLagMinutes, {
     font: WIND_PLOT_TIME_FONT,
   });

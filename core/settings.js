@@ -187,14 +187,14 @@ function normalizeWindAutoCorrMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windAutoCorrMinutes;
   const clamped = Math.min(120, Math.max(0, parsed));
-  return Math.round(clamped / 10) * 10;
+  return Math.round(clamped / 2) * 2;
 }
 
 function normalizeWindPeriodogramMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windPeriodogramMinutes;
   const clamped = Math.min(120, Math.max(0, parsed));
-  return Math.round(clamped / 10) * 10;
+  return Math.round(clamped / 2) * 2;
 }
 
 function normalizeStart(start) {
