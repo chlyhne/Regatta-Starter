@@ -112,7 +112,7 @@ export const raceKblView = `
       </div>
       <div class="racekbl-settings-group">
         <div class="racekbl-control-head">
-          <h3 id="racekbl-autocorr-title">Autocorr window</h3>
+          <h3 id="racekbl-autocorr-title">Autocorr max lag</h3>
           <div id="racekbl-autocorr-value" class="racekbl-window-value">1 h</div>
         </div>
         <input
@@ -140,7 +140,7 @@ export const raceKblView = `
       </div>
       <div class="racekbl-settings-group">
         <div class="racekbl-control-head">
-          <h3 id="racekbl-periodogram-title">Periodogram window</h3>
+          <h3 id="racekbl-periodogram-title">Periodogram max period</h3>
           <div id="racekbl-periodogram-value" class="racekbl-window-value">1 h</div>
         </div>
         <input

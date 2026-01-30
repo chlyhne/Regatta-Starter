@@ -40,7 +40,6 @@ const WIND_PERIODOGRAM_STEP_MINUTES = 10;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
-const CROSS_CORR_LAG_FRACTION = 0.25;
 const PERIODOGRAM_MIN_PERIOD_SEC = 60;
 const PERIODOGRAM_MIN_POINTS = 80;
 const PERIODOGRAM_MAX_POINTS = 240;
@@ -154,14 +153,7 @@ function buildWindUrl() {
 }
 
 function getHistoryRequestMinutes() {
-  const historyMinutes = snapHistoryMinutes(
-    state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
-  );
-  const autoCorrMinutes = snapAutoCorrMinutes(state.windAutoCorrMinutes || historyMinutes);
-  const periodogramMinutes = snapPeriodogramMinutes(
-    state.windPeriodogramMinutes || autoCorrMinutes
-  );
-  return Math.max(historyMinutes, autoCorrMinutes, periodogramMinutes);
+  return snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
 }
 
 function buildWindHistoryUrl() {
@@ -718,41 +710,6 @@ function getWindowSamples() {
   };
 }
 
-function getAutoCorrWindowSamples() {
-  const windowMinutes = snapAutoCorrMinutes(
-    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
-  );
-  const windowMs = windowMinutes * 60 * 1000;
-  const startTs = Date.now() - windowMs;
-  const endTs = startTs + windowMs;
-  return {
-    startTs,
-    endTs,
-    windowMs,
-    windowMinutes,
-    samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
-  };
-}
-
-function getPeriodogramWindowSamples() {
-  const windowMinutes = snapPeriodogramMinutes(
-    state.windPeriodogramMinutes ||
-      state.windAutoCorrMinutes ||
-      state.windHistoryMinutes ||
-      WIND_HISTORY_MINUTES_MIN
-  );
-  const windowMs = windowMinutes * 60 * 1000;
-  const startTs = Date.now() - windowMs;
-  const endTs = startTs + windowMs;
-  return {
-    startTs,
-    endTs,
-    windowMs,
-    windowMinutes,
-    samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
-  };
-}
-
 function renderSpeedPlot() {
   if (!document.body.classList.contains("racekbl-mode")) return;
   if (!els.raceKblSpeedCanvas) return;
@@ -906,7 +863,7 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getPeriodogramWindowSamples();
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
   if (!samples.length) {
     drawPlotMessage(ctx, "Waiting for wind");
     return;
@@ -918,8 +875,11 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
     return;
   }
 
-  const stepMs = chooseAutoCorrStepMs(samples, windowMs);
-  const maxLagMs = windowMs / 2;
+  const maxLagMinutes = snapAutoCorrMinutes(
+    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
+  );
+  const maxLagMs = Math.min(windowMs, maxLagMinutes * 60 * 1000);
+  const stepMs = chooseAutoCorrStepMs(samples, maxLagMs);
   const maxLagCount = Math.floor(maxLagMs / stepMs);
   if (maxLagCount < 1) {
     drawPlotMessage(ctx, "Not enough data");
@@ -944,7 +904,8 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   const max = 1;
   const tickStep = computeTickStep(max - min, 0.25);
   drawYAxisGrid(ctx, rect, min, max, tickStep, formatCorrValue);
-  drawLagTicks(ctx, rect, maxLagMs, windowMinutes / 2);
+  const lagLabelMinutes = Math.min(windowMinutes, maxLagMinutes);
+  drawLagTicks(ctx, rect, maxLagMs, lagLabelMinutes);
 
   const lagSamples = buildLagSamples(acf, stepMs);
   if (!lagSamples.length) {
@@ -975,7 +936,7 @@ function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getAutoCorrWindowSamples();
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
   if (!samples.length) {
     drawPlotMessage(ctx, "Waiting for wind");
     return;
@@ -992,8 +953,11 @@ function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
     return;
   }
 
-  const stepMs = chooseAutoCorrStepMs(samples, windowMs);
-  const maxLagMs = windowMs * CROSS_CORR_LAG_FRACTION;
+  const maxLagMinutes = snapAutoCorrMinutes(
+    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
+  );
+  const maxLagMs = Math.min(windowMs, maxLagMinutes * 60 * 1000);
+  const stepMs = chooseAutoCorrStepMs(samples, maxLagMs);
   const maxLagCount = Math.floor(maxLagMs / stepMs);
   if (maxLagCount < 1) {
     drawPlotMessage(ctx, "Not enough data");
@@ -1044,7 +1008,8 @@ function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
   const baseStep = range > 0 ? range / 4 : 1;
   const tickStep = computeTickStep(range, baseStep);
   drawYAxisGrid(ctx, rect, min, max, tickStep, formatCovValue);
-  drawLagTicksCentered(ctx, rect, lagRangeMs, windowMinutes * CROSS_CORR_LAG_FRACTION);
+  const lagLabelMinutes = Math.min(windowMinutes, maxLagMinutes);
+  drawLagTicksCentered(ctx, rect, lagRangeMs, lagLabelMinutes);
 
   drawStemPlot(ctx, lagSamples, rect, {
     min,
@@ -1087,7 +1052,7 @@ function renderSpeedPeriodogramPlot() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getAutoCorrWindowSamples();
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
   if (!samples.length) {
     drawPlotMessage(ctx, "Waiting for wind");
     return;
@@ -1137,7 +1102,13 @@ function renderSpeedPeriodogramPlot() {
     ? medianDelta
     : WIND_POLL_INTERVAL_MS / 1000;
   const minPeriodSec = Math.max(PERIODOGRAM_MIN_PERIOD_SEC, baseDelta * 2);
-  const maxPeriodSec = windowMs / 1000;
+  const maxPeriodCapMinutes = snapPeriodogramMinutes(
+    state.windPeriodogramMinutes ||
+      state.windAutoCorrMinutes ||
+      state.windHistoryMinutes ||
+      WIND_HISTORY_MINUTES_MIN
+  );
+  const maxPeriodSec = Math.min(windowMs / 1000, maxPeriodCapMinutes * 60);
   if (!Number.isFinite(maxPeriodSec) || maxPeriodSec <= minPeriodSec) {
     drawPlotMessage(ctx, "Not enough data");
     return;
