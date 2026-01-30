@@ -40,6 +40,7 @@ const state = {
   windEndpoint: "/wind",
   windHistoryMinutes: 60,
   windAutoCorrMinutes: 60,
+  windPeriodogramMinutes: 60,
   imuEnabled: false,
   gpsEnabled: true,
   replay: {

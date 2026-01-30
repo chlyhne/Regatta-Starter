@@ -889,6 +889,8 @@ function loadSettings() {
   state.windEndpoint = settings.windEndpoint || "/wind";
   state.windHistoryMinutes = settings.windHistoryMinutes || 60;
   state.windAutoCorrMinutes = settings.windAutoCorrMinutes || state.windHistoryMinutes || 60;
+  state.windPeriodogramMinutes =
+    settings.windPeriodogramMinutes || state.windAutoCorrMinutes || state.windHistoryMinutes || 60;
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
@@ -919,6 +921,7 @@ function saveSettings() {
     windEndpoint: state.windEndpoint,
     windHistoryMinutes: state.windHistoryMinutes,
     windAutoCorrMinutes: state.windAutoCorrMinutes,
+    windPeriodogramMinutes: state.windPeriodogramMinutes,
     replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,

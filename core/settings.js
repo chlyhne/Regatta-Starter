@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 12;
+const SETTINGS_VERSION = 13;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -47,6 +47,7 @@ const DEFAULT_SETTINGS = {
   windEndpoint: "/wind",
   windHistoryMinutes: 60,
   windAutoCorrMinutes: 60,
+  windPeriodogramMinutes: 60,
   replayLoop: false,
   vmg: {
     baselineTauSeconds: VMG_BASELINE_TAU_DEFAULT_SEC,
@@ -189,6 +190,13 @@ function normalizeWindAutoCorrMinutes(value) {
   return Math.round(clamped / 10) * 10;
 }
 
+function normalizeWindPeriodogramMinutes(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windPeriodogramMinutes;
+  const clamped = Math.min(120, Math.max(20, parsed));
+  return Math.round(clamped / 10) * 10;
+}
+
 function normalizeStart(start) {
   return {
     mode: start?.mode === "absolute" ? "absolute" : "countdown",
@@ -243,6 +251,7 @@ function normalizeSettings(raw) {
     windEndpoint: normalizeWindEndpoint(raw?.windEndpoint),
     windHistoryMinutes: normalizeWindHistoryMinutes(raw?.windHistoryMinutes),
     windAutoCorrMinutes: normalizeWindAutoCorrMinutes(raw?.windAutoCorrMinutes),
+    windPeriodogramMinutes: normalizeWindPeriodogramMinutes(raw?.windPeriodogramMinutes),
     replayLoop: Boolean(raw?.replayLoop),
     vmg: normalizeVmgSettings(raw?.vmg),
     start: normalizeStart(raw?.start),
@@ -346,6 +355,10 @@ function migrateSettings(raw) {
   if (version < 12) {
     migrated.windAutoCorrMinutes = DEFAULT_SETTINGS.windAutoCorrMinutes;
     migrated.version = 12;
+  }
+  if (version < 13) {
+    migrated.windPeriodogramMinutes = DEFAULT_SETTINGS.windPeriodogramMinutes;
+    migrated.version = 13;
   }
   return migrated;
 }

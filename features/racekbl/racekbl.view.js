@@ -138,6 +138,34 @@ export const raceKblView = `
           <span>2h</span>
         </div>
       </div>
+      <div class="racekbl-settings-group">
+        <div class="racekbl-control-head">
+          <h3 id="racekbl-periodogram-title">Periodogram window</h3>
+          <div id="racekbl-periodogram-value" class="racekbl-window-value">1 h</div>
+        </div>
+        <input
+          id="racekbl-periodogram"
+          class="racekbl-window-slider"
+          type="range"
+          min="20"
+          max="120"
+          step="10"
+          value="60"
+          list="racekbl-periodogram-ticks"
+          aria-labelledby="racekbl-periodogram-title racekbl-periodogram-value"
+        />
+        <datalist id="racekbl-periodogram-ticks">
+          <option value="20" label="20m"></option>
+          <option value="30" label="30m"></option>
+          <option value="60" label="1h"></option>
+          <option value="120" label="2h"></option>
+        </datalist>
+        <div class="racekbl-history-scale" aria-hidden="true">
+          <span>20m</span>
+          <span>1h</span>
+          <span>2h</span>
+        </div>
+      </div>
       <div class="row stack">
         <button id="close-racekbl-settings" class="ghost">Done</button>
       </div>

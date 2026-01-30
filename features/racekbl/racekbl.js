@@ -34,6 +34,9 @@ const WIND_PLOT_TIME_FONT = "12px sans-serif";
 const WIND_AUTOCORR_MINUTES_MIN = 20;
 const WIND_AUTOCORR_MINUTES_MAX = 120;
 const WIND_AUTOCORR_STEP_MINUTES = 10;
+const WIND_PERIODOGRAM_MINUTES_MIN = 20;
+const WIND_PERIODOGRAM_MINUTES_MAX = 120;
+const WIND_PERIODOGRAM_STEP_MINUTES = 10;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
@@ -131,6 +134,21 @@ function snapAutoCorrMinutes(value) {
   );
 }
 
+function snapPeriodogramMinutes(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return WIND_PERIODOGRAM_MINUTES_MIN;
+  const clamped = Math.min(
+    WIND_PERIODOGRAM_MINUTES_MAX,
+    Math.max(WIND_PERIODOGRAM_MINUTES_MIN, parsed)
+  );
+  const stepped =
+    Math.round(clamped / WIND_PERIODOGRAM_STEP_MINUTES) * WIND_PERIODOGRAM_STEP_MINUTES;
+  return Math.min(
+    WIND_PERIODOGRAM_MINUTES_MAX,
+    Math.max(WIND_PERIODOGRAM_MINUTES_MIN, stepped)
+  );
+}
+
 function buildWindUrl() {
   return `/wind?t=${Date.now()}`;
 }
@@ -140,7 +158,10 @@ function getHistoryRequestMinutes() {
     state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
   );
   const autoCorrMinutes = snapAutoCorrMinutes(state.windAutoCorrMinutes || historyMinutes);
-  return Math.max(historyMinutes, autoCorrMinutes);
+  const periodogramMinutes = snapPeriodogramMinutes(
+    state.windPeriodogramMinutes || autoCorrMinutes
+  );
+  return Math.max(historyMinutes, autoCorrMinutes, periodogramMinutes);
 }
 
 function buildWindHistoryUrl() {
@@ -713,6 +734,25 @@ function getAutoCorrWindowSamples() {
   };
 }
 
+function getPeriodogramWindowSamples() {
+  const windowMinutes = snapPeriodogramMinutes(
+    state.windPeriodogramMinutes ||
+      state.windAutoCorrMinutes ||
+      state.windHistoryMinutes ||
+      WIND_HISTORY_MINUTES_MIN
+  );
+  const windowMs = windowMinutes * 60 * 1000;
+  const startTs = Date.now() - windowMs;
+  const endTs = startTs + windowMs;
+  return {
+    startTs,
+    endTs,
+    windowMs,
+    windowMinutes,
+    samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
+  };
+}
+
 function renderSpeedPlot() {
   if (!document.body.classList.contains("racekbl-mode")) return;
   if (!els.raceKblSpeedCanvas) return;
@@ -866,7 +906,7 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getAutoCorrWindowSamples();
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getPeriodogramWindowSamples();
   if (!samples.length) {
     drawPlotMessage(ctx, "Waiting for wind");
     return;
@@ -1216,6 +1256,21 @@ function syncRaceKblInputs() {
   if (els.raceKblAutoCorrValue) {
     els.raceKblAutoCorrValue.textContent = formatWindowMinutes(autoMinutes);
   }
+  const periodMinutes = snapPeriodogramMinutes(
+    state.windPeriodogramMinutes ||
+      state.windAutoCorrMinutes ||
+      state.windHistoryMinutes ||
+      WIND_HISTORY_MINUTES_MIN
+  );
+  if (periodMinutes !== state.windPeriodogramMinutes) {
+    state.windPeriodogramMinutes = periodMinutes;
+  }
+  if (els.raceKblPeriodogram) {
+    els.raceKblPeriodogram.value = String(periodMinutes);
+  }
+  if (els.raceKblPeriodogramValue) {
+    els.raceKblPeriodogramValue.textContent = formatWindowMinutes(periodMinutes);
+  }
 }
 
 function setHistoryWindow(minutes) {
@@ -1258,6 +1313,26 @@ function setAutoCorrWindow(minutes) {
   updateRaceKblUi();
 }
 
+function setPeriodogramWindow(minutes) {
+  const clamped = snapPeriodogramMinutes(minutes);
+  state.windPeriodogramMinutes = clamped;
+  if (raceKblDeps.saveSettings) {
+    raceKblDeps.saveSettings();
+  }
+  if (els.raceKblPeriodogram) {
+    els.raceKblPeriodogram.value = String(clamped);
+  }
+  if (els.raceKblPeriodogramValue) {
+    els.raceKblPeriodogramValue.textContent = formatWindowMinutes(clamped);
+  }
+  const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
+  if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
+    fetchWindHistory();
+    return;
+  }
+  updateRaceKblUi();
+}
+
 function setRaceKblSettingsOpen(open) {
   const next = Boolean(open);
   if (els.raceKblSettingsView) {
@@ -1291,6 +1366,11 @@ function bindRaceKblEvents() {
   if (els.raceKblAutoCorr) {
     els.raceKblAutoCorr.addEventListener("input", () => {
       setAutoCorrWindow(els.raceKblAutoCorr.value);
+    });
+  }
+  if (els.raceKblPeriodogram) {
+    els.raceKblPeriodogram.addEventListener("input", () => {
+      setPeriodogramWindow(els.raceKblPeriodogram.value);
     });
   }
   document.addEventListener("visibilitychange", () => {

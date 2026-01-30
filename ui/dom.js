@@ -115,6 +115,8 @@ const els = {
   raceKblHistoryValue: document.getElementById("racekbl-history-value"),
   raceKblAutoCorr: document.getElementById("racekbl-autocorr"),
   raceKblAutoCorrValue: document.getElementById("racekbl-autocorr-value"),
+  raceKblPeriodogram: document.getElementById("racekbl-periodogram"),
+  raceKblPeriodogramValue: document.getElementById("racekbl-periodogram-value"),
   openMap: document.getElementById("open-map"),
   openCoords: document.getElementById("open-coords"),
   openLocation: document.getElementById("open-location"),
