@@ -10,6 +10,7 @@ Instructions for coding agents working in this repo.
 - Static PWA: vanilla HTML/CSS/JS modules with no build step or framework.
 - Keep dependencies minimal; Leaflet in `vendor/` is the only map library.
 - Reuse helpers in `format.js`, `geo.js`, `velocity.js`, and `kalman.js` instead of re-implementing logic.
+- Centralize plotting utilities in `core/plot.js` (do not duplicate plot helpers elsewhere).
 
 ## UX and style
 - Black/white theme with strong contrast.

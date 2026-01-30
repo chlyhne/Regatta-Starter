@@ -6,6 +6,16 @@ import {
   trimTrailingZeros,
   unwrapHeadingDegrees,
 } from "../../core/common.js";
+import {
+  computeTickStep,
+  drawLagTicks,
+  drawLagTicksCentered,
+  drawLine,
+  drawStemPlot,
+  drawTimeTicks,
+  drawYAxisGrid,
+  drawZeroLine,
+} from "../../core/plot.js";
 
 const WIND_POLL_INTERVAL_MS = 15000;
 const WIND_HISTORY_MINUTES_MIN = 20;
@@ -19,8 +29,6 @@ const WIND_PLOT_TIME_GUTTER = 22;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
-const TIME_TICK_OPTIONS_MIN = [5, 15, 20, 30, 60, 120, 240, 360];
-const TIME_TICK_TARGET = 7;
 const WIND_AUTOCORR_MINUTES_MIN = 20;
 const WIND_AUTOCORR_MINUTES_MAX = 120;
 const WIND_AUTOCORR_STEP_MINUTES = 10;
@@ -78,6 +86,20 @@ function snapHistoryMinutes(value) {
 
 function formatHistoryMinutes(value) {
   const minutes = snapHistoryMinutes(value);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const extra = minutes % 60;
+  if (!extra) {
+    return `${hours} h`;
+  }
+  return `${hours} h ${extra} m`;
+}
+
+function formatWindowMinutes(value) {
+  const minutes = Number.parseInt(value, 10);
+  if (!Number.isFinite(minutes)) return "--";
   if (minutes < 60) {
     return `${minutes} min`;
   }
@@ -322,199 +344,6 @@ function requestRaceKblRender() {
   }, 200 - elapsed);
 }
 
-function drawLine(ctx, samples, key, rect, options = {}) {
-  const values = samples.filter((sample) => Number.isFinite(sample?.[key]));
-  if (!values.length) return;
-  const min = options.min;
-  const max = options.max;
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
-  const width = rect.right - rect.left;
-  const height = rect.bottom - rect.top;
-  if (width <= 0 || height <= 0) return;
-  const range = max - min;
-  const mapX = (ts) => rect.left + ((ts - options.startTs) / options.windowMs) * width;
-  const mapY = (value) => rect.bottom - ((value - min) / range) * height;
-
-  ctx.save();
-  ctx.strokeStyle = options.color || "#000000";
-  ctx.lineWidth = options.lineWidth || WIND_PLOT_LINE_WIDTH;
-  ctx.setLineDash(options.dash || []);
-  ctx.beginPath();
-  let started = false;
-  samples.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.ts) || !Number.isFinite(sample[key])) return;
-    const x = mapX(sample.ts);
-    const y = mapY(sample[key]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    if (!started) {
-      ctx.moveTo(x, y);
-      started = true;
-    } else {
-      ctx.lineTo(x, y);
-    }
-  });
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawStemPlot(ctx, samples, rect, options = {}) {
-  const min = options.min;
-  const max = options.max;
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
-  const width = rect.right - rect.left;
-  const height = rect.bottom - rect.top;
-  if (width <= 0 || height <= 0) return;
-  const range = max - min;
-  const mapX = (ts) => rect.left + ((ts - options.startTs) / options.windowMs) * width;
-  const mapY = (value) => rect.bottom - ((value - min) / range) * height;
-  const baseY = mapY(0);
-  if (!Number.isFinite(baseY)) return;
-  const color = options.color || "#000000";
-  const dotRadius =
-    Number.isFinite(options.dotRadius) && options.dotRadius > 0
-      ? options.dotRadius
-      : AUTO_CORR_DOT_SIZE / 2;
-
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineWidth = options.lineWidth || 1;
-  ctx.setLineDash([]);
-
-  samples.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.ts) || !Number.isFinite(sample.value)) return;
-    const x = mapX(sample.ts);
-    const y = mapY(sample.value);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    ctx.beginPath();
-    ctx.moveTo(x, baseY);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    if (dotRadius > 0) {
-      ctx.beginPath();
-      ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  });
-
-  ctx.restore();
-}
-
-function computeTickStep(range, baseStep) {
-  let step = baseStep;
-  if (!Number.isFinite(range) || range <= 0) return step;
-  let lines = Math.floor(range / step) + 1;
-  while (lines >= 7) {
-    step *= 2;
-    lines = Math.floor(range / step) + 1;
-  }
-  return step;
-}
-
-function drawYAxisGrid(ctx, rect, min, max, step, labelFn) {
-  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step)) return;
-  if (min === max) return;
-  const range = max - min;
-  const mapY = (value) => rect.bottom - ((value - min) / range) * (rect.bottom - rect.top);
-  const firstTick = Math.ceil(min / step) * step;
-
-  const ticks = [];
-  let maxLabelWidth = 0;
-  ctx.save();
-  ctx.font = "12px sans-serif";
-  for (let value = firstTick; value <= max + 1e-6; value += step) {
-    const y = mapY(value);
-    if (!Number.isFinite(y)) continue;
-    const label = typeof labelFn === "function" ? String(labelFn(value)) : "";
-    if (label) {
-      const width = ctx.measureText(label).width || 0;
-      maxLabelWidth = Math.max(maxLabelWidth, width);
-    }
-    ticks.push({ y, label });
-  }
-  const labelX = Math.max(rect.left - 6, maxLabelWidth + 2);
-
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 6]);
-  ctx.fillStyle = "#000000";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-
-  ticks.forEach((tick) => {
-    ctx.beginPath();
-    ctx.moveTo(rect.left, tick.y);
-    ctx.lineTo(rect.right, tick.y);
-    ctx.stroke();
-    if (tick.label) {
-      ctx.fillText(tick.label, labelX, tick.y);
-    }
-  });
-  ctx.restore();
-}
-
-function chooseTimeTickMinutes(windowMinutes) {
-  const safe = Math.max(1, windowMinutes);
-  let best = TIME_TICK_OPTIONS_MIN[0];
-  let bestDiff = Infinity;
-  TIME_TICK_OPTIONS_MIN.forEach((candidate) => {
-    const count = Math.floor(safe / candidate) + 1;
-    const diff = Math.abs(count - TIME_TICK_TARGET);
-    if (diff < bestDiff || (diff === bestDiff && candidate > best)) {
-      bestDiff = diff;
-      best = candidate;
-    }
-  });
-  return best;
-}
-
-function formatTimeTickLabel(ts) {
-  const date = new Date(ts);
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes) {
-  if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return;
-  const windowMs = endTs - startTs;
-  if (!Number.isFinite(windowMs) || windowMs <= 0) return;
-
-  const tickMinutes = chooseTimeTickMinutes(windowMinutes);
-  const tickMs = tickMinutes * 60 * 1000;
-  if (!Number.isFinite(tickMs) || tickMs <= 0) return;
-
-  const firstTick = Math.ceil(startTs / tickMs) * tickMs;
-  const width = rect.right - rect.left;
-  if (width <= 0) return;
-
-  ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 6]);
-  ctx.fillStyle = "#000000";
-  ctx.font = WIND_PLOT_TIME_FONT;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-
-  for (let ts = firstTick; ts <= endTs + 1; ts += tickMs) {
-    const x = rect.left + ((ts - startTs) / windowMs) * width;
-    if (!Number.isFinite(x)) continue;
-    const label = formatTimeTickLabel(ts);
-    const labelWidth = ctx.measureText(label).width || 0;
-    const half = labelWidth / 2;
-    if (x - half < rect.left || x + half > rect.right) {
-      continue;
-    }
-    ctx.beginPath();
-    ctx.moveTo(x, rect.top);
-    ctx.lineTo(x, rect.bottom);
-    ctx.stroke();
-    ctx.fillText(label, x, rect.bottom + 6);
-  }
-  ctx.restore();
-}
-
 function median(values) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -694,110 +523,6 @@ function formatCovValue(value) {
   return trimTrailingZeros(rounded.toFixed(2));
 }
 
-function formatLagMinutes(minutes) {
-  if (!Number.isFinite(minutes)) return "";
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  if (minutes % 60 === 0) return `${Math.round(minutes / 60)}h`;
-  return `${Math.round(minutes)}m`;
-}
-
-function formatLagMinutesSigned(minutes) {
-  if (!Number.isFinite(minutes)) return "";
-  if (minutes === 0) return "0";
-  const sign = minutes < 0 ? "-" : "";
-  return `${sign}${formatLagMinutes(Math.abs(minutes))}`;
-}
-
-function drawLagTicks(ctx, rect, maxLagMs, maxLagMinutes) {
-  if (!Number.isFinite(maxLagMs) || maxLagMs <= 0) return;
-  const tickMinutes = chooseTimeTickMinutes(maxLagMinutes);
-  const tickMs = tickMinutes * 60 * 1000;
-  if (!Number.isFinite(tickMs) || tickMs <= 0) return;
-
-  const width = rect.right - rect.left;
-  if (width <= 0) return;
-
-  ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 6]);
-  ctx.fillStyle = "#000000";
-  ctx.font = WIND_PLOT_TIME_FONT;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-
-  for (let lag = tickMs; lag <= maxLagMs + 1; lag += tickMs) {
-    const x = rect.left + (lag / maxLagMs) * width;
-    if (!Number.isFinite(x)) continue;
-    const label = formatLagMinutes(lag / (60 * 1000));
-    const labelWidth = ctx.measureText(label).width || 0;
-    const half = labelWidth / 2;
-    if (x - half < rect.left || x + half > rect.right) {
-      continue;
-    }
-    ctx.beginPath();
-    ctx.moveTo(x, rect.top);
-    ctx.lineTo(x, rect.bottom);
-    ctx.stroke();
-    ctx.fillText(label, x, rect.bottom + 6);
-  }
-  ctx.restore();
-}
-
-function drawLagTicksCentered(ctx, rect, maxLagMs, maxLagMinutes) {
-  if (!Number.isFinite(maxLagMs) || maxLagMs <= 0) return;
-  const tickMinutes = chooseTimeTickMinutes(maxLagMinutes * 2);
-  const tickMs = tickMinutes * 60 * 1000;
-  if (!Number.isFinite(tickMs) || tickMs <= 0) return;
-
-  const width = rect.right - rect.left;
-  if (width <= 0) return;
-
-  ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 6]);
-  ctx.fillStyle = "#000000";
-  ctx.font = WIND_PLOT_TIME_FONT;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-
-  const firstTick = Math.ceil(-maxLagMs / tickMs) * tickMs;
-  for (let lag = firstTick; lag <= maxLagMs + 1; lag += tickMs) {
-    const x = rect.left + ((lag + maxLagMs) / (maxLagMs * 2)) * width;
-    if (!Number.isFinite(x)) continue;
-    const label = formatLagMinutesSigned(lag / (60 * 1000));
-    const labelWidth = ctx.measureText(label).width || 0;
-    const half = labelWidth / 2;
-    if (x - half < rect.left || x + half > rect.right) {
-      continue;
-    }
-    ctx.beginPath();
-    ctx.moveTo(x, rect.top);
-    ctx.lineTo(x, rect.bottom);
-    ctx.stroke();
-    ctx.fillText(label, x, rect.bottom + 6);
-  }
-  ctx.restore();
-}
-
-function drawZeroLine(ctx, rect, min, max) {
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
-  if (0 < min || 0 > max) return;
-  const range = max - min;
-  const y = rect.bottom - ((0 - min) / range) * (rect.bottom - rect.top);
-  if (!Number.isFinite(y)) return;
-  ctx.save();
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(rect.left, y);
-  ctx.lineTo(rect.right, y);
-  ctx.stroke();
-  ctx.restore();
-}
-
 function buildLagSamples(acf, stepMs) {
   const samples = [];
   acf.forEach((value, index) => {
@@ -903,7 +628,9 @@ function renderSpeedPlot() {
 
   const tickStep = computeTickStep(max - min, 1);
   drawYAxisGrid(ctx, rect, min, max, tickStep, (value) => `${formatWindValue(value)} kn`);
-  drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes);
+  drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes, {
+    font: WIND_PLOT_TIME_FONT,
+  });
 
   drawLine(ctx, samples, "speed", rect, {
     min,
@@ -974,7 +701,9 @@ function renderDirectionPlot() {
   drawYAxisGrid(ctx, rect, min, max, tickStep, (value) =>
     formatDirection(normalizeHeadingDegrees(value))
   );
-  drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes);
+  drawTimeTicks(ctx, rect, startTs, startTs + windowMs, windowMinutes, {
+    font: WIND_PLOT_TIME_FONT,
+  });
 
   drawLine(ctx, samples, "dirUnwrapped", rect, {
     min,
@@ -1167,23 +896,12 @@ function renderDirSpeedCrossCorrPlot() {
   );
 }
 
-function renderSpeedDirCrossCorrPlot() {
-  renderCrossCorrPlot(
-    els.raceKblXcorrSpeedDirCanvas,
-    "speed",
-    "dirUnwrapped",
-    "No speed data",
-    "No dir data"
-  );
-}
-
 function renderRaceKblPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
   renderSpeedAutoCorrPlot();
   renderDirAutoCorrPlot();
   renderDirSpeedCrossCorrPlot();
-  renderSpeedDirCrossCorrPlot();
 }
 
 function syncRaceKblInputs() {
@@ -1207,7 +925,7 @@ function syncRaceKblInputs() {
     els.raceKblAutoCorr.value = String(autoMinutes);
   }
   if (els.raceKblAutoCorrValue) {
-    els.raceKblAutoCorrValue.textContent = formatHistoryMinutes(autoMinutes);
+    els.raceKblAutoCorrValue.textContent = formatWindowMinutes(autoMinutes);
   }
 }
 
@@ -1241,7 +959,7 @@ function setAutoCorrWindow(minutes) {
     els.raceKblAutoCorr.value = String(clamped);
   }
   if (els.raceKblAutoCorrValue) {
-    els.raceKblAutoCorrValue.textContent = formatHistoryMinutes(clamped);
+    els.raceKblAutoCorrValue.textContent = formatWindowMinutes(clamped);
   }
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {

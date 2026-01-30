@@ -185,7 +185,8 @@ function normalizeWindHistoryMinutes(value) {
 function normalizeWindAutoCorrMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windAutoCorrMinutes;
-  return Math.min(120, Math.max(20, parsed));
+  const clamped = Math.min(120, Math.max(20, parsed));
+  return Math.round(clamped / 10) * 10;
 }
 
 function normalizeStart(start) {

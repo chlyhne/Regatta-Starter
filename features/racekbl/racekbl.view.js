@@ -62,13 +62,6 @@ export const raceKblView = `
       </div>
     </section>
 
-    <section class="panel racekbl-xcorr-speed-dir-panel">
-      <h2>Speed x dir</h2>
-      <div class="racekbl-plot racekbl-xcorr-plot" aria-label="Wind speed vs direction cross-correlation plot">
-        <canvas id="racekbl-xcorr-speed-dir-canvas"></canvas>
-      </div>
-    </section>
-
   </div>
 
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">

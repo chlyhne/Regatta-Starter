@@ -8,9 +8,9 @@ import {
   unwrapHeadingDegrees,
   resizeCanvasToCssPixels,
   formatWindowSeconds,
-  renderSignedLinePlot,
   headingFromVelocity,
 } from "../../core/common.js";
+import { renderSignedLinePlot } from "../../core/plot.js";
 import { canUseKalmanHeading } from "../../core/heading.js";
 
 const VMG_EVAL_TWA_UP_DEG = 45;
