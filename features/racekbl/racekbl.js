@@ -84,12 +84,24 @@ function formatHistoryMinutes(value) {
   return `${hours} h ${extra} m`;
 }
 
+function snapAutoCorrMinutes(value) {
+  return snapHistoryMinutes(value);
+}
+
 function buildWindUrl() {
   return `/wind?t=${Date.now()}`;
 }
 
+function getHistoryRequestMinutes() {
+  const historyMinutes = snapHistoryMinutes(
+    state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
+  );
+  const autoCorrMinutes = snapAutoCorrMinutes(state.windAutoCorrMinutes || historyMinutes);
+  return Math.max(historyMinutes, autoCorrMinutes);
+}
+
 function buildWindHistoryUrl() {
-  const minutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const minutes = getHistoryRequestMinutes();
   const hours = Math.max(1, Math.ceil(minutes / 60));
   return `/wind?history=1&hours=${hours}&t=${Date.now()}`;
 }
@@ -201,7 +213,7 @@ function applyLatestPayload(data) {
 
 function applyHistoryPayload(data) {
   if (!data || !Array.isArray(data.history)) return false;
-  const minutes = clampHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const minutes = getHistoryRequestMinutes();
   historyLoadedHours = Math.max(historyLoadedHours, Math.max(1, Math.ceil(minutes / 60)));
   resetWindHistory();
   const entries = data.history
@@ -511,12 +523,45 @@ function buildUniformSeries(samples, key, startTs, endTs, stepMs) {
   return values;
 }
 
+function detrendSeries(values) {
+  const indices = [];
+  const vals = [];
+  values.forEach((value, index) => {
+    if (!Number.isFinite(value)) return;
+    indices.push(index);
+    vals.push(value);
+  });
+  if (!indices.length) return values;
+
+  const count = indices.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  for (let i = 0; i < count; i += 1) {
+    const x = indices[i];
+    const y = vals[i];
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+  const denom = count * sumXX - sumX * sumX;
+  const slope = denom ? (count * sumXY - sumX * sumY) / denom : 0;
+  const intercept = (sumY - slope * sumX) / count;
+
+  return values.map((value, index) =>
+    Number.isFinite(value) ? value - (intercept + slope * index) : null
+  );
+}
+
 function computeAutoCorrelation(values, maxLagCount) {
-  const valid = values.filter((value) => Number.isFinite(value));
+  const detrended = detrendSeries(values);
+  const valid = detrended.filter((value) => Number.isFinite(value));
   if (valid.length < 4) return null;
   const mean = valid.reduce((sum, value) => sum + value, 0) / valid.length;
   let varianceSum = 0;
-  values.forEach((value) => {
+  detrended.forEach((value) => {
     if (!Number.isFinite(value)) return;
     const delta = value - mean;
     varianceSum += delta * delta;
@@ -530,9 +575,9 @@ function computeAutoCorrelation(values, maxLagCount) {
   for (let lag = 0; lag <= maxLag; lag += 1) {
     let sum = 0;
     let count = 0;
-    for (let i = 0; i < values.length - lag; i += 1) {
-      const first = values[i];
-      const second = values[i + lag];
+    for (let i = 0; i < detrended.length - lag; i += 1) {
+      const first = detrended[i];
+      const second = detrended[i + lag];
       if (!Number.isFinite(first) || !Number.isFinite(second)) continue;
       sum += (first - mean) * (second - mean);
       count += 1;
@@ -623,6 +668,22 @@ function buildLagSamples(acf, stepMs) {
 
 function getWindowSamples() {
   const windowMinutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const windowMs = windowMinutes * 60 * 1000;
+  const startTs = Date.now() - windowMs;
+  const endTs = startTs + windowMs;
+  return {
+    startTs,
+    endTs,
+    windowMs,
+    windowMinutes,
+    samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
+  };
+}
+
+function getAutoCorrWindowSamples() {
+  const windowMinutes = snapAutoCorrMinutes(
+    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
+  );
   const windowMs = windowMinutes * 60 * 1000;
   const startTs = Date.now() - windowMs;
   const endTs = startTs + windowMs;
@@ -784,7 +845,7 @@ function renderAutoCorrPlot(canvas, key, emptyLabel) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getAutoCorrWindowSamples();
   if (!samples.length) {
     drawPlotMessage(ctx, "Waiting for wind");
     return;
@@ -867,6 +928,18 @@ function syncRaceKblInputs() {
   if (els.raceKblHistoryValue) {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(minutes);
   }
+  const autoMinutes = snapAutoCorrMinutes(
+    state.windAutoCorrMinutes || state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN
+  );
+  if (autoMinutes !== state.windAutoCorrMinutes) {
+    state.windAutoCorrMinutes = autoMinutes;
+  }
+  if (els.raceKblAutoCorr) {
+    els.raceKblAutoCorr.value = String(autoMinutes);
+  }
+  if (els.raceKblAutoCorrValue) {
+    els.raceKblAutoCorrValue.textContent = formatHistoryMinutes(autoMinutes);
+  }
 }
 
 function setHistoryWindow(minutes) {
@@ -881,7 +954,27 @@ function setHistoryWindow(minutes) {
   if (els.raceKblHistoryValue) {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(clamped);
   }
-  const requiredHours = Math.max(1, Math.ceil(clamped / 60));
+  const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
+  if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
+    fetchWindHistory();
+    return;
+  }
+  updateRaceKblUi();
+}
+
+function setAutoCorrWindow(minutes) {
+  const clamped = snapAutoCorrMinutes(minutes);
+  state.windAutoCorrMinutes = clamped;
+  if (raceKblDeps.saveSettings) {
+    raceKblDeps.saveSettings();
+  }
+  if (els.raceKblAutoCorr) {
+    els.raceKblAutoCorr.value = String(clamped);
+  }
+  if (els.raceKblAutoCorrValue) {
+    els.raceKblAutoCorrValue.textContent = formatHistoryMinutes(clamped);
+  }
+  const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
     fetchWindHistory();
     return;
@@ -917,6 +1010,11 @@ function bindRaceKblEvents() {
   if (els.raceKblHistory) {
     els.raceKblHistory.addEventListener("input", () => {
       setHistoryWindow(els.raceKblHistory.value);
+    });
+  }
+  if (els.raceKblAutoCorr) {
+    els.raceKblAutoCorr.addEventListener("input", () => {
+      setAutoCorrWindow(els.raceKblAutoCorr.value);
     });
   }
   document.addEventListener("visibilitychange", () => {

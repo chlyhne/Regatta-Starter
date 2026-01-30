@@ -111,6 +111,8 @@ const els = {
   raceKblDirAcfCanvas: document.getElementById("racekbl-dir-acf-canvas"),
   raceKblHistory: document.getElementById("racekbl-history"),
   raceKblHistoryValue: document.getElementById("racekbl-history-value"),
+  raceKblAutoCorr: document.getElementById("racekbl-autocorr"),
+  raceKblAutoCorrValue: document.getElementById("racekbl-autocorr-value"),
   openMap: document.getElementById("open-map"),
   openCoords: document.getElementById("open-coords"),
   openLocation: document.getElementById("open-location"),

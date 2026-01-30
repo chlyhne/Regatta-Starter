@@ -888,6 +888,7 @@ function loadSettings() {
   state.diagUploadToken = settings.diagUploadToken || "";
   state.windEndpoint = settings.windEndpoint || "/wind";
   state.windHistoryMinutes = settings.windHistoryMinutes || 60;
+  state.windAutoCorrMinutes = settings.windAutoCorrMinutes || state.windHistoryMinutes || 60;
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
@@ -917,6 +918,7 @@ function saveSettings() {
     diagUploadToken: state.diagUploadToken,
     windEndpoint: state.windEndpoint,
     windHistoryMinutes: state.windHistoryMinutes,
+    windAutoCorrMinutes: state.windAutoCorrMinutes,
     replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,

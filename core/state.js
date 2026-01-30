@@ -39,6 +39,7 @@ const state = {
   diagUploadToken: "",
   windEndpoint: "/wind",
   windHistoryMinutes: 60,
+  windAutoCorrMinutes: 60,
   imuEnabled: false,
   gpsEnabled: true,
   replay: {

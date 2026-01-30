@@ -96,6 +96,42 @@ export const raceKblView = `
           <span>24h</span>
         </div>
       </div>
+      <div class="racekbl-settings-group">
+        <div class="racekbl-control-head">
+          <h3 id="racekbl-autocorr-title">Autocorr window</h3>
+          <div id="racekbl-autocorr-value" class="racekbl-window-value">1 h</div>
+        </div>
+        <input
+          id="racekbl-autocorr"
+          class="racekbl-window-slider"
+          type="range"
+          min="20"
+          max="1440"
+          step="10"
+          value="60"
+          list="racekbl-autocorr-ticks"
+          aria-labelledby="racekbl-autocorr-title racekbl-autocorr-value"
+        />
+        <datalist id="racekbl-autocorr-ticks">
+          <option value="20" label="20m"></option>
+          <option value="30" label="30m"></option>
+          <option value="60" label="1h"></option>
+          <option value="120" label="2h"></option>
+          <option value="240" label="4h"></option>
+          <option value="480" label="8h"></option>
+          <option value="720" label="12h"></option>
+          <option value="1440" label="24h"></option>
+        </datalist>
+        <div class="racekbl-history-scale" aria-hidden="true">
+          <span>20m</span>
+          <span>1h</span>
+          <span>2h</span>
+          <span>4h</span>
+          <span>8h</span>
+          <span>12h</span>
+          <span>24h</span>
+        </div>
+      </div>
       <div class="row stack">
         <button id="close-racekbl-settings" class="ghost">Done</button>
       </div>
