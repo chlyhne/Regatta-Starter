@@ -41,6 +41,20 @@ export const raceKblView = `
       </div>
     </section>
 
+    <section class="panel racekbl-speed-acf-panel">
+      <h2>Wind speed autocorr</h2>
+      <div class="racekbl-plot racekbl-speed-acf-plot" aria-label="Wind speed autocorrelation plot">
+        <canvas id="racekbl-speed-acf-canvas"></canvas>
+      </div>
+    </section>
+
+    <section class="panel racekbl-dir-acf-panel">
+      <h2>Wind direction autocorr</h2>
+      <div class="racekbl-plot racekbl-dir-acf-plot" aria-label="Wind direction autocorrelation plot">
+        <canvas id="racekbl-dir-acf-canvas"></canvas>
+      </div>
+    </section>
+
   </div>
 
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">

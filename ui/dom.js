@@ -107,6 +107,8 @@ const els = {
   closeRaceKblSettings: document.getElementById("close-racekbl-settings"),
   raceKblSpeedCanvas: document.getElementById("racekbl-speed-canvas"),
   raceKblDirCanvas: document.getElementById("racekbl-dir-canvas"),
+  raceKblSpeedAcfCanvas: document.getElementById("racekbl-speed-acf-canvas"),
+  raceKblDirAcfCanvas: document.getElementById("racekbl-dir-acf-canvas"),
   raceKblHistory: document.getElementById("racekbl-history"),
   raceKblHistoryValue: document.getElementById("racekbl-history-value"),
   openMap: document.getElementById("open-map"),

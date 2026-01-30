@@ -1937,6 +1937,14 @@ button:active {
   height: 300px;
 }
 
+.racekbl-speed-acf-plot {
+  height: 300px;
+}
+
+.racekbl-dir-acf-plot {
+  height: 300px;
+}
+
 .track-close {
   position: absolute;
   left: 50%;
