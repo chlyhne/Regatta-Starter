@@ -23,6 +23,7 @@ const TIME_TICK_OPTIONS_MIN = [5, 15, 20, 30, 60, 120, 240, 360];
 const TIME_TICK_TARGET = 7;
 const WIND_AUTOCORR_MINUTES_MIN = 20;
 const WIND_AUTOCORR_MINUTES_MAX = 120;
+const WIND_AUTOCORR_STEP_MINUTES = 10;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
@@ -91,7 +92,16 @@ function formatHistoryMinutes(value) {
 function snapAutoCorrMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return WIND_AUTOCORR_MINUTES_MIN;
-  return Math.min(WIND_AUTOCORR_MINUTES_MAX, Math.max(WIND_AUTOCORR_MINUTES_MIN, parsed));
+  const clamped = Math.min(
+    WIND_AUTOCORR_MINUTES_MAX,
+    Math.max(WIND_AUTOCORR_MINUTES_MIN, parsed)
+  );
+  const stepped =
+    Math.round(clamped / WIND_AUTOCORR_STEP_MINUTES) * WIND_AUTOCORR_STEP_MINUTES;
+  return Math.min(
+    WIND_AUTOCORR_MINUTES_MAX,
+    Math.max(WIND_AUTOCORR_MINUTES_MIN, stepped)
+  );
 }
 
 function buildWindUrl() {
