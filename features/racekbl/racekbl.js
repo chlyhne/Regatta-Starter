@@ -448,11 +448,13 @@ function computeAutoCorrelation(values, maxLagCount) {
   const valid = detrended.filter((value) => Number.isFinite(value));
   if (valid.length < 4) return null;
   const mean = valid.reduce((sum, value) => sum + value, 0) / valid.length;
+  const centered = detrended.map((value) =>
+    Number.isFinite(value) ? value - mean : null
+  );
   let varianceSum = 0;
-  detrended.forEach((value) => {
+  centered.forEach((value) => {
     if (!Number.isFinite(value)) return;
-    const delta = value - mean;
-    varianceSum += delta * delta;
+    varianceSum += value * value;
   });
   if (!Number.isFinite(varianceSum) || varianceSum <= 1e-6) return null;
 
@@ -463,11 +465,11 @@ function computeAutoCorrelation(values, maxLagCount) {
   for (let lag = 0; lag <= maxLag; lag += 1) {
     let sum = 0;
     let count = 0;
-    for (let i = 0; i < detrended.length - lag; i += 1) {
-      const first = detrended[i];
-      const second = detrended[i + lag];
+    for (let i = 0; i < centered.length - lag; i += 1) {
+      const first = centered[i];
+      const second = centered[i + lag];
       if (!Number.isFinite(first) || !Number.isFinite(second)) continue;
-      sum += (first - mean) * (second - mean);
+      sum += first * second;
       count += 1;
     }
     acf.push(count >= 2 ? sum / varianceSum : null);
