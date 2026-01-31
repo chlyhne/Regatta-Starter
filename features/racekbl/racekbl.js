@@ -894,14 +894,20 @@ function clampFitOrder(value) {
   return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
 }
 
-function updateReconNote(el, peaks, trendRate, unit, explained) {
+function updateReconNote(el, peaks, trendRate, unit, explained, order = 3) {
   if (!el) return;
-  const labels = [0, 1, 2].map((idx) =>
-    peaks && peaks[idx] ? formatPeriodLabelSeconds(peaks[idx].periodSec) : "--:--"
-  );
+  const labels = [];
+  const count = Math.max(0, Math.round(order));
+  for (let i = 0; i < count; i += 1) {
+    const peak = peaks && peaks[i] ? peaks[i] : null;
+    if (peak && Number.isFinite(peak.periodSec)) {
+      labels.push(formatPeriodLabelSeconds(peak.periodSec));
+    }
+  }
   const trendLabel = formatTrendLabel(trendRate, unit);
   const explainedLabel = formatExplainedLabel(explained);
-  el.textContent = `Significant periods: ${labels.join(", ")} Trend: ${trendLabel} Fit: ${explainedLabel}`;
+  const periodLabel = labels.length ? labels.join(", ") : "none";
+  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}`;
 }
 
 function solveLinearSystem(matrix, vector) {
@@ -1115,7 +1121,8 @@ function renderSpeedPlot() {
         frequency: entry.frequency,
         periodSec: 1 / entry.frequency,
       }))
-      .filter((entry) => Number.isFinite(entry.periodSec));
+      .filter((entry) => Number.isFinite(entry.periodSec))
+      .sort((a, b) => a.periodSec - b.periodSec);
     const frequencies = peakPeriods.map((entry) => entry.frequency);
     const jointFit = computeJointSinusoidFit(
       analysis.times,
@@ -1146,7 +1153,14 @@ function renderSpeedPlot() {
       explained = computeStdExplainedCentered(analysis, jointFit);
     }
   }
-  updateReconNote(els.raceKblSpeedReconNote, peakPeriods, trendRate, "kn/h", explained);
+  updateReconNote(
+    els.raceKblSpeedReconNote,
+    peakPeriods,
+    trendRate,
+    "kn/h",
+    explained,
+    order
+  );
 
   let min = Math.min(...speedValues);
   let max = Math.max(...speedValues);
@@ -1269,7 +1283,8 @@ function renderDirectionPlot() {
         frequency: entry.frequency,
         periodSec: 1 / entry.frequency,
       }))
-      .filter((entry) => Number.isFinite(entry.periodSec));
+      .filter((entry) => Number.isFinite(entry.periodSec))
+      .sort((a, b) => a.periodSec - b.periodSec);
     const frequencies = peakPeriods.map((entry) => entry.frequency);
     const jointFit = computeJointSinusoidFit(
       analysis.times,
@@ -1300,7 +1315,14 @@ function renderDirectionPlot() {
       explained = computeStdExplainedCentered(analysis, jointFit);
     }
   }
-  updateReconNote(els.raceKblDirReconNote, peakPeriods, trendRate, "°/h", explained);
+  updateReconNote(
+    els.raceKblDirReconNote,
+    peakPeriods,
+    trendRate,
+    "°/h",
+    explained,
+    order
+  );
 
   let min = Math.min(...dirValues);
   let max = Math.max(...dirValues);
