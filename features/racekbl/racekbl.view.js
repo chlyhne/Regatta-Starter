@@ -79,6 +79,13 @@ export const raceKblView = `
       </div>
     </section>
 
+    <section class="panel racekbl-wavelet-panel">
+      <h2>Wind speed wavelet</h2>
+      <div class="racekbl-plot racekbl-speed-wavelet-plot" aria-label="Wind speed wavelet plot">
+        <canvas id="racekbl-speed-wavelet-canvas"></canvas>
+      </div>
+    </section>
+
     <section class="panel racekbl-speed-acf-panel">
       <h2>Wind speed autocorr</h2>
       <div class="racekbl-plot racekbl-speed-acf-plot" aria-label="Wind speed autocorrelation plot">

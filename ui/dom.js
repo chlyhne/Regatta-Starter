@@ -109,6 +109,7 @@ const els = {
   closeRaceKblSettings: document.getElementById("close-racekbl-settings"),
   raceKblSpeedCanvas: document.getElementById("racekbl-speed-canvas"),
   raceKblDirCanvas: document.getElementById("racekbl-dir-canvas"),
+  raceKblSpeedWaveletCanvas: document.getElementById("racekbl-speed-wavelet-canvas"),
   raceKblSpeedReconNote: document.getElementById("racekbl-speed-recon-note"),
   raceKblDirReconNote: document.getElementById("racekbl-dir-recon-note"),
   raceKblSpeedFitOrder: document.getElementById("racekbl-speed-fit-order"),

@@ -10,8 +10,10 @@ import {
   computeTickStep,
   drawLagTicks,
   drawLagTicksCentered,
+  drawLogYAxisTicks,
   drawLine,
   drawXAxisTicks,
+  drawHeatmap,
   drawStemPlot,
   drawTimeTicks,
   drawYAxisGrid,
@@ -20,7 +22,7 @@ import {
 } from "../../core/plot.js";
 
 const WIND_POLL_INTERVAL_MS = 15000;
-const WIND_HISTORY_MINUTES_MIN = 60;
+const WIND_HISTORY_MINUTES_MIN = 15;
 const WIND_HISTORY_MINUTES_MAX = 24 * 60;
 const WIND_HISTORY_MARKS_MINUTES = [15, 21, 29, 40, 55, 77, 106, 147, 204, 282, 391, 541, 750, 1039, 1440];
 const WIND_HISTORY_WINDOW_MS = WIND_HISTORY_MINUTES_MAX * 60 * 1000;
@@ -49,6 +51,10 @@ const AUTO_CORR_DOT_SIZE = 4;
 const PERIODOGRAM_MIN_PERIOD_SEC = 120;
 const PERIODOGRAM_MIN_POINTS = 80;
 const PERIODOGRAM_MAX_POINTS = 240;
+const WAVELET_MIN_PERIOD_MINUTES = 15;
+const WAVELET_SCALE_COUNT = 18;
+const WAVELET_TIME_BINS = 120;
+const WAVELET_SIGMA_FACTOR = 0.5;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -1677,9 +1683,136 @@ function renderSpeedPeriodogramPlot() {
   drawZeroLine(ctx, rect, min, max);
 }
 
+function buildWaveletPeriods(maxMinutes) {
+  const minMinutes = Math.min(WAVELET_MIN_PERIOD_MINUTES, maxMinutes);
+  const max = Math.max(minMinutes, maxMinutes);
+  if (minMinutes <= 0 || max <= 0) return [];
+  if (WAVELET_SCALE_COUNT <= 1) return [max];
+  const ratio = max / minMinutes;
+  const periods = [];
+  for (let i = 0; i < WAVELET_SCALE_COUNT; i += 1) {
+    const t = i / (WAVELET_SCALE_COUNT - 1);
+    periods.push(minMinutes * Math.pow(ratio, t));
+  }
+  return periods;
+}
+
+function renderSpeedWaveletPlot() {
+  if (!document.body.classList.contains("racekbl-mode")) return;
+  if (!els.raceKblSpeedWaveletCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceKblSpeedWaveletCanvas);
+  if (!canvasInfo) return;
+  const { ctx, width, height } = canvasInfo;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
+  if (!samples.length) {
+    drawPlotMessage(ctx, "Waiting for wind");
+    return;
+  }
+  const hasSpeed = samples.some((sample) => Number.isFinite(sample?.speed));
+  if (!hasSpeed) {
+    drawPlotMessage(ctx, "No speed data");
+    return;
+  }
+
+  const stepMs = Math.max(1000, Math.round(windowMs / Math.max(8, WAVELET_TIME_BINS - 1)));
+  const series = buildUniformSeries(samples, "speed", startTs, endTs, stepMs);
+  const values = [];
+  const times = [];
+  series.forEach((entry) => {
+    if (!entry || !Number.isFinite(entry.ts)) return;
+    const value = entry.speed;
+    if (!Number.isFinite(value)) return;
+    times.push((entry.ts - startTs) / 1000);
+    values.push(value);
+  });
+  if (values.length < 6) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const trend = fitLinearTrend(times, values);
+  if (trend.count < 2) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+  const detrended = values.map((value, idx) => value - evaluateTrend(trend, times[idx]));
+  const centered = centerSeries(detrended);
+  if (centered.count < 6) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const maxPeriodMinutes = Math.max(
+    WAVELET_MIN_PERIOD_MINUTES,
+    Math.min(windowMinutes, WIND_HISTORY_MINUTES_MAX)
+  );
+  const periodsMinutes = buildWaveletPeriods(maxPeriodMinutes);
+  if (!periodsMinutes.length) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const cols = centered.values.length;
+  const rows = periodsMinutes.length;
+  const spectrum = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  let peak = 0;
+
+  for (let r = 0; r < rows; r += 1) {
+    const periodSec = periodsMinutes[r] * 60;
+    const omega = (2 * Math.PI) / periodSec;
+    const sigma = periodSec * WAVELET_SIGMA_FACTOR;
+    const sigmaSq = sigma * sigma;
+    for (let c = 0; c < cols; c += 1) {
+      const t0 = times[c];
+      let sum = 0;
+      let weight = 0;
+      for (let j = 0; j < cols; j += 1) {
+        const dt = times[j] - t0;
+        const gauss = Math.exp(-(dt * dt) / (2 * sigmaSq));
+        const wave = Math.cos(omega * dt);
+        const w = gauss;
+        sum += centered.values[j] * wave * w;
+        weight += w;
+      }
+      const value = weight > 0 ? Math.abs(sum / weight) : 0;
+      spectrum[rows - 1 - r][c] = value;
+      peak = Math.max(peak, value);
+    }
+  }
+
+  if (!Number.isFinite(peak) || peak <= 0) {
+    drawPlotMessage(ctx, "Not enough data");
+    return;
+  }
+
+  const rect = {
+    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
+    right: width - WIND_PLOT_PADDING,
+    top: WIND_PLOT_PADDING,
+    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
+  };
+
+  drawHeatmap(ctx, rect, spectrum, { min: 0, max: peak, color: "#c00000" });
+
+  const logTicks = buildWaveletPeriods(maxPeriodMinutes);
+  drawLogYAxisTicks(ctx, rect, logTicks, (value) => formatLagMinutes(value), {
+    font: WIND_PLOT_TIME_FONT,
+  });
+
+  drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes, {
+    font: WIND_PLOT_TIME_FONT,
+  });
+}
+
 function renderRaceKblPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
+  renderSpeedWaveletPlot();
   if (SHOW_CORRELATION_PLOTS) {
     renderSpeedAutoCorrPlot();
     renderDirAutoCorrPlot();
