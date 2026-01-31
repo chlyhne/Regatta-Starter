@@ -61,6 +61,7 @@ let lastSampleHash = null;
 let lastRenderAt = 0;
 let renderTimer = null;
 let historyLoadedHours = 0;
+let wheelZoomBound = false;
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
@@ -1902,6 +1903,55 @@ function bindRaceKblEvents() {
   const raceKblView = document.getElementById("racekbl-view");
   if (raceKblView) {
     raceKblView.addEventListener(
+      "gesturestart",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        const target = event.target;
+        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+          return;
+        }
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+    raceKblView.addEventListener(
+      "gesturechange",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        const target = event.target;
+        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+          return;
+        }
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+    raceKblView.addEventListener(
+      "gestureend",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        const target = event.target;
+        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+          return;
+        }
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+    raceKblView.addEventListener(
+      "touchmove",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!event.touches || event.touches.length < 2) return;
+        const target = event.target;
+        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+          return;
+        }
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+    raceKblView.addEventListener(
       "touchstart",
       (event) => {
         if (!document.body.classList.contains("racekbl-mode")) return;
@@ -1953,6 +2003,29 @@ function bindRaceKblEvents() {
         const target = event.target;
         if (!target || typeof target.closest !== "function") return;
         if (!target.closest(".racekbl-plot")) return;
+        const factor = event.deltaY > 0 ? 1.1 : 0.9;
+        zoomHistoryByFactor(factor);
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+  }
+  if (!wheelZoomBound) {
+    wheelZoomBound = true;
+    window.addEventListener(
+      "wheel",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        const onPlot = path.some(
+          (node) =>
+            node &&
+            node.nodeType === 1 &&
+            typeof node.classList?.contains === "function" &&
+            node.classList.contains("racekbl-plot")
+        );
+        if (!onPlot) return;
         const factor = event.deltaY > 0 ? 1.1 : 0.9;
         zoomHistoryByFactor(factor);
         event.preventDefault();
