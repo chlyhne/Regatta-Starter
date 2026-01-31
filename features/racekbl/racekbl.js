@@ -467,6 +467,46 @@ function buildIrregularSeries(samples, key, startTs, endTs) {
     .map((sample) => ({ ts: sample.ts, value: sample[key] }));
 }
 
+function fitLinearTrend(times, values) {
+  const points = [];
+  for (let i = 0; i < times.length; i += 1) {
+    const time = times[i];
+    const value = values[i];
+    if (!Number.isFinite(time) || !Number.isFinite(value)) continue;
+    points.push({ time, value });
+  }
+  if (!points.length) {
+    return { slope: 0, intercept: 0, offset: Number.isFinite(times[0]) ? times[0] : 0, count: 0 };
+  }
+
+  const offset = points[0].time;
+  const count = points.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  for (let i = 0; i < count; i += 1) {
+    const x = points[i].time - offset;
+    const y = points[i].value;
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+  const denom = count * sumXX - sumX * sumX;
+  const slope = denom ? (count * sumXY - sumX * sumY) / denom : 0;
+  const intercept = (sumY - slope * sumX) / count;
+  return { slope, intercept, offset, count };
+}
+
+function evaluateTrend(trend, time) {
+  if (!trend || !Number.isFinite(time)) return 0;
+  const slope = Number.isFinite(trend.slope) ? trend.slope : 0;
+  const intercept = Number.isFinite(trend.intercept) ? trend.intercept : 0;
+  const offset = Number.isFinite(trend.offset) ? trend.offset : 0;
+  return intercept + slope * (time - offset);
+}
+
 function detrendSeries(values) {
   const indices = [];
   const vals = [];
@@ -500,38 +540,12 @@ function detrendSeries(values) {
 }
 
 function detrendSeriesWithTimes(values, times) {
-  const indices = [];
-  const vals = [];
-  values.forEach((value, index) => {
-    const time = times[index];
-    if (!Number.isFinite(value) || !Number.isFinite(time)) return;
-    indices.push(time);
-    vals.push(value);
-  });
-  if (!indices.length) return values;
-
-  const offset = indices[0];
-  const count = indices.length;
-  let sumX = 0;
-  let sumY = 0;
-  let sumXY = 0;
-  let sumXX = 0;
-  for (let i = 0; i < count; i += 1) {
-    const x = indices[i] - offset;
-    const y = vals[i];
-    sumX += x;
-    sumY += y;
-    sumXY += x * y;
-    sumXX += x * x;
-  }
-  const denom = count * sumXX - sumX * sumX;
-  const slope = denom ? (count * sumXY - sumX * sumY) / denom : 0;
-  const intercept = (sumY - slope * sumX) / count;
-
+  const trend = fitLinearTrend(times, values);
+  if (!trend.count) return values;
   return values.map((value, index) => {
     const time = times[index];
     if (!Number.isFinite(value) || !Number.isFinite(time)) return null;
-    return value - (intercept + slope * (time - offset));
+    return value - evaluateTrend(trend, time);
   });
 }
 
@@ -682,6 +696,120 @@ function computeLombScarglePeriodogram(times, values, minFreq, maxFreq, pointCou
   return samples;
 }
 
+function computeLombScargleFit(times, values, frequency) {
+  if (!Array.isArray(times) || !Array.isArray(values)) return null;
+  if (!Number.isFinite(frequency) || frequency <= 0) return null;
+  const omega = 2 * Math.PI * frequency;
+  let sumSin2 = 0;
+  let sumCos2 = 0;
+  for (let j = 0; j < times.length; j += 1) {
+    const time = times[j];
+    const value = values[j];
+    if (!Number.isFinite(time) || !Number.isFinite(value)) continue;
+    const angle = 2 * omega * time;
+    sumSin2 += Math.sin(angle);
+    sumCos2 += Math.cos(angle);
+  }
+  const tau = omega !== 0 ? Math.atan2(sumSin2, sumCos2) / (2 * omega) : 0;
+
+  let sumC = 0;
+  let sumS = 0;
+  let sumCC = 0;
+  let sumSS = 0;
+  for (let j = 0; j < times.length; j += 1) {
+    const time = times[j];
+    const value = values[j];
+    if (!Number.isFinite(time) || !Number.isFinite(value)) continue;
+    const angle = omega * (time - tau);
+    const cosVal = Math.cos(angle);
+    const sinVal = Math.sin(angle);
+    sumC += value * cosVal;
+    sumS += value * sinVal;
+    sumCC += cosVal * cosVal;
+    sumSS += sinVal * sinVal;
+  }
+
+  if (sumCC <= 1e-10 || sumSS <= 1e-10) return null;
+  return {
+    tau,
+    cosCoeff: sumC / sumCC,
+    sinCoeff: sumS / sumSS,
+  };
+}
+
+function buildSpeedPeriodogramAnalysis(samples, startTs, endTs, windowMs, windowMinutes) {
+  if (!samples.length) return null;
+  const series = buildIrregularSeries(samples, "speed", startTs, endTs);
+  if (series.length < 4) return null;
+
+  const baseTs = series[0].ts;
+  const times = [];
+  const values = [];
+  series.forEach((point) => {
+    const time = (point.ts - baseTs) / 1000;
+    if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
+    times.push(time);
+    values.push(point.value);
+  });
+  if (times.length < 4) return null;
+
+  const trend = fitLinearTrend(times, values);
+  if (trend.count < 4) return null;
+  const detrended = values.map((value, index) => {
+    const time = times[index];
+    if (!Number.isFinite(value) || !Number.isFinite(time)) return null;
+    return value - evaluateTrend(trend, time);
+  });
+
+  const centered = centerSeries(detrended);
+  if (centered.count < 4 || !Number.isFinite(centered.variance) || centered.variance <= 1e-6) {
+    return null;
+  }
+
+  const deltas = [];
+  for (let i = 1; i < times.length; i += 1) {
+    const dt = times[i] - times[i - 1];
+    if (Number.isFinite(dt) && dt > 0) {
+      deltas.push(dt);
+    }
+  }
+  const medianDelta = median(deltas);
+  const baseDelta = Number.isFinite(medianDelta)
+    ? medianDelta
+    : WIND_POLL_INTERVAL_MS / 1000;
+  const minPeriodSec = Math.max(PERIODOGRAM_MIN_PERIOD_SEC, baseDelta * 2);
+  const maxPeriodCapMinutes = resolvePeriodogramCapMinutes();
+  const maxPeriodSec = Math.min(windowMs / 1000, maxPeriodCapMinutes * 60);
+  if (!Number.isFinite(maxPeriodSec) || maxPeriodSec <= minPeriodSec) return null;
+
+  const minFreq = 1 / maxPeriodSec;
+  const maxFreq = 1 / minPeriodSec;
+  const pointCount = Math.min(
+    PERIODOGRAM_MAX_POINTS,
+    Math.max(PERIODOGRAM_MIN_POINTS, Math.round(windowMinutes * 2))
+  );
+  const spectrum = computeLombScarglePeriodogram(
+    times,
+    centered.values,
+    minFreq,
+    maxFreq,
+    pointCount,
+    centered.variance
+  );
+  if (!spectrum.length) return null;
+
+  return {
+    baseTs,
+    times,
+    values,
+    trend,
+    centered,
+    minPeriodSec,
+    maxPeriodSec,
+    spectrum,
+  };
+}
+
 function formatCorrValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
@@ -765,8 +893,66 @@ function renderSpeedPlot() {
     return;
   }
 
+  const analysis = buildSpeedPeriodogramAnalysis(
+    samples,
+    startTs,
+    startTs + windowMs,
+    windowMs,
+    windowMinutes
+  );
+  let reconstruction = null;
+  if (analysis) {
+    let best = null;
+    analysis.spectrum.forEach((entry) => {
+      if (!Number.isFinite(entry?.power) || !Number.isFinite(entry?.frequency)) return;
+      if (!best) {
+        best = entry;
+        return;
+      }
+      if (
+        entry.power > best.power ||
+        (entry.power === best.power && entry.frequency > best.frequency)
+      ) {
+        best = entry;
+      }
+    });
+    if (best) {
+      const fit = computeLombScargleFit(
+        analysis.times,
+        analysis.centered.values,
+        best.frequency
+      );
+      if (fit) {
+        const omega = 2 * Math.PI * best.frequency;
+        reconstruction = samples
+          .filter((sample) => sample && Number.isFinite(sample.ts))
+          .map((sample) => {
+            const time = (sample.ts - analysis.baseTs) / 1000;
+            if (!Number.isFinite(time)) return null;
+            const oscillation =
+              fit.cosCoeff * Math.cos(omega * (time - fit.tau)) +
+              fit.sinCoeff * Math.sin(omega * (time - fit.tau));
+            const value =
+              oscillation +
+              analysis.centered.mean +
+              evaluateTrend(analysis.trend, time);
+            if (!Number.isFinite(value)) return null;
+            return { ts: sample.ts, recon: value };
+          })
+          .filter(Boolean);
+      }
+    }
+  }
+
   let min = Math.min(...speedValues);
   let max = Math.max(...speedValues);
+  if (reconstruction && reconstruction.length) {
+    const reconValues = reconstruction.map((sample) => sample.recon).filter(Number.isFinite);
+    if (reconValues.length) {
+      min = Math.min(min, ...reconValues);
+      max = Math.max(max, ...reconValues);
+    }
+  }
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
     min = 0;
     max = 1;
@@ -801,6 +987,17 @@ function renderSpeedPlot() {
     color: "#000000",
     lineWidth: WIND_PLOT_LINE_WIDTH,
   });
+
+  if (reconstruction && reconstruction.length) {
+    drawLine(ctx, reconstruction, "recon", rect, {
+      min,
+      max,
+      startTs,
+      windowMs,
+      color: "#ff00aa",
+      lineWidth: WIND_PLOT_LINE_WIDTH,
+    });
+  }
 }
 
 function drawPlotMessage(ctx, message) {
@@ -1084,79 +1281,27 @@ function renderSpeedPeriodogramPlot() {
     return;
   }
 
-  const series = buildIrregularSeries(samples, "speed", startTs, endTs);
-  if (!series.length) {
+  const hasSpeed = samples.some((sample) => Number.isFinite(sample?.speed));
+  if (!hasSpeed) {
     drawPlotMessage(ctx, "No speed data");
     return;
   }
-  if (series.length < 4) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
 
-  const baseTs = series[0].ts;
-  const times = [];
-  const values = [];
-  series.forEach((point) => {
-    const time = (point.ts - baseTs) / 1000;
-    if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
-    times.push(time);
-    values.push(point.value);
-  });
-
-  if (times.length < 4) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const detrended = detrendSeriesWithTimes(values, times);
-  const centered = centerSeries(detrended);
-  if (centered.count < 4 || !Number.isFinite(centered.variance) || centered.variance <= 1e-6) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const deltas = [];
-  for (let i = 1; i < times.length; i += 1) {
-    const dt = times[i] - times[i - 1];
-    if (Number.isFinite(dt) && dt > 0) {
-      deltas.push(dt);
-    }
-  }
-  const medianDelta = median(deltas);
-  const baseDelta = Number.isFinite(medianDelta)
-    ? medianDelta
-    : WIND_POLL_INTERVAL_MS / 1000;
-  const minPeriodSec = Math.max(PERIODOGRAM_MIN_PERIOD_SEC, baseDelta * 2);
-  const maxPeriodCapMinutes = resolvePeriodogramCapMinutes();
-  const maxPeriodSec = Math.min(windowMs / 1000, maxPeriodCapMinutes * 60);
-  if (!Number.isFinite(maxPeriodSec) || maxPeriodSec <= minPeriodSec) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const minFreq = 1 / maxPeriodSec;
-  const maxFreq = 1 / minPeriodSec;
-  const pointCount = Math.min(
-    PERIODOGRAM_MAX_POINTS,
-    Math.max(PERIODOGRAM_MIN_POINTS, Math.round(windowMinutes * 2))
+  const analysis = buildSpeedPeriodogramAnalysis(
+    samples,
+    startTs,
+    endTs,
+    windowMs,
+    windowMinutes
   );
-  const spectrum = computeLombScarglePeriodogram(
-    times,
-    centered.values,
-    minFreq,
-    maxFreq,
-    pointCount,
-    centered.variance
-  );
-  if (!spectrum.length) {
+  if (!analysis) {
     drawPlotMessage(ctx, "Not enough data");
     return;
   }
 
-  const minPeriodMinutes = minPeriodSec / 60;
-  const maxPeriodMinutes = maxPeriodSec / 60;
-  const periodSamples = spectrum
+  const minPeriodMinutes = analysis.minPeriodSec / 60;
+  const maxPeriodMinutes = analysis.maxPeriodSec / 60;
+  const periodSamples = analysis.spectrum
     .map(({ frequency, power }) => ({
       ts: 1 / frequency / 60,
       value: power,
