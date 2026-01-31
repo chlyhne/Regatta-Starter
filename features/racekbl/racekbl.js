@@ -902,45 +902,45 @@ function renderSpeedPlot() {
   );
   let reconstruction = null;
   if (analysis) {
-    let best = null;
-    analysis.spectrum.forEach((entry) => {
-      if (!Number.isFinite(entry?.power) || !Number.isFinite(entry?.frequency)) return;
-      if (!best) {
-        best = entry;
-        return;
-      }
-      if (
-        entry.power > best.power ||
-        (entry.power === best.power && entry.frequency > best.frequency)
-      ) {
-        best = entry;
-      }
-    });
-    if (best) {
-      const fit = computeLombScargleFit(
-        analysis.times,
-        analysis.centered.values,
-        best.frequency
-      );
-      if (fit) {
-        const omega = 2 * Math.PI * best.frequency;
-        reconstruction = samples
-          .filter((sample) => sample && Number.isFinite(sample.ts))
-          .map((sample) => {
-            const time = (sample.ts - analysis.baseTs) / 1000;
-            if (!Number.isFinite(time)) return null;
-            const oscillation =
-              fit.cosCoeff * Math.cos(omega * (time - fit.tau)) +
-              fit.sinCoeff * Math.sin(omega * (time - fit.tau));
-            const value =
-              oscillation +
-              analysis.centered.mean +
-              evaluateTrend(analysis.trend, time);
-            if (!Number.isFinite(value)) return null;
-            return { ts: sample.ts, recon: value };
-          })
-          .filter(Boolean);
-      }
+    const peaks = analysis.spectrum
+      .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
+      .sort((a, b) => {
+        if (b.power !== a.power) return b.power - a.power;
+        return b.frequency - a.frequency;
+      })
+      .slice(0, 3);
+    const fits = peaks
+      .map((entry) => {
+        const fit = computeLombScargleFit(
+          analysis.times,
+          analysis.centered.values,
+          entry.frequency
+        );
+        if (!fit) return null;
+        return { frequency: entry.frequency, fit };
+      })
+      .filter(Boolean);
+    if (fits.length) {
+      reconstruction = samples
+        .filter((sample) => sample && Number.isFinite(sample.ts))
+        .map((sample) => {
+          const time = (sample.ts - analysis.baseTs) / 1000;
+          if (!Number.isFinite(time)) return null;
+          let oscillation = 0;
+          fits.forEach((entry) => {
+            const omega = 2 * Math.PI * entry.frequency;
+            oscillation +=
+              entry.fit.cosCoeff * Math.cos(omega * (time - entry.fit.tau)) +
+              entry.fit.sinCoeff * Math.sin(omega * (time - entry.fit.tau));
+          });
+          const value =
+            oscillation +
+            analysis.centered.mean +
+            evaluateTrend(analysis.trend, time);
+          if (!Number.isFinite(value)) return null;
+          return { ts: sample.ts, recon: value };
+        })
+        .filter(Boolean);
     }
   }
 
