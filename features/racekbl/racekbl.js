@@ -889,8 +889,9 @@ function formatExplainedLabel(value) {
 }
 
 function clampFitOrder(value) {
-  if (!Number.isFinite(value)) return 3;
-  return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(value)));
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
 }
 
 function updateReconNote(el, peaks, trendRate, unit, explained) {

@@ -35,6 +35,22 @@ export const raceKblView = `
       <div id="racekbl-speed-recon-note" class="racekbl-plot-note">
         Significant periods: --:--, --:--, --:-- Trend: --
       </div>
+      <div class="racekbl-fit-control">
+        <div class="racekbl-control-head">
+          <h3 id="racekbl-speed-fit-title">Fit order</h3>
+          <div id="racekbl-speed-fit-value" class="racekbl-window-value">3</div>
+        </div>
+        <input
+          id="racekbl-speed-fit-order"
+          class="racekbl-window-slider"
+          type="range"
+          min="1"
+          max="5"
+          step="1"
+          value="3"
+          aria-labelledby="racekbl-speed-fit-title racekbl-speed-fit-value"
+        />
+      </div>
     </section>
 
     <section class="panel racekbl-dir-panel">
@@ -44,6 +60,22 @@ export const raceKblView = `
       </div>
       <div id="racekbl-dir-recon-note" class="racekbl-plot-note">
         Significant periods: --:--, --:--, --:-- Trend: --
+      </div>
+      <div class="racekbl-fit-control">
+        <div class="racekbl-control-head">
+          <h3 id="racekbl-dir-fit-title">Fit order</h3>
+          <div id="racekbl-dir-fit-value" class="racekbl-window-value">3</div>
+        </div>
+        <input
+          id="racekbl-dir-fit-order"
+          class="racekbl-window-slider"
+          type="range"
+          min="1"
+          max="5"
+          step="1"
+          value="3"
+          aria-labelledby="racekbl-dir-fit-title racekbl-dir-fit-value"
+        />
       </div>
     </section>
 
@@ -144,38 +176,6 @@ export const raceKblView = `
           <span>1h</span>
           <span>2h</span>
         </div>
-      </div>
-      <div class="racekbl-settings-group">
-        <div class="racekbl-control-head">
-          <h3 id="racekbl-speed-fit-title">Speed fit order</h3>
-          <div id="racekbl-speed-fit-value" class="racekbl-window-value">3</div>
-        </div>
-        <input
-          id="racekbl-speed-fit-order"
-          class="racekbl-window-slider"
-          type="range"
-          min="1"
-          max="5"
-          step="1"
-          value="3"
-          aria-labelledby="racekbl-speed-fit-title racekbl-speed-fit-value"
-        />
-      </div>
-      <div class="racekbl-settings-group">
-        <div class="racekbl-control-head">
-          <h3 id="racekbl-dir-fit-title">Direction fit order</h3>
-          <div id="racekbl-dir-fit-value" class="racekbl-window-value">3</div>
-        </div>
-        <input
-          id="racekbl-dir-fit-order"
-          class="racekbl-window-slider"
-          type="range"
-          min="1"
-          max="5"
-          step="1"
-          value="3"
-          aria-labelledby="racekbl-dir-fit-title racekbl-dir-fit-value"
-        />
       </div>
       <div class="racekbl-settings-group">
         <div class="racekbl-control-head">
