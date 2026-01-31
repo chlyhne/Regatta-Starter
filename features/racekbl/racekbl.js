@@ -606,26 +606,60 @@ function getPeriodogramAnalysis(samples, key, startTs, endTs, windowMs, windowMi
   return analysis;
 }
 
-function selectPeriodogramPeaks(spectrum, order, windowMs) {
-  if (!Array.isArray(spectrum) || !spectrum.length) return [];
-  const windowSec = Math.max(1, windowMs / 1000);
-  const minSpacing = 1 / windowSec;
-  const sorted = spectrum
-    .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
-    .sort((a, b) => {
-      if (b.power !== a.power) return b.power - a.power;
-      return b.frequency - a.frequency;
-    });
+function selectPeriodogramPeaks(analysis, order, windowMinutes) {
+  if (!analysis) return [];
+  const { times, centered, minPeriodSec, maxPeriodSec } = analysis;
+  if (!Array.isArray(times) || !Array.isArray(centered?.values)) return [];
+  if (!Number.isFinite(minPeriodSec) || !Number.isFinite(maxPeriodSec)) return [];
+  if (minPeriodSec <= 0 || maxPeriodSec <= minPeriodSec) return [];
+
+  const minFreq = 1 / maxPeriodSec;
+  const maxFreq = 1 / minPeriodSec;
+  const pointCount = Math.min(
+    PERIODOGRAM_MAX_POINTS,
+    Math.max(PERIODOGRAM_MIN_POINTS, Math.round(windowMinutes * 2))
+  );
+  let residual = centered.values.slice();
   const selected = [];
-  for (let i = 0; i < sorted.length; i += 1) {
-    if (selected.length >= order) break;
-    const candidate = sorted[i];
-    const freq = candidate.frequency;
-    const tooClose = selected.some(
-      (chosen) => Math.abs(chosen.frequency - freq) < minSpacing
+
+  for (let i = 0; i < order; i += 1) {
+    const residualCentered = centerSeries(residual);
+    if (
+      residualCentered.count < 4 ||
+      !Number.isFinite(residualCentered.variance) ||
+      residualCentered.variance <= 1e-6
+    ) {
+      break;
+    }
+    const spectrum = computeLombScarglePeriodogram(
+      times,
+      residualCentered.values,
+      minFreq,
+      maxFreq,
+      pointCount,
+      residualCentered.variance
     );
-    if (tooClose) continue;
-    selected.push(candidate);
+    if (!spectrum.length) break;
+    let best = null;
+    for (let j = 0; j < spectrum.length; j += 1) {
+      const candidate = spectrum[j];
+      if (!Number.isFinite(candidate?.power) || !Number.isFinite(candidate?.frequency)) {
+        continue;
+      }
+      if (!best || candidate.power > best.power) {
+        best = candidate;
+      }
+    }
+    if (!best) break;
+    const fit = computeLombScargleFit(times, residualCentered.values, best.frequency);
+    if (!fit) break;
+    selected.push(best);
+    residual = residualCentered.values.map((value, idx) => {
+      const time = times[idx];
+      if (!Number.isFinite(time) || !Number.isFinite(value)) return null;
+      const angle = 2 * Math.PI * best.frequency * (time - fit.tau);
+      return value - (fit.cosCoeff * Math.cos(angle) + fit.sinCoeff * Math.sin(angle));
+    });
   }
   return selected;
 }
@@ -839,9 +873,9 @@ function renderSpeedPlot() {
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
     const availablePeaks = selectPeriodogramPeaks(
-      analysis.spectrum,
+      analysis,
       FIT_ORDER_MAX,
-      windowMs
+      windowMinutes
     );
     const maxOrder = Math.max(
       FIT_ORDER_MIN,
@@ -1023,9 +1057,9 @@ function renderDirectionPlot() {
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
     const availablePeaks = selectPeriodogramPeaks(
-      analysis.spectrum,
+      analysis,
       FIT_ORDER_MAX,
-      windowMs
+      windowMinutes
     );
     const maxOrder = Math.max(
       FIT_ORDER_MIN,
