@@ -63,6 +63,7 @@ const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
 };
+let pinchState = null;
 
 let raceKblDeps = {
   saveSettings: null,
@@ -879,13 +880,56 @@ function formatTrendLabel(value, unit) {
   return `${text} ${unit}`;
 }
 
-function updateReconNote(el, peaks, trendRate, unit) {
+function formatExplainedLabel(value) {
+  if (!Number.isFinite(value)) return "--";
+  const clamped = Math.max(0, Math.min(1, value));
+  return `${Math.round(clamped * 100)}%`;
+}
+
+function updateReconNote(el, peaks, trendRate, unit, explained) {
   if (!el) return;
   const labels = [0, 1, 2].map((idx) =>
     peaks && peaks[idx] ? formatPeriodLabelSeconds(peaks[idx].periodSec) : "--:--"
   );
   const trendLabel = formatTrendLabel(trendRate, unit);
-  el.textContent = `Significant periods: ${labels.join(", ")} Trend: ${trendLabel}`;
+  const explainedLabel = formatExplainedLabel(explained);
+  el.textContent = `Significant periods: ${labels.join(", ")} Trend: ${trendLabel} Fit: ${explainedLabel}`;
+}
+
+function computeStdExplained(samples, key, reconstruction) {
+  if (!samples || !reconstruction || !reconstruction.length) return Number.NaN;
+  const reconByTs = new Map();
+  reconstruction.forEach((sample) => {
+    if (!sample || !Number.isFinite(sample.ts) || !Number.isFinite(sample.recon)) return;
+    reconByTs.set(sample.ts, sample.recon);
+  });
+  let count = 0;
+  let sum = 0;
+  const actuals = [];
+  const residuals = [];
+  samples.forEach((sample) => {
+    const actual = sample?.[key];
+    if (!Number.isFinite(actual) || !Number.isFinite(sample?.ts)) return;
+    const recon = reconByTs.get(sample.ts);
+    if (!Number.isFinite(recon)) return;
+    actuals.push(actual);
+    residuals.push(actual - recon);
+    sum += actual;
+    count += 1;
+  });
+  if (count < 2) return Number.NaN;
+  const mean = sum / count;
+  let totalVar = 0;
+  let residualVar = 0;
+  for (let i = 0; i < count; i += 1) {
+    const delta = actuals[i] - mean;
+    totalVar += delta * delta;
+    residualVar += residuals[i] * residuals[i];
+  }
+  if (totalVar <= 1e-9) return Number.NaN;
+  const sigmaTotal = Math.sqrt(totalVar / count);
+  const sigmaResidual = Math.sqrt(residualVar / count);
+  return 1 - sigmaResidual / sigmaTotal;
 }
 
 function buildLagSamples(acf, stepMs) {
@@ -935,7 +979,7 @@ function renderSpeedPlot() {
 
   const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
-    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h");
+    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -948,7 +992,7 @@ function renderSpeedPlot() {
   });
 
   if (!speedValues.length) {
-    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h");
+    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No speed data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -966,6 +1010,7 @@ function renderSpeedPlot() {
   let peakPeriods = null;
   let trendRate = Number.NaN;
   let reconstruction = null;
+  let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
     const peaks = analysis.spectrum
@@ -1013,9 +1058,10 @@ function renderSpeedPlot() {
           return { ts: sample.ts, recon: value };
         })
         .filter(Boolean);
+      explained = computeStdExplained(samples, "speed", reconstruction);
     }
   }
-  updateReconNote(els.raceKblSpeedReconNote, peakPeriods, trendRate, "kn/h");
+  updateReconNote(els.raceKblSpeedReconNote, peakPeriods, trendRate, "kn/h", explained);
 
   let min = Math.min(...speedValues);
   let max = Math.max(...speedValues);
@@ -1092,7 +1138,7 @@ function renderDirectionPlot() {
 
   const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
-    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h");
+    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -1104,7 +1150,7 @@ function renderDirectionPlot() {
     if (Number.isFinite(sample.dirUnwrapped)) dirValues.push(sample.dirUnwrapped);
   });
   if (!dirValues.length) {
-    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h");
+    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No dir data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -1122,6 +1168,7 @@ function renderDirectionPlot() {
   let peakPeriods = null;
   let trendRate = Number.NaN;
   let reconstruction = null;
+  let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
     const peaks = analysis.spectrum
@@ -1169,9 +1216,10 @@ function renderDirectionPlot() {
           return { ts: sample.ts, recon: value };
         })
         .filter(Boolean);
+      explained = computeStdExplained(samples, "dirUnwrapped", reconstruction);
     }
   }
-  updateReconNote(els.raceKblDirReconNote, peakPeriods, trendRate, "°/h");
+  updateReconNote(els.raceKblDirReconNote, peakPeriods, trendRate, "°/h", explained);
 
   let min = Math.min(...dirValues);
   let max = Math.max(...dirValues);
@@ -1638,6 +1686,18 @@ function updateRaceKblPlotVisibility() {
   document.body.classList.toggle("racekbl-hide-periodogram", !SHOW_PERIOD_PLOT);
 }
 
+function getTouchDistance(touchA, touchB) {
+  const dx = touchB.clientX - touchA.clientX;
+  const dy = touchB.clientY - touchA.clientY;
+  return Math.hypot(dx, dy);
+}
+
+function shouldHandlePinch(event) {
+  const target = event.target;
+  if (!target || typeof target.closest !== "function") return false;
+  return Boolean(target.closest(".racekbl-plot"));
+}
+
 function bindRaceKblEvents() {
   if (els.openRaceKblSettings) {
     els.openRaceKblSettings.addEventListener("click", () => {
@@ -1666,6 +1726,53 @@ function bindRaceKblEvents() {
     els.raceKblPeriodogram.addEventListener("input", () => {
       setPeriodogramWindow(els.raceKblPeriodogram.value);
     });
+  }
+  const raceKblView = document.getElementById("racekbl-view");
+  if (raceKblView) {
+    raceKblView.addEventListener(
+      "touchstart",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!shouldHandlePinch(event)) return;
+        if (event.touches.length !== 2) return;
+        const [touchA, touchB] = event.touches;
+        const distance = getTouchDistance(touchA, touchB);
+        if (!Number.isFinite(distance) || distance <= 0) return;
+        pinchState = {
+          distance,
+          minutes: snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN),
+          lastUpdateAt: 0,
+        };
+      },
+      { passive: true }
+    );
+    raceKblView.addEventListener(
+      "touchmove",
+      (event) => {
+        if (!pinchState) return;
+        if (event.touches.length !== 2) return;
+        if (!shouldHandlePinch(event)) return;
+        const [touchA, touchB] = event.touches;
+        const distance = getTouchDistance(touchA, touchB);
+        if (!Number.isFinite(distance) || distance <= 0) return;
+        const scale = distance / pinchState.distance;
+        if (!Number.isFinite(scale) || scale <= 0) return;
+        const now = Date.now();
+        if (now - pinchState.lastUpdateAt < 50) return;
+        pinchState.lastUpdateAt = now;
+        const nextMinutes = snapHistoryMinutes(pinchState.minutes / scale);
+        if (nextMinutes !== state.windHistoryMinutes) {
+          setHistoryWindow(nextMinutes);
+        }
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+    const endPinch = () => {
+      pinchState = null;
+    };
+    raceKblView.addEventListener("touchend", endPinch, { passive: true });
+    raceKblView.addEventListener("touchcancel", endPinch, { passive: true });
   }
   document.addEventListener("visibilitychange", () => {
     if (!document.body.classList.contains("racekbl-mode")) return;
