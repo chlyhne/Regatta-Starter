@@ -58,7 +58,7 @@ let wheelZoomBound = false;
 let wheelZoomAccumulator = 0;
 let pendingHistoryHours = 0;
 let lastWindowCache = null;
-let analysisCache = { key: "", availablePeaks: [], fitByOrder: new Map() };
+let analysisCache = new Map();
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
@@ -915,9 +915,10 @@ function getWindowSamples() {
   return value;
 }
 
-function getPeriodogramKey(analysis, windowMinutes, capMinutes, fitOrder) {
+function getPeriodogramKey(analysis, seriesKey, windowMinutes, capMinutes, fitOrder) {
   if (!analysis) return "";
   return [
+    seriesKey,
     analysis.baseTs,
     analysis.times?.length || 0,
     analysis.centered?.count || 0,
@@ -927,32 +928,33 @@ function getPeriodogramKey(analysis, windowMinutes, capMinutes, fitOrder) {
   ].join(":");
 }
 
-function resolvePeriodogramForSelection(analysis, windowMinutes, fitOrder) {
+function resolvePeriodogramForSelection(analysis, seriesKey, windowMinutes, fitOrder) {
   if (!analysis) return { peaks: [], fit: null, maxOrder: FIT_ORDER_MIN, order: FIT_ORDER_MIN };
   const capMinutes = resolvePeriodogramCapMinutes();
-  const key = getPeriodogramKey(analysis, windowMinutes, capMinutes, FIT_ORDER_MAX);
-  if (analysisCache.key !== key) {
-    analysisCache = {
-      key,
+  const key = getPeriodogramKey(analysis, seriesKey, windowMinutes, capMinutes, FIT_ORDER_MAX);
+  let cacheEntry = analysisCache.get(key);
+  if (!cacheEntry) {
+    cacheEntry = {
       availablePeaks: selectPeriodogramPeaks(analysis, FIT_ORDER_MAX, windowMinutes),
       fitByOrder: new Map(),
     };
+    analysisCache.set(key, cacheEntry);
   }
   const maxOrder = Math.max(
     FIT_ORDER_MIN,
-    Math.min(FIT_ORDER_MAX, analysisCache.availablePeaks.length || FIT_ORDER_MIN)
+    Math.min(FIT_ORDER_MAX, cacheEntry.availablePeaks.length || FIT_ORDER_MIN)
   );
   const order = clampFitOrder(fitOrder, maxOrder);
-  let fit = analysisCache.fitByOrder.get(order) || null;
+  let fit = cacheEntry.fitByOrder.get(order) || null;
   if (!fit) {
-    const peaks = analysisCache.availablePeaks.slice(0, order);
+    const peaks = cacheEntry.availablePeaks.slice(0, order);
     const frequencies = peaks.map((entry) => entry.frequency);
     fit = frequencies.length
       ? computeJointSinusoidFit(analysis.times, analysis.centered.values, frequencies)
       : null;
-    analysisCache.fitByOrder.set(order, fit);
+    cacheEntry.fitByOrder.set(order, fit);
   }
-  const peaks = analysisCache.availablePeaks.slice(0, order);
+  const peaks = cacheEntry.availablePeaks.slice(0, order);
   return { peaks, fit, maxOrder, order };
 }
 
@@ -1006,6 +1008,7 @@ function renderSpeedPlot() {
     trendRate = analysis.trend.slope * 3600;
     const selection = resolvePeriodogramForSelection(
       analysis,
+      "speed",
       windowMinutes,
       state.windSpeedFitOrder
     );
@@ -1184,6 +1187,7 @@ function renderDirectionPlot() {
     trendRate = analysis.trend.slope * 3600;
     const selection = resolvePeriodogramForSelection(
       analysis,
+      "dirUnwrapped",
       windowMinutes,
       state.windDirFitOrder
     );
