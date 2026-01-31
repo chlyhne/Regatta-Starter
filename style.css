@@ -1937,22 +1937,6 @@ button:active {
   height: 300px;
 }
 
-.racekbl-speed-wavelet-plot {
-  height: 220px;
-}
-
-.racekbl-speed-acf-plot {
-  height: 300px;
-}
-
-.racekbl-dir-acf-plot {
-  height: 300px;
-}
-
-.racekbl-xcorr-plot {
-  height: 300px;
-}
-
 .racekbl-speed-periodogram-plot {
   height: 300px;
 }
@@ -1967,13 +1951,6 @@ button:active {
 
 .racekbl-fit-control {
   margin-top: 12px;
-}
-
-.racekbl-hide-correlations .racekbl-speed-acf-panel,
-.racekbl-hide-correlations .racekbl-dir-acf-panel,
-.racekbl-hide-correlations .racekbl-xcorr-dir-speed-panel,
-.racekbl-hide-correlations .racekbl-autocorr-settings {
-  display: none;
 }
 
 .racekbl-hide-periodogram .racekbl-speed-periodogram-panel {

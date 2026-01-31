@@ -890,12 +890,9 @@ function loadSettings() {
   state.windHistoryMinutes = Number.isFinite(settings.windHistoryMinutes)
     ? settings.windHistoryMinutes
     : 60;
-  state.windAutoCorrMinutes = Number.isFinite(settings.windAutoCorrMinutes)
-    ? settings.windAutoCorrMinutes
-    : state.windHistoryMinutes;
   state.windPeriodogramMinutes = Number.isFinite(settings.windPeriodogramMinutes)
     ? settings.windPeriodogramMinutes
-    : state.windAutoCorrMinutes;
+    : state.windHistoryMinutes;
   state.windSpeedFitOrder = Number.isFinite(settings.windSpeedFitOrder)
     ? settings.windSpeedFitOrder
     : 3;
@@ -931,7 +928,6 @@ function saveSettings() {
     diagUploadToken: state.diagUploadToken,
     windEndpoint: state.windEndpoint,
     windHistoryMinutes: state.windHistoryMinutes,
-    windAutoCorrMinutes: state.windAutoCorrMinutes,
     windPeriodogramMinutes: state.windPeriodogramMinutes,
     windSpeedFitOrder: state.windSpeedFitOrder,
     windDirFitOrder: state.windDirFitOrder,

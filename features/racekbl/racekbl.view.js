@@ -79,34 +79,6 @@ export const raceKblView = `
       </div>
     </section>
 
-    <section class="panel racekbl-wavelet-panel">
-      <h2>Wind speed wavelet</h2>
-      <div class="racekbl-plot racekbl-speed-wavelet-plot" aria-label="Wind speed wavelet plot">
-        <canvas id="racekbl-speed-wavelet-canvas"></canvas>
-      </div>
-    </section>
-
-    <section class="panel racekbl-speed-acf-panel">
-      <h2>Wind speed autocorr</h2>
-      <div class="racekbl-plot racekbl-speed-acf-plot" aria-label="Wind speed autocorrelation plot">
-        <canvas id="racekbl-speed-acf-canvas"></canvas>
-      </div>
-    </section>
-
-    <section class="panel racekbl-dir-acf-panel">
-      <h2>Wind direction autocorr</h2>
-      <div class="racekbl-plot racekbl-dir-acf-plot" aria-label="Wind direction autocorrelation plot">
-        <canvas id="racekbl-dir-acf-canvas"></canvas>
-      </div>
-    </section>
-
-    <section class="panel racekbl-xcorr-dir-speed-panel">
-      <h2>Dir x speed</h2>
-      <div class="racekbl-plot racekbl-xcorr-plot" aria-label="Wind direction vs speed cross-correlation plot">
-        <canvas id="racekbl-xcorr-dir-speed-canvas"></canvas>
-      </div>
-    </section>
-
     <section class="panel racekbl-speed-periodogram-panel">
       <h2>Wind speed periodogram</h2>
       <div class="racekbl-plot racekbl-speed-periodogram-plot" aria-label="Wind speed periodogram plot">
@@ -119,35 +91,6 @@ export const raceKblView = `
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">
     <div class="racekbl-settings-panel">
       <h2>Wind settings</h2>
-      <div class="racekbl-settings-group racekbl-periodogram-settings">
-        <div class="racekbl-control-head">
-          <h3 id="racekbl-autocorr-title">Autocorr max lag</h3>
-          <div id="racekbl-autocorr-value" class="racekbl-window-value">1 h</div>
-        </div>
-        <input
-          id="racekbl-autocorr"
-          class="racekbl-window-slider"
-          type="range"
-          min="0"
-          max="120"
-          step="2"
-          value="60"
-          list="racekbl-autocorr-ticks"
-          aria-labelledby="racekbl-autocorr-title racekbl-autocorr-value"
-        />
-        <datalist id="racekbl-autocorr-ticks">
-          <option value="0" label="0m"></option>
-          <option value="30" label="30m"></option>
-          <option value="60" label="1h"></option>
-          <option value="120" label="2h"></option>
-        </datalist>
-        <div class="racekbl-history-scale" aria-hidden="true">
-          <span>0m</span>
-          <span>30m</span>
-          <span>1h</span>
-          <span>2h</span>
-        </div>
-      </div>
       <div class="racekbl-settings-group">
         <div class="racekbl-control-head">
           <h3 id="racekbl-periodogram-title">Periodogram max period</h3>

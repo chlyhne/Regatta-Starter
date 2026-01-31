@@ -8,12 +8,8 @@ import {
 } from "../../core/common.js";
 import {
   computeTickStep,
-  drawLagTicks,
-  drawLagTicksCentered,
-  drawLogYAxisTicks,
   drawLine,
   drawXAxisTicks,
-  drawHeatmap,
   drawStemPlot,
   drawTimeTicks,
   drawYAxisGrid,
@@ -33,29 +29,15 @@ const WIND_PLOT_TIME_GUTTER = 22;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
-const SHOW_CORRELATION_PLOTS = false;
 const SHOW_PERIOD_PLOT = false;
-const WIND_AUTOCORR_MINUTES_MIN = 0;
-const WIND_AUTOCORR_MINUTES_MAX = 120;
-const WIND_AUTOCORR_STEP_MINUTES = 2;
 const WIND_PERIODOGRAM_MINUTES_MIN = 0;
 const WIND_PERIODOGRAM_MINUTES_MAX = 120;
 const WIND_PERIODOGRAM_STEP_MINUTES = 2;
-const LAG_TICK_OPTIONS_MIN = [2, 5, 10, 15, 20, 30, 60, 90, 120];
-const LAG_TICK_TARGET = 6;
 const FIT_ORDER_MIN = 1;
 const FIT_ORDER_MAX = 5;
-const AUTO_CORR_MAX_POINTS = 600;
-const AUTO_CORR_GAP_MULTIPLIER = 6;
-const AUTO_CORR_DOT_SIZE = 4;
 const PERIODOGRAM_MIN_PERIOD_SEC = 120;
 const PERIODOGRAM_MIN_POINTS = 80;
 const PERIODOGRAM_MAX_POINTS = 240;
-const WAVELET_MIN_PERIOD_MINUTES = 2;
-const WAVELET_SCALE_COUNT = 18;
-const WAVELET_TIME_BINS = 120;
-const WAVELET_SIGMA_FACTOR = 0.5;
-const WAVELET_RECON_TOP_K = 3;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -73,9 +55,6 @@ let wheelZoomAccumulator = 0;
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
-};
-const waveletCache = {
-  speed: { key: null, analysis: null },
 };
 let pinchState = null;
 
@@ -149,21 +128,6 @@ function formatHorizonMinutes(value) {
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 }
 
-function snapAutoCorrMinutes(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return WIND_AUTOCORR_MINUTES_MIN;
-  const clamped = Math.min(
-    WIND_AUTOCORR_MINUTES_MAX,
-    Math.max(WIND_AUTOCORR_MINUTES_MIN, parsed)
-  );
-  const stepped =
-    Math.round(clamped / WIND_AUTOCORR_STEP_MINUTES) * WIND_AUTOCORR_STEP_MINUTES;
-  return Math.min(
-    WIND_AUTOCORR_MINUTES_MAX,
-    Math.max(WIND_AUTOCORR_MINUTES_MIN, stepped)
-  );
-}
-
 function snapPeriodogramMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return WIND_PERIODOGRAM_MINUTES_MIN;
@@ -179,22 +143,10 @@ function snapPeriodogramMinutes(value) {
   );
 }
 
-function resolveAutoCorrCapMinutes() {
+function resolvePeriodogramCapMinutes() {
   const fallback = Number.isFinite(state.windHistoryMinutes)
     ? state.windHistoryMinutes
     : WIND_HISTORY_MINUTES_MIN;
-  const base = Number.isFinite(state.windAutoCorrMinutes)
-    ? state.windAutoCorrMinutes
-    : fallback;
-  return snapAutoCorrMinutes(base);
-}
-
-function resolvePeriodogramCapMinutes() {
-  const fallback = Number.isFinite(state.windAutoCorrMinutes)
-    ? state.windAutoCorrMinutes
-    : Number.isFinite(state.windHistoryMinutes)
-      ? state.windHistoryMinutes
-      : WIND_HISTORY_MINUTES_MIN;
   const base = Number.isFinite(state.windPeriodogramMinutes)
     ? state.windPeriodogramMinutes
     : fallback;
@@ -423,65 +375,6 @@ function median(values) {
   return (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-function chooseAutoCorrStepMs(samples, windowMs) {
-  const deltas = [];
-  for (let i = 1; i < samples.length; i += 1) {
-    const prev = samples[i - 1];
-    const next = samples[i];
-    if (!prev || !next) continue;
-    const dt = next.ts - prev.ts;
-    if (Number.isFinite(dt) && dt > 0) {
-      deltas.push(dt);
-    }
-  }
-  const medianDelta = median(deltas);
-  const base = Number.isFinite(medianDelta) ? medianDelta : WIND_POLL_INTERVAL_MS;
-  const maxStep = windowMs / AUTO_CORR_MAX_POINTS;
-  const stepMs = Math.max(base, maxStep, 1000);
-  return Math.min(stepMs, windowMs);
-}
-
-function buildUniformSeries(samples, key, startTs, endTs, stepMs) {
-  if (!Number.isFinite(stepMs) || stepMs <= 0) return [];
-  const usable = samples
-    .filter((sample) => sample && Number.isFinite(sample.ts) && Number.isFinite(sample[key]))
-    .sort((a, b) => a.ts - b.ts);
-  if (!usable.length) return [];
-
-  const values = [];
-  let idx = 0;
-  const maxGap = stepMs * AUTO_CORR_GAP_MULTIPLIER;
-
-  for (let ts = startTs; ts <= endTs + 1; ts += stepMs) {
-    while (idx < usable.length && usable[idx].ts < ts) {
-      idx += 1;
-    }
-    const prev = idx > 0 ? usable[idx - 1] : null;
-    const next = idx < usable.length ? usable[idx] : null;
-    let value = null;
-
-    if (prev && next) {
-      const span = next.ts - prev.ts;
-      if (Number.isFinite(span) && span > 0 && span <= maxGap) {
-        const ratio = (ts - prev.ts) / span;
-        value = prev[key] + (next[key] - prev[key]) * ratio;
-      } else if (Math.abs(ts - prev.ts) <= stepMs) {
-        value = prev[key];
-      } else if (Math.abs(next.ts - ts) <= stepMs) {
-        value = next[key];
-      }
-    } else if (prev && Math.abs(ts - prev.ts) <= stepMs) {
-      value = prev[key];
-    } else if (next && Math.abs(next.ts - ts) <= stepMs) {
-      value = next[key];
-    }
-
-    values.push(Number.isFinite(value) ? value : null);
-  }
-
-  return values;
-}
-
 function buildIrregularSeries(samples, key, startTs, endTs) {
   return samples
     .filter(
@@ -543,48 +436,6 @@ function evaluateTrend(trend, time) {
   return intercept + slope * (time - offset);
 }
 
-function detrendSeries(values) {
-  const indices = [];
-  const vals = [];
-  values.forEach((value, index) => {
-    if (!Number.isFinite(value)) return;
-    indices.push(index);
-    vals.push(value);
-  });
-  if (!indices.length) return values;
-
-  const count = indices.length;
-  let sumX = 0;
-  let sumY = 0;
-  let sumXY = 0;
-  let sumXX = 0;
-  for (let i = 0; i < count; i += 1) {
-    const x = indices[i];
-    const y = vals[i];
-    sumX += x;
-    sumY += y;
-    sumXY += x * y;
-    sumXX += x * x;
-  }
-  const denom = count * sumXX - sumX * sumX;
-  const slope = denom ? (count * sumXY - sumX * sumY) / denom : 0;
-  const intercept = (sumY - slope * sumX) / count;
-
-  return values.map((value, index) =>
-    Number.isFinite(value) ? value - (intercept + slope * index) : null
-  );
-}
-
-function detrendSeriesWithTimes(values, times) {
-  const trend = fitLinearTrend(times, values);
-  if (!trend.count) return values;
-  return values.map((value, index) => {
-    const time = times[index];
-    if (!Number.isFinite(value) || !Number.isFinite(time)) return null;
-    return value - evaluateTrend(trend, time);
-  });
-}
-
 function centerSeries(values) {
   const finite = values.filter((value) => Number.isFinite(value));
   if (!finite.length) {
@@ -600,76 +451,6 @@ function centerSeries(values) {
   });
   const variance = varianceSum / finite.length;
   return { values: centered, mean, variance, count: finite.length };
-}
-
-function computeAutoCorrelation(values, maxLagCount) {
-  const detrended = detrendSeries(values);
-  const valid = detrended.filter((value) => Number.isFinite(value));
-  if (valid.length < 4) return null;
-  const mean = valid.reduce((sum, value) => sum + value, 0) / valid.length;
-  const centered = detrended.map((value) =>
-    Number.isFinite(value) ? value - mean : null
-  );
-  let varianceSum = 0;
-  centered.forEach((value) => {
-    if (!Number.isFinite(value)) return;
-    varianceSum += value * value;
-  });
-  if (!Number.isFinite(varianceSum) || varianceSum <= 1e-6) return null;
-
-  const maxLag = Math.min(maxLagCount, values.length - 1);
-  if (maxLag < 0) return null;
-  const acf = [];
-
-  for (let lag = 0; lag <= maxLag; lag += 1) {
-    let sum = 0;
-    let count = 0;
-    for (let i = 0; i < centered.length - lag; i += 1) {
-      const first = centered[i];
-      const second = centered[i + lag];
-      if (!Number.isFinite(first) || !Number.isFinite(second)) continue;
-      sum += first * second;
-      count += 1;
-    }
-    acf.push(count >= 2 ? sum / varianceSum : null);
-  }
-  if (acf.length) {
-    acf[0] = 1;
-  }
-  return acf;
-}
-
-function computeCrossCorrelation(seriesA, seriesB, maxLagCount) {
-  const detrendedA = detrendSeries(seriesA);
-  const detrendedB = detrendSeries(seriesB);
-  const validA = detrendedA.filter((value) => Number.isFinite(value));
-  const validB = detrendedB.filter((value) => Number.isFinite(value));
-  if (validA.length < 4 || validB.length < 4) return null;
-  const meanA = validA.reduce((sum, value) => sum + value, 0) / validA.length;
-  const meanB = validB.reduce((sum, value) => sum + value, 0) / validB.length;
-  const maxLag = Math.min(
-    maxLagCount,
-    Math.max(0, detrendedA.length - 1),
-    Math.max(0, detrendedB.length - 1)
-  );
-  if (maxLag < 0) return null;
-  const values = [];
-
-  for (let lag = -maxLag; lag <= maxLag; lag += 1) {
-    let sum = 0;
-    let count = 0;
-    for (let i = 0; i < detrendedA.length; i += 1) {
-      const j = i + lag;
-      if (j < 0 || j >= detrendedB.length) continue;
-      const first = detrendedA[i];
-      const second = detrendedB[j];
-      if (!Number.isFinite(first) || !Number.isFinite(second)) continue;
-      sum += (first - meanA) * (second - meanB);
-      count += 1;
-    }
-    values.push(count >= 2 ? sum / count : null);
-  }
-  return { values, maxLag };
 }
 
 function computeLombScarglePeriodogram(times, values, minFreq, maxFreq, pointCount, variance) {
@@ -869,18 +650,6 @@ function getPeriodogramAnalysis(samples, key, startTs, endTs, windowMs, windowMi
   return analysis;
 }
 
-function formatCorrValue(value) {
-  if (!Number.isFinite(value)) return "";
-  const rounded = Math.round(value * 100) / 100;
-  return trimTrailingZeros(rounded.toFixed(2));
-}
-
-function formatCovValue(value) {
-  if (!Number.isFinite(value)) return "";
-  const rounded = Math.round(value * 100) / 100;
-  return trimTrailingZeros(rounded.toFixed(2));
-}
-
 function formatPowerValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
@@ -914,16 +683,7 @@ function clampFitOrder(value) {
   return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
 }
 
-function updateReconNote(
-  el,
-  peaks,
-  trendRate,
-  unit,
-  explained,
-  order = 3,
-  waveletPeriods = null,
-  waveletExplained = Number.NaN
-) {
+function updateReconNote(el, peaks, trendRate, unit, explained, order = 3) {
   if (!el) return;
   const labels = [];
   const count = Math.max(0, Math.round(order));
@@ -936,16 +696,7 @@ function updateReconNote(
   const trendLabel = formatTrendLabel(trendRate, unit);
   const explainedLabel = formatExplainedLabel(explained);
   const periodLabel = labels.length ? labels.join(", ") : "none";
-  const waveletLabel =
-    waveletPeriods && waveletPeriods.length
-      ? ` Wavelet: ${waveletPeriods
-          .map((period) => formatPeriodLabelSeconds(period))
-          .join(", ")}`
-      : "";
-  const waveletFitLabel = Number.isFinite(waveletExplained)
-    ? ` Wavelet fit: ${formatExplainedLabel(waveletExplained)}`
-    : "";
-  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}${waveletLabel}${waveletFitLabel}`;
+  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}`;
 }
 
 function solveLinearSystem(matrix, vector) {
@@ -1065,26 +816,6 @@ function computeStdExplainedCentered(analysis, fit) {
   return 1 - sigmaResidual / sigmaTotal;
 }
 
-function buildLagSamples(acf, stepMs) {
-  const samples = [];
-  acf.forEach((value, index) => {
-    if (!Number.isFinite(value)) return;
-    const clamped = Math.max(-1, Math.min(1, value));
-    samples.push({ ts: index * stepMs, value: clamped });
-  });
-  return samples;
-}
-
-function buildLagSamplesWithStart(values, stepMs, startLag) {
-  const samples = [];
-  values.forEach((value, index) => {
-    if (!Number.isFinite(value)) return;
-    const lag = startLag + index;
-    samples.push({ ts: lag * stepMs, value });
-  });
-  return samples;
-}
-
 function getWindowSamples() {
   const windowMinutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
   const windowMs = windowMinutes * 60 * 1000;
@@ -1145,7 +876,6 @@ function renderSpeedPlot() {
   let trendRate = Number.NaN;
   let reconstruction = null;
   let explained = Number.NaN;
-  let waveletReconstruction = null;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
     const peaks = analysis.spectrum
@@ -1192,80 +922,19 @@ function renderSpeedPlot() {
       explained = computeStdExplainedCentered(analysis, jointFit);
     }
   }
-  const waveletAnalysis = getWaveletAnalysis(
-    samples,
-    startTs,
-    startTs + windowMs,
-    windowMs,
-    windowMinutes,
-    order
-  );
-  if (waveletAnalysis?.reconstruction?.length) {
-    waveletReconstruction = waveletAnalysis.reconstruction;
-  }
-  const waveletPeriods = waveletAnalysis?.dominantPeriods
-    ? waveletAnalysis.dominantPeriods.slice(0, order)
-    : null;
-  let waveletExplained = Number.NaN;
-  if (
-    waveletAnalysis?.times &&
-    waveletAnalysis?.centered &&
-    waveletReconstruction &&
-    waveletReconstruction.length
-  ) {
-    const reconMap = new Map(
-      waveletReconstruction
-        .filter((sample) => Number.isFinite(sample?.ts) && Number.isFinite(sample?.recon))
-        .map((sample) => [sample.ts, sample.recon])
-    );
-    let totalVar = 0;
-    let residualVar = 0;
-    let count = 0;
-    waveletAnalysis.times.forEach((time, idx) => {
-      const actual = waveletAnalysis.centered.values?.[idx];
-      if (!Number.isFinite(time) || !Number.isFinite(actual)) return;
-      const ts = startTs + time * 1000;
-      const recon = reconMap.get(ts);
-      if (!Number.isFinite(recon)) return;
-      const predicted =
-        recon -
-        waveletAnalysis.centered.mean -
-        evaluateTrend(waveletAnalysis.trend, time);
-      const residual = actual - predicted;
-      totalVar += actual * actual;
-      residualVar += residual * residual;
-      count += 1;
-    });
-    if (count >= 2 && totalVar > 1e-9) {
-      const sigmaTotal = Math.sqrt(totalVar / count);
-      const sigmaResidual = Math.sqrt(residualVar / count);
-      waveletExplained = 1 - sigmaResidual / sigmaTotal;
-    }
-  }
   updateReconNote(
     els.raceKblSpeedReconNote,
     peakPeriods,
     trendRate,
     "kn/h",
     explained,
-    order,
-    waveletPeriods,
-    waveletExplained
+    order
   );
 
   let min = Math.min(...speedValues);
   let max = Math.max(...speedValues);
   if (reconstruction && reconstruction.length) {
     const reconValues = reconstruction.map((sample) => sample.recon).filter(Number.isFinite);
-    if (reconValues.length) {
-      min = Math.min(min, ...reconValues);
-      max = Math.max(max, ...reconValues);
-    }
-  }
-  if (waveletReconstruction && waveletReconstruction.length) {
-    const reconValues = waveletReconstruction
-      .map((sample) => sample.recon)
-      .filter(Number.isFinite);
     if (reconValues.length) {
       min = Math.min(min, ...reconValues);
       max = Math.max(max, ...reconValues);
@@ -1313,16 +982,6 @@ function renderSpeedPlot() {
       startTs,
       windowMs,
       color: "#c00000",
-      lineWidth: WIND_PLOT_LINE_WIDTH,
-    });
-  }
-  if (waveletReconstruction && waveletReconstruction.length) {
-    drawLine(ctx, waveletReconstruction, "recon", rect, {
-      min,
-      max,
-      startTs,
-      windowMs,
-      color: "#ff00aa",
       lineWidth: WIND_PLOT_LINE_WIDTH,
     });
   }
@@ -1489,197 +1148,6 @@ function renderDirectionPlot() {
   }
 }
 
-function renderAutoCorrPlot(canvas, key, emptyLabel) {
-  if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!canvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(canvas);
-  if (!canvasInfo) return;
-  const { ctx, width, height } = canvasInfo;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
-  if (!samples.length) {
-    drawPlotMessage(ctx, "Waiting for wind");
-    return;
-  }
-
-  const hasData = samples.some((sample) => Number.isFinite(sample?.[key]));
-  if (!hasData) {
-    drawPlotMessage(ctx, emptyLabel);
-    return;
-  }
-
-  const maxLagMinutes = resolveAutoCorrCapMinutes();
-  const maxLagMs = Math.min(windowMs, maxLagMinutes * 60 * 1000);
-  const stepMs = chooseAutoCorrStepMs(samples, maxLagMs);
-  const maxLagCount = Math.floor(maxLagMs / stepMs);
-  if (maxLagCount < 1) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const series = buildUniformSeries(samples, key, startTs, endTs, stepMs);
-  const acf = computeAutoCorrelation(series, maxLagCount);
-  if (!acf || !acf.length) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const rect = {
-    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
-    right: width - WIND_PLOT_PADDING,
-    top: WIND_PLOT_PADDING,
-    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
-  };
-
-  const min = -1;
-  const max = 1;
-  const tickStep = computeTickStep(max - min, 0.25);
-  drawYAxisGrid(ctx, rect, min, max, tickStep, formatCorrValue);
-  const lagLabelMinutes = Math.min(windowMinutes, maxLagMinutes);
-  drawLagTicks(ctx, rect, maxLagMs, lagLabelMinutes, {
-    tickOptions: LAG_TICK_OPTIONS_MIN,
-    target: LAG_TICK_TARGET,
-  });
-
-  const lagSamples = buildLagSamples(acf, stepMs);
-  if (!lagSamples.length) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  drawStemPlot(ctx, lagSamples, rect, {
-    min,
-    max,
-    startTs: 0,
-    windowMs: maxLagMs,
-    color: "#000000",
-    lineWidth: 1,
-    dotRadius: AUTO_CORR_DOT_SIZE / 2,
-  });
-  drawZeroLine(ctx, rect, min, max);
-}
-
-function renderCrossCorrPlot(canvas, keyA, keyB, emptyLabelA, emptyLabelB) {
-  if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!canvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(canvas);
-  if (!canvasInfo) return;
-  const { ctx, width, height } = canvasInfo;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
-  if (!samples.length) {
-    drawPlotMessage(ctx, "Waiting for wind");
-    return;
-  }
-
-  const hasA = samples.some((sample) => Number.isFinite(sample?.[keyA]));
-  const hasB = samples.some((sample) => Number.isFinite(sample?.[keyB]));
-  if (!hasA) {
-    drawPlotMessage(ctx, emptyLabelA);
-    return;
-  }
-  if (!hasB) {
-    drawPlotMessage(ctx, emptyLabelB);
-    return;
-  }
-
-  const maxLagMinutes = resolveAutoCorrCapMinutes();
-  const maxLagMs = Math.min(windowMs, maxLagMinutes * 60 * 1000);
-  const stepMs = chooseAutoCorrStepMs(samples, maxLagMs);
-  const maxLagCount = Math.floor(maxLagMs / stepMs);
-  if (maxLagCount < 1) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const seriesA = buildUniformSeries(samples, keyA, startTs, endTs, stepMs);
-  const seriesB = buildUniformSeries(samples, keyB, startTs, endTs, stepMs);
-  const cross = computeCrossCorrelation(seriesA, seriesB, maxLagCount);
-  if (!cross || !cross.values.length) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const lagRangeMs = cross.maxLag * stepMs;
-  if (!Number.isFinite(lagRangeMs) || lagRangeMs <= 0) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const lagSamples = buildLagSamplesWithStart(cross.values, stepMs, -cross.maxLag);
-  const finiteValues = lagSamples.map((sample) => sample.value).filter(Number.isFinite);
-  if (!finiteValues.length) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  let min = Math.min(...finiteValues);
-  let max = Math.max(...finiteValues);
-  if (min === max) {
-    const pad = Math.max(1, Math.abs(min) * 0.1);
-    min -= pad;
-    max += pad;
-  } else {
-    const pad = (max - min) * 0.1;
-    min -= pad;
-    max += pad;
-  }
-
-  const rect = {
-    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
-    right: width - WIND_PLOT_PADDING,
-    top: WIND_PLOT_PADDING,
-    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
-  };
-
-  const range = max - min;
-  const baseStep = range > 0 ? range / 4 : 1;
-  const tickStep = computeTickStep(range, baseStep);
-  drawYAxisGrid(ctx, rect, min, max, tickStep, formatCovValue);
-  const lagLabelMinutes = Math.min(windowMinutes, maxLagMinutes);
-  drawLagTicksCentered(ctx, rect, lagRangeMs, lagLabelMinutes, {
-    tickOptions: LAG_TICK_OPTIONS_MIN,
-    target: LAG_TICK_TARGET,
-  });
-
-  drawStemPlot(ctx, lagSamples, rect, {
-    min,
-    max,
-    startTs: -lagRangeMs,
-    windowMs: lagRangeMs * 2,
-    color: "#000000",
-    lineWidth: 1,
-    dotRadius: AUTO_CORR_DOT_SIZE / 2,
-  });
-  drawZeroLine(ctx, rect, min, max);
-}
-
-function renderSpeedAutoCorrPlot() {
-  renderAutoCorrPlot(els.raceKblSpeedAcfCanvas, "speed", "No speed data");
-}
-
-function renderDirAutoCorrPlot() {
-  renderAutoCorrPlot(els.raceKblDirAcfCanvas, "dirUnwrapped", "No dir data");
-}
-
-function renderDirSpeedCrossCorrPlot() {
-  renderCrossCorrPlot(
-    els.raceKblXcorrDirSpeedCanvas,
-    "dirUnwrapped",
-    "speed",
-    "No dir data",
-    "No speed data"
-  );
-}
-
 function renderSpeedPeriodogramPlot() {
   if (!document.body.classList.contains("racekbl-mode")) return;
   if (!els.raceKblSpeedPeriodogramCanvas) return;
@@ -1772,220 +1240,14 @@ function renderSpeedPeriodogramPlot() {
     windowMs: maxPeriodMinutes - minPeriodMinutes,
     color: "#000000",
     lineWidth: 1,
-    dotRadius: AUTO_CORR_DOT_SIZE / 2,
+    dotRadius: 2,
   });
   drawZeroLine(ctx, rect, min, max);
-}
-
-function buildWaveletPeriods(maxMinutes) {
-  const minMinutes = Math.min(WAVELET_MIN_PERIOD_MINUTES, maxMinutes);
-  const max = Math.max(minMinutes, maxMinutes);
-  if (minMinutes <= 0 || max <= 0) return [];
-  if (WAVELET_SCALE_COUNT <= 1) return [max];
-  const ratio = max / minMinutes;
-  const periods = [];
-  for (let i = 0; i < WAVELET_SCALE_COUNT; i += 1) {
-    const t = i / (WAVELET_SCALE_COUNT - 1);
-    periods.push(minMinutes * Math.pow(ratio, t));
-  }
-  return periods;
-}
-
-function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, topK) {
-  const stepMs = Math.max(1000, Math.round(windowMs / Math.max(8, WAVELET_TIME_BINS - 1)));
-  const series = buildUniformSeries(samples, "speed", startTs, endTs, stepMs);
-  if (!series.length) return null;
-
-  const times = [];
-  const values = [];
-  for (let i = 0; i < series.length; i += 1) {
-    times.push((i * stepMs) / 1000);
-    values.push(Number.isFinite(series[i]) ? series[i] : null);
-  }
-  if (values.filter(Number.isFinite).length < 6) return null;
-
-  const trend = fitLinearTrend(times, values);
-  if (trend.count < 2) return null;
-  const detrended = values.map((value, idx) =>
-    Number.isFinite(value) ? value - evaluateTrend(trend, times[idx]) : null
-  );
-  const centered = centerSeries(detrended);
-  if (centered.count < 6) return null;
-
-  const maxPeriodMinutes = Math.max(
-    WAVELET_MIN_PERIOD_MINUTES,
-    Math.min(windowMinutes, WIND_HISTORY_MINUTES_MAX)
-  );
-  const periodsMinutes = buildWaveletPeriods(maxPeriodMinutes);
-  if (!periodsMinutes.length) return null;
-
-  const rows = periodsMinutes.length;
-  const cols = centered.values.length;
-  const amplitudeMatrix = Array.from({ length: rows }, () => new Array(cols).fill(0));
-  const cosMatrix = Array.from({ length: rows }, () => new Array(cols).fill(0));
-  let peak = 0;
-
-  for (let r = 0; r < rows; r += 1) {
-    const periodSec = periodsMinutes[r] * 60;
-    const omega = (2 * Math.PI) / periodSec;
-    const sigma = periodSec * WAVELET_SIGMA_FACTOR;
-    const sigmaSq = sigma * sigma;
-    for (let c = 0; c < cols; c += 1) {
-      const t0 = times[c];
-      let sumCos = 0;
-      let sumSin = 0;
-      let weight = 0;
-      for (let j = 0; j < cols; j += 1) {
-        const value = centered.values[j];
-        if (!Number.isFinite(value)) continue;
-        const dt = times[j] - t0;
-        const gauss = Math.exp(-(dt * dt) / (2 * sigmaSq));
-        const cosVal = Math.cos(omega * dt);
-        const sinVal = Math.sin(omega * dt);
-        sumCos += value * cosVal * gauss;
-        sumSin += value * sinVal * gauss;
-        weight += gauss;
-      }
-      if (weight > 0) {
-        const cosCoeff = sumCos / weight;
-        const sinCoeff = sumSin / weight;
-        const amp = Math.sqrt(cosCoeff * cosCoeff + sinCoeff * sinCoeff);
-        amplitudeMatrix[r][c] = amp;
-        cosMatrix[r][c] = cosCoeff;
-        peak = Math.max(peak, amp);
-      }
-    }
-  }
-
-  const reconstruction = [];
-  const reconCount = Math.max(1, Math.round(topK || WAVELET_RECON_TOP_K));
-  const scaleScores = [];
-  for (let c = 0; c < cols; c += 1) {
-    const entries = [];
-    for (let r = 0; r < rows; r += 1) {
-      const amp = amplitudeMatrix[r][c];
-      if (!Number.isFinite(amp) || amp <= 0) continue;
-      entries.push({ amp, cos: cosMatrix[r][c] });
-    }
-    entries.sort((a, b) => b.amp - a.amp);
-    let sum = 0;
-    for (let i = 0; i < Math.min(reconCount, entries.length); i += 1) {
-      sum += entries[i].cos;
-    }
-    const value = sum + centered.mean + evaluateTrend(trend, times[c]);
-    if (!Number.isFinite(value)) continue;
-    reconstruction.push({ ts: startTs + c * stepMs, recon: value });
-  }
-
-  for (let r = 0; r < rows; r += 1) {
-    const row = amplitudeMatrix[r];
-    let sum = 0;
-    let count = 0;
-    row.forEach((value) => {
-      if (!Number.isFinite(value)) return;
-      sum += value;
-      count += 1;
-    });
-    const score = count ? sum / count : 0;
-    scaleScores.push({ periodSec: periodsMinutes[r] * 60, score });
-  }
-  scaleScores.sort((a, b) => b.score - a.score);
-
-  return {
-    times,
-    centered,
-    trend,
-    periodsMinutes,
-    heatmap: amplitudeMatrix.slice().reverse(),
-    heatmapMax: peak,
-    reconstruction,
-    dominantPeriods: scaleScores.map((entry) => entry.periodSec),
-  };
-}
-
-function getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, topK) {
-  const cache = waveletCache.speed;
-  const signature = getSamplesSignature(samples);
-  const cacheKey = `${signature}:${windowMinutes}:${WAVELET_SCALE_COUNT}:${WAVELET_TIME_BINS}:${topK}`;
-  if (cache && cache.key === cacheKey) {
-    return cache.analysis;
-  }
-  const analysis = buildWaveletAnalysis(
-    samples,
-    startTs,
-    endTs,
-    windowMs,
-    windowMinutes,
-    topK
-  );
-  if (cache) {
-    cache.key = cacheKey;
-    cache.analysis = analysis;
-  }
-  return analysis;
-}
-
-function renderSpeedWaveletPlot() {
-  if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!els.raceKblSpeedWaveletCanvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(els.raceKblSpeedWaveletCanvas);
-  if (!canvasInfo) return;
-  const { ctx, width, height } = canvasInfo;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-
-  const { startTs, endTs, windowMs, windowMinutes, samples } = getWindowSamples();
-  if (!samples.length) {
-    drawPlotMessage(ctx, "Waiting for wind");
-    return;
-  }
-  const hasSpeed = samples.some((sample) => Number.isFinite(sample?.speed));
-  if (!hasSpeed) {
-    drawPlotMessage(ctx, "No speed data");
-    return;
-  }
-
-  const order = clampFitOrder(state.windSpeedFitOrder);
-  const analysis = getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, order);
-  if (!analysis || !analysis.heatmap?.length) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-  const peak = analysis.heatmapMax;
-  if (!Number.isFinite(peak) || peak <= 0) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const rect = {
-    left: WIND_PLOT_PADDING + WIND_PLOT_LABEL_GUTTER,
-    right: width - WIND_PLOT_PADDING,
-    top: WIND_PLOT_PADDING,
-    bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
-  };
-
-  drawHeatmap(ctx, rect, analysis.heatmap, { min: 0, max: peak, color: "#c00000" });
-
-  drawLogYAxisTicks(ctx, rect, analysis.periodsMinutes, (value) => formatLagMinutes(value), {
-    font: WIND_PLOT_TIME_FONT,
-  });
-
-  drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes, {
-    font: WIND_PLOT_TIME_FONT,
-  });
 }
 
 function renderRaceKblPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
-  renderSpeedWaveletPlot();
-  if (SHOW_CORRELATION_PLOTS) {
-    renderSpeedAutoCorrPlot();
-    renderDirAutoCorrPlot();
-    renderDirSpeedCrossCorrPlot();
-  }
   if (SHOW_PERIOD_PLOT) {
     renderSpeedPeriodogramPlot();
   }
@@ -2002,16 +1264,6 @@ function syncRaceKblInputs() {
   }
   if (els.raceKblHistoryValue) {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(minutes);
-  }
-  const autoMinutes = resolveAutoCorrCapMinutes();
-  if (autoMinutes !== state.windAutoCorrMinutes) {
-    state.windAutoCorrMinutes = autoMinutes;
-  }
-  if (els.raceKblAutoCorr) {
-    els.raceKblAutoCorr.value = String(autoMinutes);
-  }
-  if (els.raceKblAutoCorrValue) {
-    els.raceKblAutoCorrValue.textContent = formatWindowMinutes(autoMinutes);
   }
   const periodMinutes = resolvePeriodogramCapMinutes();
   if (periodMinutes !== state.windPeriodogramMinutes) {
@@ -2057,26 +1309,6 @@ function setHistoryWindow(minutes) {
   }
   if (els.raceKblHistoryValue) {
     els.raceKblHistoryValue.textContent = formatHistoryMinutes(clamped);
-  }
-  const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
-  if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
-    fetchWindHistory();
-    return;
-  }
-  updateRaceKblUi();
-}
-
-function setAutoCorrWindow(minutes) {
-  const clamped = snapAutoCorrMinutes(minutes);
-  state.windAutoCorrMinutes = clamped;
-  if (raceKblDeps.saveSettings) {
-    raceKblDeps.saveSettings();
-  }
-  if (els.raceKblAutoCorr) {
-    els.raceKblAutoCorr.value = String(clamped);
-  }
-  if (els.raceKblAutoCorrValue) {
-    els.raceKblAutoCorrValue.textContent = formatWindowMinutes(clamped);
   }
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
@@ -2148,7 +1380,7 @@ function setRaceKblSettingsOpen(open) {
 }
 
 function updateRaceKblPlotVisibility() {
-  document.body.classList.toggle("racekbl-hide-correlations", !SHOW_CORRELATION_PLOTS);
+  document.body.classList.remove("racekbl-hide-correlations");
   document.body.classList.toggle("racekbl-hide-periodogram", !SHOW_PERIOD_PLOT);
 }
 
@@ -2222,11 +1454,6 @@ function bindRaceKblEvents() {
   if (els.raceKblHistory) {
     els.raceKblHistory.addEventListener("input", () => {
       setHistoryWindow(els.raceKblHistory.value);
-    });
-  }
-  if (els.raceKblAutoCorr) {
-    els.raceKblAutoCorr.addEventListener("input", () => {
-      setAutoCorrWindow(els.raceKblAutoCorr.value);
     });
   }
   if (els.raceKblPeriodogram) {

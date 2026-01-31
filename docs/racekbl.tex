@@ -19,9 +19,7 @@ This subsection explains how the signal is detrended and mean-centered before an
 spectral computation so long-term drift does not dominate the output.
 
 RaceKBL removes a linear trend from the samples, then subtracts the mean of the detrended series.
-For uniformly resampled autocorrelation and cross-correlation, the trend is fit against the sample
-index (equivalent to uniform time). For the periodogram, the same model is fit against actual
-timestamps.
+For the periodogram, the model is fit against actual timestamps.
 
 \begin{flalign}
 \hspace{5em}\tilde{x}_i &= x_i - \left(a + b\,t_i\right) && \left[u\right] \label{eq:racekbl:detrend}

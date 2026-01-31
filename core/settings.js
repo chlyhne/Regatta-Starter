@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 14;
+const SETTINGS_VERSION = 15;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -46,7 +46,6 @@ const DEFAULT_SETTINGS = {
   diagUploadToken: "",
   windEndpoint: "/wind",
   windHistoryMinutes: 60,
-  windAutoCorrMinutes: 60,
   windPeriodogramMinutes: 60,
   windSpeedFitOrder: 3,
   windDirFitOrder: 3,
@@ -182,14 +181,7 @@ function normalizeWindEndpoint(value) {
 function normalizeWindHistoryMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windHistoryMinutes;
-  return Math.min(1440, Math.max(20, parsed));
-}
-
-function normalizeWindAutoCorrMinutes(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.windAutoCorrMinutes;
-  const clamped = Math.min(120, Math.max(0, parsed));
-  return Math.round(clamped / 2) * 2;
+  return Math.min(1440, Math.max(15, parsed));
 }
 
 function normalizeWindPeriodogramMinutes(value) {
@@ -258,7 +250,6 @@ function normalizeSettings(raw) {
     diagUploadToken: typeof raw?.diagUploadToken === "string" ? raw.diagUploadToken : "",
     windEndpoint: normalizeWindEndpoint(raw?.windEndpoint),
     windHistoryMinutes: normalizeWindHistoryMinutes(raw?.windHistoryMinutes),
-    windAutoCorrMinutes: normalizeWindAutoCorrMinutes(raw?.windAutoCorrMinutes),
     windPeriodogramMinutes: normalizeWindPeriodogramMinutes(raw?.windPeriodogramMinutes),
     windSpeedFitOrder: normalizeWindFitOrder(raw?.windSpeedFitOrder),
     windDirFitOrder: normalizeWindFitOrder(raw?.windDirFitOrder),
@@ -362,10 +353,6 @@ function migrateSettings(raw) {
     migrated.windHistoryMinutes = DEFAULT_SETTINGS.windHistoryMinutes;
     migrated.version = 11;
   }
-  if (version < 12) {
-    migrated.windAutoCorrMinutes = DEFAULT_SETTINGS.windAutoCorrMinutes;
-    migrated.version = 12;
-  }
   if (version < 13) {
     migrated.windPeriodogramMinutes = DEFAULT_SETTINGS.windPeriodogramMinutes;
     migrated.version = 13;
@@ -374,6 +361,10 @@ function migrateSettings(raw) {
     migrated.windSpeedFitOrder = DEFAULT_SETTINGS.windSpeedFitOrder;
     migrated.windDirFitOrder = DEFAULT_SETTINGS.windDirFitOrder;
     migrated.version = 14;
+  }
+  if (version < 15) {
+    delete migrated.windAutoCorrMinutes;
+    migrated.version = 15;
   }
   return migrated;
 }

@@ -249,79 +249,6 @@ function drawTimeTicks(ctx, rect, startTs, endTs, windowMinutes, options = {}) {
   ctx.restore();
 }
 
-function drawLogYAxisTicks(ctx, rect, ticks, labelFn, options = {}) {
-  if (!Array.isArray(ticks) || ticks.length < 2) return;
-  const positive = ticks.filter((value) => Number.isFinite(value) && value > 0);
-  if (positive.length < 2) return;
-  const min = Math.min(...positive);
-  const max = Math.max(...positive);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
-  const logMin = Math.log(min);
-  const logMax = Math.log(max);
-  const range = logMax - logMin;
-  if (!Number.isFinite(range) || range <= 0) return;
-  const height = rect.bottom - rect.top;
-  if (height <= 0) return;
-
-  ctx.save();
-  ctx.strokeStyle = options.color || "#000000";
-  ctx.lineWidth = Number.isFinite(options.lineWidth) ? options.lineWidth : 1;
-  ctx.setLineDash(options.dash || []);
-  ctx.fillStyle = options.color || "#000000";
-  ctx.font = options.font || "12px sans-serif";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-
-  const labelPadding = Number.isFinite(options.labelPadding) ? options.labelPadding : 6;
-  const labelGap = Number.isFinite(options.labelGap) ? options.labelGap : 2;
-
-  positive.forEach((value) => {
-    const y =
-      rect.bottom - ((Math.log(value) - logMin) / range) * (rect.bottom - rect.top);
-    if (!Number.isFinite(y)) return;
-    const label = typeof labelFn === "function" ? String(labelFn(value)) : "";
-    if (label) {
-      const width = ctx.measureText(label).width || 0;
-      const labelX = Math.max(rect.left - labelPadding, width + labelGap);
-      ctx.fillText(label, labelX, y);
-    }
-  });
-  ctx.restore();
-}
-
-function drawHeatmap(ctx, rect, values, options = {}) {
-  if (!Array.isArray(values) || !values.length) return;
-  const rows = values.length;
-  const cols = Array.isArray(values[0]) ? values[0].length : 0;
-  if (!rows || !cols) return;
-  const width = rect.right - rect.left;
-  const height = rect.bottom - rect.top;
-  if (width <= 0 || height <= 0) return;
-  const cellW = width / cols;
-  const cellH = height / rows;
-  const min = Number.isFinite(options.min) ? options.min : 0;
-  const max = Number.isFinite(options.max) ? options.max : 1;
-  const range = max - min;
-  if (!Number.isFinite(range) || range <= 0) return;
-  const color = options.color || "#000000";
-
-  ctx.save();
-  for (let r = 0; r < rows; r += 1) {
-    const row = values[r];
-    if (!Array.isArray(row)) continue;
-    for (let c = 0; c < cols; c += 1) {
-      const value = row[c];
-      if (!Number.isFinite(value)) continue;
-      const intensity = Math.min(1, Math.max(0, (value - min) / range));
-      if (intensity <= 0) continue;
-      ctx.globalAlpha = intensity;
-      ctx.fillStyle = color;
-      ctx.fillRect(rect.left + c * cellW, rect.top + r * cellH, cellW, cellH);
-    }
-  }
-  ctx.restore();
-}
-
 function formatLagMinutes(minutes) {
   if (!Number.isFinite(minutes)) return "";
   if (minutes < 60) return `${Math.round(minutes)}m`;
@@ -724,10 +651,8 @@ export {
   drawTimeTicks,
   drawLagTicks,
   drawLagTicksCentered,
-  drawLogYAxisTicks,
   drawZeroLine,
   formatLagMinutes,
-  drawHeatmap,
   renderDeviationBarPlot,
   renderSignedLinePlot,
 };
