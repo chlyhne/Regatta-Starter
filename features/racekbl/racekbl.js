@@ -62,6 +62,7 @@ let lastRenderAt = 0;
 let renderTimer = null;
 let historyLoadedHours = 0;
 let wheelZoomBound = false;
+let wheelZoomAccumulator = 0;
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
@@ -1861,6 +1862,28 @@ function zoomHistoryByFactor(factor) {
   }
 }
 
+function zoomHistoryByStep(step) {
+  if (!Number.isFinite(step) || step === 0) return;
+  const current = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  let bestIndex = 0;
+  let bestDiff = Math.abs(WIND_HISTORY_MARKS_MINUTES[0] - current);
+  for (let i = 1; i < WIND_HISTORY_MARKS_MINUTES.length; i += 1) {
+    const diff = Math.abs(WIND_HISTORY_MARKS_MINUTES[i] - current);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIndex = i;
+    }
+  }
+  const nextIndex = Math.min(
+    WIND_HISTORY_MARKS_MINUTES.length - 1,
+    Math.max(0, bestIndex + Math.sign(step))
+  );
+  const next = WIND_HISTORY_MARKS_MINUTES[nextIndex];
+  if (next !== state.windHistoryMinutes) {
+    setHistoryWindow(next);
+  }
+}
+
 function bindRaceKblEvents() {
   if (els.openRaceKblSettings) {
     els.openRaceKblSettings.addEventListener("click", () => {
@@ -2026,11 +2049,16 @@ function bindRaceKblEvents() {
             node.classList.contains("racekbl-plot")
         );
         if (!onPlot) return;
-        const factor = event.deltaY > 0 ? 1.1 : 0.9;
-        zoomHistoryByFactor(factor);
+        if (!event.cancelable) return;
+        wheelZoomAccumulator += event.deltaY;
+        const threshold = 40;
+        if (Math.abs(wheelZoomAccumulator) < threshold) return;
+        const direction = wheelZoomAccumulator > 0 ? 1 : -1;
+        wheelZoomAccumulator = 0;
+        zoomHistoryByStep(direction);
         event.preventDefault();
       },
-      { passive: false }
+      { passive: false, capture: true }
     );
   }
   document.addEventListener("visibilitychange", () => {
