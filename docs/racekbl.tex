@@ -130,17 +130,23 @@ signal as possible. The result is a compact, readable hint of the strongest cycl
 pretending to be a forecast. The line is drawn in magenta so it is visually distinct from the raw
 speed trace.
 
+The number of peaks included in the reconstruction is selectable per plot. A fit order slider
+sets \(M \in [1, 5]\), which controls how many of the strongest periodogram peaks are passed into
+the joint fit. A smaller \(M\) yields a simpler, more stable reconstruction, while a larger \(M\)
+captures more structure but risks fitting transient noise. The overlay and fit score update
+immediately when the order changes.
+
 The reconstructed signal can be written as:
 
 \begin{flalign}
-\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{3}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \mu + \left(\alpha + \beta t\right) && \left[u\right] \label{eq:racekbl:reconstruction}
+\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{M}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \mu + \left(\alpha + \beta t\right) && \left[u\right] \label{eq:racekbl:reconstruction}
 \end{flalign}
-In \eqref{eq:racekbl:reconstruction}, \(\omega_m\) are the three angular frequencies with the
-highest periodogram power, \(a_m\) and \(b_m\) are the jointly fitted cosine and sine coefficients,
-\(\tau_m\) are the phase offsets used to align each basis function, \(\mu\) is the mean of the
-detrended series, and \(\alpha + \beta t\) is the linear trend that was removed before the spectral
-analysis. This overlay shares the same history window as the wind speed plot, so it updates whenever
-new samples arrive or the history slider changes.
+In \eqref{eq:racekbl:reconstruction}, \(\omega_m\) are the top \(M\) angular frequencies ranked by
+periodogram power, \(a_m\) and \(b_m\) are the jointly fitted cosine and sine coefficients, \(\tau_m\)
+are the phase offsets used to align each basis function, \(\mu\) is the mean of the detrended
+series, and \(\alpha + \beta t\) is the linear trend that was removed before the spectral analysis.
+This overlay shares the same history window as the wind speed plot, so it updates whenever new
+samples arrive or the history slider changes.
 
 Once the reconstruction is assembled, RaceKBL also reports a goodness-of-fit value. The fit score
 is computed on the detrended, mean-centered series, so it reflects how much of the remaining
@@ -156,9 +162,9 @@ terms evaluated at each sample time:
 \hspace{5em}A_{i,2m} &= \sin\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racekbl:fit-matrix-sin}
 \end{flalign}
 In \eqref{eq:racekbl:fit-matrix-cos} and \eqref{eq:racekbl:fit-matrix-sin}, \(i\) indexes samples in
-the centered series, and \(m \in \{1,2,3\}\) indexes the three selected frequencies. With the
-centered data vector \(y\) (detrended and mean-removed), the coefficient vector
-\(\beta = [a_1, b_1, a_2, b_2, a_3, b_3]^\mathsf{T}\) is obtained by the Moore--Penrose least-squares
+the centered series, and \(m \in \{1,\dots,M\}\) indexes the selected frequencies. With the centered
+data vector \(y\) (detrended and mean-removed), the coefficient vector
+\(\beta = [a_1, b_1, \dots, a_M, b_M]^\mathsf{T}\) is obtained by the Moore--Penrose least-squares
 solution:
 
 \begin{flalign}
