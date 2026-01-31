@@ -112,7 +112,7 @@ export const raceKblView = `
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">
     <div class="racekbl-settings-panel">
       <h2>Wind settings</h2>
-      <div class="racekbl-settings-group racekbl-autocorr-settings">
+      <div class="racekbl-settings-group racekbl-history-settings">
         <div class="racekbl-control-head">
           <h3 id="racekbl-history-title">History window</h3>
           <div id="racekbl-history-value" class="racekbl-window-value">1 h</div>
@@ -121,16 +121,14 @@ export const raceKblView = `
           id="racekbl-history"
           class="racekbl-window-slider"
           type="range"
-          min="20"
+          min="60"
           max="1440"
-          step="2"
+          step="60"
           value="60"
           list="racekbl-history-ticks"
           aria-labelledby="racekbl-history-title racekbl-history-value"
         />
         <datalist id="racekbl-history-ticks">
-          <option value="20" label="20m"></option>
-          <option value="30" label="30m"></option>
           <option value="60" label="1h"></option>
           <option value="120" label="2h"></option>
           <option value="240" label="4h"></option>
@@ -139,7 +137,6 @@ export const raceKblView = `
           <option value="1440" label="24h"></option>
         </datalist>
         <div class="racekbl-history-scale" aria-hidden="true">
-          <span>20m</span>
           <span>1h</span>
           <span>2h</span>
           <span>4h</span>
