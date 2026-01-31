@@ -1,0 +1,158 @@
+% !TeX root = master.tex
+
+\section{RaceKBL wind analysis}
+
+This section describes how RaceKBL converts wind history into autocorrelation, cross-correlation,
+and period estimates that are legible during a start sequence.
+
+RaceKBL uses the same wind history the rest of the view relies on. The history slider determines
+how much data is fed into the analysis, while the autocorrelation and periodogram sliders only cap
+the maximum lag or period shown on the plots. This separation lets the plots zoom into a shorter
+window without throwing away samples.
+
+\subsection{Detrending and centering}
+
+This subsection explains how the signal is detrended and mean-centered before any correlation or
+spectral computation so long-term drift does not dominate the output.
+
+RaceKBL removes a linear trend from the samples, then subtracts the mean of the detrended series.
+For uniformly resampled autocorrelation and cross-correlation, the trend is fit against the sample
+index (equivalent to uniform time). For the periodogram, the same model is fit against actual
+timestamps.
+
+\begin{flalign}
+\hspace{5em}\tilde{x}_i &= x_i - \left(a + b\,t_i\right) && \left[u\right] \label{eq:racekbl:detrend}
+\end{flalign}
+In \eqref{eq:racekbl:detrend}, \(x_i\) is the raw series, \(\tilde{x}_i\) is the detrended series,
+\(t_i\) is the time coordinate, and \(u\) is the unit of the signal (knots for wind speed or degrees
+for unwrapped direction). After detrending, the mean of \(\tilde{x}_i\) is removed so the resulting
+series is centered on zero.
+
+\subsection{Autocorrelation and cross-correlation}
+
+This subsection describes how the autocorrelation and cross-correlation plots are computed and how
+their lag axes are capped.
+
+Autocorrelation is normalized by the total variance of the detrended, centered series so the scale
+is stable:
+
+\begin{flalign}
+\hspace{5em}r_k &= \frac{\sum_{i=0}^{N-k-1}\tilde{x}_i\,\tilde{x}_{i+k}}{\sum_{i=0}^{N-1}\tilde{x}_i^2} && \left[1\right] \label{eq:racekbl:autocorr}
+\end{flalign}
+In \eqref{eq:racekbl:autocorr}, \(r_k\) is the autocorrelation at lag \(k\), and \(N\) is the number
+of samples in the history window. Cross-correlation uses the same detrended data but averages the
+product without variance normalization so its magnitude remains in signal units:
+
+\begin{flalign}
+\hspace{5em}c_k &= \frac{1}{N_k}\sum_{i=0}^{N_k-1}\tilde{x}_i\,\tilde{y}_{i+k} && \left[u_x\,u_y\right] \label{eq:racekbl:crosscorr}
+\end{flalign}
+In \eqref{eq:racekbl:crosscorr}, \(c_k\) is the cross-correlation between series \(x\) and \(y\), and
+\(N_k\) is the number of overlapping pairs at lag \(k\). Wind direction is unwrapped before this
+step so the computation stays smooth across the \(359^\circ/0^\circ\) boundary. The autocorrelation
+and cross-correlation sliders cap the maximum lag shown, and the tick spacing is recalculated each
+time so the labels match the displayed domain.
+
+\subsection{Lomb--Scargle periodogram}
+
+This subsection explains the Lomb--Scargle periodogram used to detect periodic structure in the
+irregularly sampled wind speed data, with an emphasis on why we use it and how it feeds the
+reconstruction overlay.
+
+The goal of the periodogram in RaceKBL is not to estimate a full spectral density; it is a
+diagnostic lens for spotting repeated patterns in wind speed that might matter over the next few
+minutes. We prefer a method that tolerates uneven sampling, missing points, and latency spikes,
+because those are realities of live wind feeds. A naive FFT requires a uniform grid, and forcing
+the data onto that grid either invents samples or drops time stamps, both of which can shift peaks
+and blur what the sailor is trying to spot. Lomb--Scargle keeps the raw time stamps, so the period
+axis stays honest even if the sampling intervals are not. Importantly, we use the periodogram as a
+frequency-selection step: it tells us which periods are worth modeling, and the reconstruction
+pipeline refines the amplitudes and phases afterward.
+
+Another design choice is to show periods rather than frequencies. Sailors reason about “every
+5 minutes” or “every 90 seconds,” not “0.2 Hz.” We therefore evaluate the spectrum on a frequency
+grid but present its inverse on the axis. The period cap slider lets you ignore long cycles that
+are not actionable in the moment, while still using the full history window so short-period peaks
+are computed from as much data as possible.
+
+The Lomb--Scargle formulation can be viewed as a least-squares fit of sine and cosine waves at each
+test frequency. The phase offset \(\tau\) aligns the basis functions to the data so that the sine
+and cosine terms remain orthogonal even with irregular sampling. This makes the power comparable
+across frequencies and avoids bias toward specific phases. The offset is computed for each angular
+frequency \(\omega\):
+
+\begin{flalign}
+\hspace{5em}\tau &= \frac{1}{2\omega}\tan^{-1}\left(\frac{\sum_i \sin(2\omega t_i)}{\sum_i \cos(2\omega t_i)}\right) && \left[\mathrm{s}\right] \label{eq:racekbl:ls-tau}
+\end{flalign}
+With \(\tau\) from \eqref{eq:racekbl:ls-tau}, we first define the cosine and sine projections and
+their normalizers:
+
+\begin{flalign}
+\hspace{5em}C(\omega) &= \sum_i \tilde{x}_i\cos\left(\omega(t_i-\tau)\right) && \left[u\right] \label{eq:racekbl:ls-cos-proj}
+\end{flalign}
+\begin{flalign}
+\hspace{5em}S(\omega) &= \sum_i \tilde{x}_i\sin\left(\omega(t_i-\tau)\right) && \left[u\right] \label{eq:racekbl:ls-sin-proj}
+\end{flalign}
+\begin{flalign}
+\hspace{5em}D_c(\omega) &= \sum_i \cos^2\left(\omega(t_i-\tau)\right) && \left[1\right] \label{eq:racekbl:ls-cos-denom}
+\end{flalign}
+\begin{flalign}
+\hspace{5em}D_s(\omega) &= \sum_i \sin^2\left(\omega(t_i-\tau)\right) && \left[1\right] \label{eq:racekbl:ls-sin-denom}
+\end{flalign}
+In \eqref{eq:racekbl:ls-cos-proj} and \eqref{eq:racekbl:ls-sin-proj}, \(C(\omega)\) and \(S(\omega)\)
+are the least-squares projections of the detrended series onto cosine and sine bases. The terms
+\(D_c(\omega)\) and \(D_s(\omega)\) in \eqref{eq:racekbl:ls-cos-denom} and \eqref{eq:racekbl:ls-sin-denom}
+are the corresponding energy normalizers that keep each projection scale-consistent even with
+irregular sampling.
+
+With those pieces, the Lomb--Scargle power is:
+
+\begin{flalign}
+\hspace{5em}P(\omega) &= \frac{1}{2\sigma^2}\left[\frac{C(\omega)^2}{D_c(\omega)} + \frac{S(\omega)^2}{D_s(\omega)}\right] && \left[1\right] \label{eq:racekbl:ls-power}
+\end{flalign}
+In \eqref{eq:racekbl:ls-power}, \(P(\omega)\) is the normalized power and \(\sigma^2\) is the
+variance of the detrended, centered series. The normalization keeps the scale readable and makes a
+peak at one frequency comparable to a peak at another, even if the absolute wind variance changes
+through the day.
+
+The periodogram is also intentionally bounded in both directions. Very short periods can be
+dominated by noise or sensor jitter, while very long periods can be hard to validate with the
+available history. RaceKBL therefore sets a minimum period based on the median sampling interval
+and caps the maximum period to the slider setting. These bounds are not meant to be theoretical
+limits; they are practical guards against over-interpreting either high-frequency noise or
+slow drift.
+
+Finally, it is worth stating how to interpret the plot. A peak indicates a repeating pattern in
+the wind speed at the corresponding period, but it does not guarantee that the oscillation will
+continue. The plot is a snapshot of the recent window, not a forecast. It is most valuable when
+you see a peak that persists over several updates while the median wind remains stable, because
+that suggests a durable cycle worth timing your maneuvers around. Conversely, when peaks jump
+around or wash out, the periodogram is telling you the wind is too irregular for a reliable
+cycle-based tactic.
+
+\subsection{Reconstructed speed overlay}
+
+This subsection explains the reconstructed wind speed overlay that is drawn on top of the raw
+speed history to visualize the dominant periodic components and to quantify how predictable the
+wind appears to be.
+
+RaceKBL takes the three most significant Lomb--Scargle peaks and treats them as candidate periods.
+Those candidates are then fitted together in a single least-squares solve, so the amplitudes and
+phases are optimized jointly rather than one frequency at a time. The reconstruction is the sum of
+those three sinusoids, with the original linear trend and mean added back so the overlay sits in the
+same amplitude range as the measured wind speed. This two-step flow keeps the throughline clear:
+the periodogram is the scout that picks promising periods, and the joint fit is the model that
+explains as much of the centered signal as possible. The result is a compact, readable hint of the
+strongest cycles without pretending to be a forecast. The line is drawn in magenta so it is visually
+distinct from the raw speed trace.
+
+The reconstructed signal can be written as:
+
+\begin{flalign}
+\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{3}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \mu + \left(\alpha + \beta t\right) && \left[u\right] \label{eq:racekbl:reconstruction}
+\end{flalign}
+In \eqref{eq:racekbl:reconstruction}, \(\omega_m\) are the three angular frequencies with the
+highest periodogram power, \(a_m\) and \(b_m\) are the jointly fitted cosine and sine coefficients,
+\(\tau_m\) are the phase offsets used to align each basis function, \(\mu\) is the mean of the
+detrended series, and \(\alpha + \beta t\) is the linear trend that was removed before the spectral
+analysis. This overlay shares the same history window as the wind speed plot, so it updates whenever
+new samples arrive or the history slider changes.
