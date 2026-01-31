@@ -55,6 +55,7 @@ const WAVELET_MIN_PERIOD_MINUTES = 15;
 const WAVELET_SCALE_COUNT = 18;
 const WAVELET_TIME_BINS = 120;
 const WAVELET_SIGMA_FACTOR = 0.5;
+const WAVELET_RECON_TOP_K = 3;
 
 const windSamples = [];
 let windPollTimer = null;
@@ -72,6 +73,9 @@ let wheelZoomAccumulator = 0;
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
+};
+const waveletCache = {
+  speed: { key: null, analysis: null },
 };
 let pinchState = null;
 
@@ -1123,6 +1127,7 @@ function renderSpeedPlot() {
   let trendRate = Number.NaN;
   let reconstruction = null;
   let explained = Number.NaN;
+  let waveletReconstruction = null;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
     const peaks = analysis.spectrum
@@ -1169,6 +1174,16 @@ function renderSpeedPlot() {
       explained = computeStdExplainedCentered(analysis, jointFit);
     }
   }
+  const waveletAnalysis = getWaveletAnalysis(
+    samples,
+    startTs,
+    startTs + windowMs,
+    windowMs,
+    windowMinutes
+  );
+  if (waveletAnalysis?.reconstruction?.length) {
+    waveletReconstruction = waveletAnalysis.reconstruction;
+  }
   updateReconNote(
     els.raceKblSpeedReconNote,
     peakPeriods,
@@ -1182,6 +1197,15 @@ function renderSpeedPlot() {
   let max = Math.max(...speedValues);
   if (reconstruction && reconstruction.length) {
     const reconValues = reconstruction.map((sample) => sample.recon).filter(Number.isFinite);
+    if (reconValues.length) {
+      min = Math.min(min, ...reconValues);
+      max = Math.max(max, ...reconValues);
+    }
+  }
+  if (waveletReconstruction && waveletReconstruction.length) {
+    const reconValues = waveletReconstruction
+      .map((sample) => sample.recon)
+      .filter(Number.isFinite);
     if (reconValues.length) {
       min = Math.min(min, ...reconValues);
       max = Math.max(max, ...reconValues);
@@ -1229,6 +1253,16 @@ function renderSpeedPlot() {
       startTs,
       windowMs,
       color: "#c00000",
+      lineWidth: WIND_PLOT_LINE_WIDTH,
+    });
+  }
+  if (waveletReconstruction && waveletReconstruction.length) {
+    drawLine(ctx, waveletReconstruction, "recon", rect, {
+      min,
+      max,
+      startTs,
+      windowMs,
+      color: "#ff00aa",
       lineWidth: WIND_PLOT_LINE_WIDTH,
     });
   }
@@ -1697,6 +1731,113 @@ function buildWaveletPeriods(maxMinutes) {
   return periods;
 }
 
+function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) {
+  const stepMs = Math.max(1000, Math.round(windowMs / Math.max(8, WAVELET_TIME_BINS - 1)));
+  const series = buildUniformSeries(samples, "speed", startTs, endTs, stepMs);
+  if (!series.length) return null;
+
+  const times = [];
+  const values = [];
+  for (let i = 0; i < series.length; i += 1) {
+    times.push((i * stepMs) / 1000);
+    values.push(Number.isFinite(series[i]) ? series[i] : null);
+  }
+  if (values.filter(Number.isFinite).length < 6) return null;
+
+  const trend = fitLinearTrend(times, values);
+  if (trend.count < 2) return null;
+  const detrended = values.map((value, idx) =>
+    Number.isFinite(value) ? value - evaluateTrend(trend, times[idx]) : null
+  );
+  const centered = centerSeries(detrended);
+  if (centered.count < 6) return null;
+
+  const maxPeriodMinutes = Math.max(
+    WAVELET_MIN_PERIOD_MINUTES,
+    Math.min(windowMinutes, WIND_HISTORY_MINUTES_MAX)
+  );
+  const periodsMinutes = buildWaveletPeriods(maxPeriodMinutes);
+  if (!periodsMinutes.length) return null;
+
+  const rows = periodsMinutes.length;
+  const cols = centered.values.length;
+  const amplitudeMatrix = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  const cosMatrix = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  let peak = 0;
+
+  for (let r = 0; r < rows; r += 1) {
+    const periodSec = periodsMinutes[r] * 60;
+    const omega = (2 * Math.PI) / periodSec;
+    const sigma = periodSec * WAVELET_SIGMA_FACTOR;
+    const sigmaSq = sigma * sigma;
+    for (let c = 0; c < cols; c += 1) {
+      const t0 = times[c];
+      let sumCos = 0;
+      let sumSin = 0;
+      let weight = 0;
+      for (let j = 0; j < cols; j += 1) {
+        const value = centered.values[j];
+        if (!Number.isFinite(value)) continue;
+        const dt = times[j] - t0;
+        const gauss = Math.exp(-(dt * dt) / (2 * sigmaSq));
+        const cosVal = Math.cos(omega * dt);
+        const sinVal = Math.sin(omega * dt);
+        sumCos += value * cosVal * gauss;
+        sumSin += value * sinVal * gauss;
+        weight += gauss;
+      }
+      if (weight > 0) {
+        const cosCoeff = sumCos / weight;
+        const sinCoeff = sumSin / weight;
+        const amp = Math.sqrt(cosCoeff * cosCoeff + sinCoeff * sinCoeff);
+        amplitudeMatrix[r][c] = amp;
+        cosMatrix[r][c] = cosCoeff;
+        peak = Math.max(peak, amp);
+      }
+    }
+  }
+
+  const reconstruction = [];
+  for (let c = 0; c < cols; c += 1) {
+    const entries = [];
+    for (let r = 0; r < rows; r += 1) {
+      const amp = amplitudeMatrix[r][c];
+      if (!Number.isFinite(amp) || amp <= 0) continue;
+      entries.push({ amp, cos: cosMatrix[r][c] });
+    }
+    entries.sort((a, b) => b.amp - a.amp);
+    let sum = 0;
+    for (let i = 0; i < Math.min(WAVELET_RECON_TOP_K, entries.length); i += 1) {
+      sum += entries[i].cos;
+    }
+    const value = sum + centered.mean + evaluateTrend(trend, times[c]);
+    if (!Number.isFinite(value)) continue;
+    reconstruction.push({ ts: startTs + c * stepMs, recon: value });
+  }
+
+  return {
+    periodsMinutes,
+    heatmap: amplitudeMatrix.slice().reverse(),
+    heatmapMax: peak,
+    reconstruction,
+  };
+}
+
+function getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) {
+  const cache = waveletCache.speed;
+  const signature = getSamplesSignature(samples);
+  const cacheKey = `${signature}:${windowMinutes}:${WAVELET_SCALE_COUNT}:${WAVELET_TIME_BINS}`;
+  if (cache && cache.key === cacheKey) {
+    return cache.analysis;
+  }
+  const analysis = buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes);
+  if (cache) {
+    cache.key = cacheKey;
+    cache.analysis = analysis;
+  }
+  return analysis;
+}
+
 function renderSpeedWaveletPlot() {
   if (!document.body.classList.contains("racekbl-mode")) return;
   if (!els.raceKblSpeedWaveletCanvas) return;
@@ -1719,71 +1860,12 @@ function renderSpeedWaveletPlot() {
     return;
   }
 
-  const stepMs = Math.max(1000, Math.round(windowMs / Math.max(8, WAVELET_TIME_BINS - 1)));
-  const series = buildUniformSeries(samples, "speed", startTs, endTs, stepMs);
-  const values = [];
-  const times = [];
-  for (let i = 0; i < series.length; i += 1) {
-    const value = series[i];
-    if (!Number.isFinite(value)) continue;
-    times.push((i * stepMs) / 1000);
-    values.push(value);
-  }
-  if (values.length < 6) {
+  const analysis = getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes);
+  if (!analysis || !analysis.heatmap?.length) {
     drawPlotMessage(ctx, "Not enough data");
     return;
   }
-
-  const trend = fitLinearTrend(times, values);
-  if (trend.count < 2) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-  const detrended = values.map((value, idx) => value - evaluateTrend(trend, times[idx]));
-  const centered = centerSeries(detrended);
-  if (centered.count < 6) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const maxPeriodMinutes = Math.max(
-    WAVELET_MIN_PERIOD_MINUTES,
-    Math.min(windowMinutes, WIND_HISTORY_MINUTES_MAX)
-  );
-  const periodsMinutes = buildWaveletPeriods(maxPeriodMinutes);
-  if (!periodsMinutes.length) {
-    drawPlotMessage(ctx, "Not enough data");
-    return;
-  }
-
-  const cols = centered.values.length;
-  const rows = periodsMinutes.length;
-  const spectrum = Array.from({ length: rows }, () => new Array(cols).fill(0));
-  let peak = 0;
-
-  for (let r = 0; r < rows; r += 1) {
-    const periodSec = periodsMinutes[r] * 60;
-    const omega = (2 * Math.PI) / periodSec;
-    const sigma = periodSec * WAVELET_SIGMA_FACTOR;
-    const sigmaSq = sigma * sigma;
-    for (let c = 0; c < cols; c += 1) {
-      const t0 = times[c];
-      let sum = 0;
-      let weight = 0;
-      for (let j = 0; j < cols; j += 1) {
-        const dt = times[j] - t0;
-        const gauss = Math.exp(-(dt * dt) / (2 * sigmaSq));
-        const wave = Math.cos(omega * dt);
-        const w = gauss;
-        sum += centered.values[j] * wave * w;
-        weight += w;
-      }
-      const value = weight > 0 ? Math.abs(sum / weight) : 0;
-      spectrum[rows - 1 - r][c] = value;
-      peak = Math.max(peak, value);
-    }
-  }
-
+  const peak = analysis.heatmapMax;
   if (!Number.isFinite(peak) || peak <= 0) {
     drawPlotMessage(ctx, "Not enough data");
     return;
@@ -1796,10 +1878,9 @@ function renderSpeedWaveletPlot() {
     bottom: height - WIND_PLOT_PADDING - WIND_PLOT_TIME_GUTTER,
   };
 
-  drawHeatmap(ctx, rect, spectrum, { min: 0, max: peak, color: "#c00000" });
+  drawHeatmap(ctx, rect, analysis.heatmap, { min: 0, max: peak, color: "#c00000" });
 
-  const logTicks = buildWaveletPeriods(maxPeriodMinutes);
-  drawLogYAxisTicks(ctx, rect, logTicks, (value) => formatLagMinutes(value), {
+  drawLogYAxisTicks(ctx, rect, analysis.periodsMinutes, (value) => formatLagMinutes(value), {
     font: WIND_PLOT_TIME_FONT,
   });
 
