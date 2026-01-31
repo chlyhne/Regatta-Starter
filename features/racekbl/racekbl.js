@@ -1212,7 +1212,7 @@ function renderSpeedPlot() {
       max,
       startTs,
       windowMs,
-      color: "#ff00aa",
+      color: "#c00000",
       lineWidth: WIND_PLOT_LINE_WIDTH,
     });
   }
@@ -1373,7 +1373,7 @@ function renderDirectionPlot() {
       max,
       startTs,
       windowMs,
-      color: "#ff00aa",
+      color: "#c00000",
       lineWidth: WIND_PLOT_LINE_WIDTH,
     });
   }
