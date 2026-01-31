@@ -896,37 +896,31 @@ function updateReconNote(el, peaks, trendRate, unit, explained) {
   el.textContent = `Significant periods: ${labels.join(", ")} Trend: ${trendLabel} Fit: ${explainedLabel}`;
 }
 
-function computeStdExplained(samples, key, reconstruction) {
-  if (!samples || !reconstruction || !reconstruction.length) return Number.NaN;
-  const reconByTs = new Map();
-  reconstruction.forEach((sample) => {
-    if (!sample || !Number.isFinite(sample.ts) || !Number.isFinite(sample.recon)) return;
-    reconByTs.set(sample.ts, sample.recon);
-  });
-  let count = 0;
-  let sum = 0;
-  const actuals = [];
-  const residuals = [];
-  samples.forEach((sample) => {
-    const actual = sample?.[key];
-    if (!Number.isFinite(actual) || !Number.isFinite(sample?.ts)) return;
-    const recon = reconByTs.get(sample.ts);
-    if (!Number.isFinite(recon)) return;
-    actuals.push(actual);
-    residuals.push(actual - recon);
-    sum += actual;
-    count += 1;
-  });
-  if (count < 2) return Number.NaN;
-  const mean = sum / count;
+function computeStdExplainedCentered(analysis, fits) {
+  if (!analysis || !Array.isArray(fits) || !fits.length) return Number.NaN;
+  const { times, centered } = analysis;
+  if (!times || !centered || !Array.isArray(centered.values)) return Number.NaN;
+  const values = centered.values;
   let totalVar = 0;
   let residualVar = 0;
-  for (let i = 0; i < count; i += 1) {
-    const delta = actuals[i] - mean;
-    totalVar += delta * delta;
-    residualVar += residuals[i] * residuals[i];
+  let count = 0;
+  for (let i = 0; i < times.length; i += 1) {
+    const time = times[i];
+    const actual = values[i];
+    if (!Number.isFinite(time) || !Number.isFinite(actual)) continue;
+    let oscillation = 0;
+    fits.forEach((entry) => {
+      const omega = 2 * Math.PI * entry.frequency;
+      oscillation +=
+        entry.fit.cosCoeff * Math.cos(omega * (time - entry.fit.tau)) +
+        entry.fit.sinCoeff * Math.sin(omega * (time - entry.fit.tau));
+    });
+    const residual = actual - oscillation;
+    totalVar += actual * actual;
+    residualVar += residual * residual;
+    count += 1;
   }
-  if (totalVar <= 1e-9) return Number.NaN;
+  if (count < 2 || totalVar <= 1e-9) return Number.NaN;
   const sigmaTotal = Math.sqrt(totalVar / count);
   const sigmaResidual = Math.sqrt(residualVar / count);
   return 1 - sigmaResidual / sigmaTotal;
@@ -1058,7 +1052,7 @@ function renderSpeedPlot() {
           return { ts: sample.ts, recon: value };
         })
         .filter(Boolean);
-      explained = computeStdExplained(samples, "speed", reconstruction);
+      explained = computeStdExplainedCentered(analysis, fits);
     }
   }
   updateReconNote(els.raceKblSpeedReconNote, peakPeriods, trendRate, "kn/h", explained);
@@ -1216,7 +1210,7 @@ function renderDirectionPlot() {
           return { ts: sample.ts, recon: value };
         })
         .filter(Boolean);
-      explained = computeStdExplained(samples, "dirUnwrapped", reconstruction);
+      explained = computeStdExplainedCentered(analysis, fits);
     }
   }
   updateReconNote(els.raceKblDirReconNote, peakPeriods, trendRate, "°/h", explained);
