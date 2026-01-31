@@ -131,6 +131,14 @@ function formatWindowMinutes(value) {
   return `${hours} h ${extra} m`;
 }
 
+function formatHorizonMinutes(value) {
+  const minutes = Number.parseInt(value, 10);
+  if (!Number.isFinite(minutes) || minutes <= 0) return "--:--";
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
 function snapAutoCorrMinutes(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return WIND_AUTOCORR_MINUTES_MIN;
@@ -1687,6 +1695,7 @@ function syncRaceKblInputs() {
   if (minutes !== state.windHistoryMinutes) {
     state.windHistoryMinutes = minutes;
   }
+  updateRaceKblTitles(minutes);
   if (els.raceKblHistory) {
     els.raceKblHistory.value = String(minutes);
   }
@@ -1741,6 +1750,7 @@ function setHistoryWindow(minutes) {
   if (raceKblDeps.saveSettings) {
     raceKblDeps.saveSettings();
   }
+  updateRaceKblTitles(clamped);
   if (els.raceKblHistory) {
     els.raceKblHistory.value = String(clamped);
   }
@@ -1839,6 +1849,16 @@ function setRaceKblSettingsOpen(open) {
 function updateRaceKblPlotVisibility() {
   document.body.classList.toggle("racekbl-hide-correlations", !SHOW_CORRELATION_PLOTS);
   document.body.classList.toggle("racekbl-hide-periodogram", !SHOW_PERIOD_PLOT);
+}
+
+function updateRaceKblTitles(minutes) {
+  const horizon = formatHorizonMinutes(minutes);
+  if (els.raceKblSpeedTitle) {
+    els.raceKblSpeedTitle.textContent = `Wind speed ${horizon}`;
+  }
+  if (els.raceKblDirTitle) {
+    els.raceKblDirTitle.textContent = `Wind direction ${horizon}`;
+  }
 }
 
 function getTouchDistance(touchA, touchB) {

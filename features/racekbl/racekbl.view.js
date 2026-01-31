@@ -28,7 +28,7 @@ export const raceKblView = `
     </header>
 
     <section class="panel racekbl-speed-panel">
-      <h2>Wind speed</h2>
+      <h2 id="racekbl-speed-title">Wind speed</h2>
       <div class="racekbl-plot racekbl-speed-plot" aria-label="Wind speed history plot">
         <canvas id="racekbl-speed-canvas"></canvas>
       </div>
@@ -54,7 +54,7 @@ export const raceKblView = `
     </section>
 
     <section class="panel racekbl-dir-panel">
-      <h2>Wind direction</h2>
+      <h2 id="racekbl-dir-title">Wind direction</h2>
       <div class="racekbl-plot racekbl-dir-plot" aria-label="Wind direction history plot">
         <canvas id="racekbl-dir-canvas"></canvas>
       </div>
