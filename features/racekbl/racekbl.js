@@ -606,6 +606,30 @@ function getPeriodogramAnalysis(samples, key, startTs, endTs, windowMs, windowMi
   return analysis;
 }
 
+function selectPeriodogramPeaks(spectrum, order, windowMs) {
+  if (!Array.isArray(spectrum) || !spectrum.length) return [];
+  const windowSec = Math.max(1, windowMs / 1000);
+  const minSpacing = 1 / windowSec;
+  const sorted = spectrum
+    .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
+    .sort((a, b) => {
+      if (b.power !== a.power) return b.power - a.power;
+      return b.frequency - a.frequency;
+    });
+  const selected = [];
+  for (let i = 0; i < sorted.length; i += 1) {
+    if (selected.length >= order) break;
+    const candidate = sorted[i];
+    const freq = candidate.frequency;
+    const tooClose = selected.some(
+      (chosen) => Math.abs(chosen.frequency - freq) < minSpacing
+    );
+    if (tooClose) continue;
+    selected.push(candidate);
+  }
+  return selected;
+}
+
 function formatPowerValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
@@ -645,10 +669,19 @@ function formatExplainedLabel(value) {
   return `${rounded}%`;
 }
 
-function clampFitOrder(value) {
+function clampFitOrder(value, maxValue = FIT_ORDER_MAX) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return 3;
-  return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
+  const max =
+    Number.isFinite(maxValue) && maxValue >= FIT_ORDER_MIN ? maxValue : FIT_ORDER_MAX;
+  return Math.min(max, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
+}
+
+function resolveFitOrderMax(inputEl) {
+  if (!inputEl) return FIT_ORDER_MAX;
+  const parsed = Number.parseInt(inputEl.max, 10);
+  if (!Number.isFinite(parsed) || parsed < FIT_ORDER_MIN) return FIT_ORDER_MAX;
+  return Math.min(FIT_ORDER_MAX, parsed);
 }
 
 function updateReconNote(el, peaks, trendRate, unit, explained, order = 3) {
@@ -790,7 +823,7 @@ function renderSpeedPlot() {
     return;
   }
 
-  const order = clampFitOrder(state.windSpeedFitOrder);
+  let order = clampFitOrder(state.windSpeedFitOrder);
   const analysis = getPeriodogramAnalysis(
     samples,
     "speed",
@@ -805,13 +838,27 @@ function renderSpeedPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
-    const peaks = analysis.spectrum
-      .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
-      .sort((a, b) => {
-        if (b.power !== a.power) return b.power - a.power;
-        return b.frequency - a.frequency;
-      })
-      .slice(0, order);
+    const availablePeaks = selectPeriodogramPeaks(
+      analysis.spectrum,
+      FIT_ORDER_MAX,
+      windowMs
+    );
+    const maxOrder = Math.max(
+      FIT_ORDER_MIN,
+      Math.min(FIT_ORDER_MAX, availablePeaks.length || FIT_ORDER_MIN)
+    );
+    order = clampFitOrder(state.windSpeedFitOrder, maxOrder);
+    if (order !== state.windSpeedFitOrder) {
+      state.windSpeedFitOrder = order;
+    }
+    if (els.raceKblSpeedFitOrder) {
+      els.raceKblSpeedFitOrder.max = String(maxOrder);
+      els.raceKblSpeedFitOrder.value = String(order);
+    }
+    if (els.raceKblSpeedFitValue) {
+      els.raceKblSpeedFitValue.textContent = String(order);
+    }
+    const peaks = availablePeaks.slice(0, order);
     peakPeriods = peaks
       .map((entry) => ({
         frequency: entry.frequency,
@@ -960,7 +1007,7 @@ function renderDirectionPlot() {
     return;
   }
 
-  const order = clampFitOrder(state.windDirFitOrder);
+  let order = clampFitOrder(state.windDirFitOrder);
   const analysis = getPeriodogramAnalysis(
     samples,
     "dirUnwrapped",
@@ -975,13 +1022,27 @@ function renderDirectionPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
-    const peaks = analysis.spectrum
-      .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
-      .sort((a, b) => {
-        if (b.power !== a.power) return b.power - a.power;
-        return b.frequency - a.frequency;
-      })
-      .slice(0, order);
+    const availablePeaks = selectPeriodogramPeaks(
+      analysis.spectrum,
+      FIT_ORDER_MAX,
+      windowMs
+    );
+    const maxOrder = Math.max(
+      FIT_ORDER_MIN,
+      Math.min(FIT_ORDER_MAX, availablePeaks.length || FIT_ORDER_MIN)
+    );
+    order = clampFitOrder(state.windDirFitOrder, maxOrder);
+    if (order !== state.windDirFitOrder) {
+      state.windDirFitOrder = order;
+    }
+    if (els.raceKblDirFitOrder) {
+      els.raceKblDirFitOrder.max = String(maxOrder);
+      els.raceKblDirFitOrder.value = String(order);
+    }
+    if (els.raceKblDirFitValue) {
+      els.raceKblDirFitValue.textContent = String(order);
+    }
+    const peaks = availablePeaks.slice(0, order);
     peakPeriods = peaks
       .map((entry) => ({
         frequency: entry.frequency,
@@ -1218,21 +1279,25 @@ function syncRaceKblInputs() {
   if (els.raceKblPeriodogramValue) {
     els.raceKblPeriodogramValue.textContent = formatWindowMinutes(periodMinutes);
   }
-  const speedOrder = clampFitOrder(state.windSpeedFitOrder);
+  const speedMax = resolveFitOrderMax(els.raceKblSpeedFitOrder);
+  const speedOrder = clampFitOrder(state.windSpeedFitOrder, speedMax);
   if (speedOrder !== state.windSpeedFitOrder) {
     state.windSpeedFitOrder = speedOrder;
   }
   if (els.raceKblSpeedFitOrder) {
+    els.raceKblSpeedFitOrder.max = String(speedMax);
     els.raceKblSpeedFitOrder.value = String(speedOrder);
   }
   if (els.raceKblSpeedFitValue) {
     els.raceKblSpeedFitValue.textContent = String(speedOrder);
   }
-  const dirOrder = clampFitOrder(state.windDirFitOrder);
+  const dirMax = resolveFitOrderMax(els.raceKblDirFitOrder);
+  const dirOrder = clampFitOrder(state.windDirFitOrder, dirMax);
   if (dirOrder !== state.windDirFitOrder) {
     state.windDirFitOrder = dirOrder;
   }
   if (els.raceKblDirFitOrder) {
+    els.raceKblDirFitOrder.max = String(dirMax);
     els.raceKblDirFitOrder.value = String(dirOrder);
   }
   if (els.raceKblDirFitValue) {
@@ -1282,7 +1347,7 @@ function setPeriodogramWindow(minutes) {
 }
 
 function setSpeedFitOrder(value) {
-  const clamped = clampFitOrder(value);
+  const clamped = clampFitOrder(value, resolveFitOrderMax(els.raceKblSpeedFitOrder));
   state.windSpeedFitOrder = clamped;
   if (raceKblDeps.saveSettings) {
     raceKblDeps.saveSettings();
@@ -1297,7 +1362,7 @@ function setSpeedFitOrder(value) {
 }
 
 function setDirFitOrder(value) {
-  const clamped = clampFitOrder(value);
+  const clamped = clampFitOrder(value, resolveFitOrderMax(els.raceKblDirFitOrder));
   state.windDirFitOrder = clamped;
   if (raceKblDeps.saveSettings) {
     raceKblDeps.saveSettings();
