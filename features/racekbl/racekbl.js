@@ -1723,13 +1723,12 @@ function renderSpeedWaveletPlot() {
   const series = buildUniformSeries(samples, "speed", startTs, endTs, stepMs);
   const values = [];
   const times = [];
-  series.forEach((entry) => {
-    if (!entry || !Number.isFinite(entry.ts)) return;
-    const value = entry.speed;
-    if (!Number.isFinite(value)) return;
-    times.push((entry.ts - startTs) / 1000);
+  for (let i = 0; i < series.length; i += 1) {
+    const value = series[i];
+    if (!Number.isFinite(value)) continue;
+    times.push((i * stepMs) / 1000);
     values.push(value);
-  });
+  }
   if (values.length < 6) {
     drawPlotMessage(ctx, "Not enough data");
     return;
