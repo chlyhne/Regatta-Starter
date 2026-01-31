@@ -1,12 +1,15 @@
 import { els } from "../../ui/dom.js";
 import { state } from "../../core/state.js";
 import {
+  evaluateTrend,
+  fitLinearTrend,
+  median,
   normalizeHeadingDegrees,
   resizeCanvasToCssPixels,
+  solveLinearSystem,
   trimTrailingZeros,
   unwrapHeadingDegrees,
 } from "../../core/common.js";
-import { evaluateTrend, fitLinearTrend, median, solveLinearSystem } from "../../core/math.js";
 import {
   computeTickStep,
   drawLine,
@@ -617,6 +620,18 @@ function formatPeriodLabelSeconds(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+function formatAmplitudeLabel(value, unit) {
+  if (!Number.isFinite(value)) return "";
+  let text = "";
+  if (unit === "°") {
+    text = String(Math.round(value));
+  } else {
+    const rounded = Math.round(value * 10) / 10;
+    text = trimTrailingZeros(rounded.toFixed(1));
+  }
+  return `±${text} ${unit}`;
+}
+
 function formatTrendLabel(value, unit) {
   if (!Number.isFinite(value)) return "--";
   const rounded = Math.round(value * 10) / 10;
@@ -640,10 +655,15 @@ function updateReconNote(el, peaks, trendRate, unit, explained, order = 3) {
   if (!el) return;
   const labels = [];
   const count = Math.max(0, Math.round(order));
+  const amplitudeUnit = unit === "kn/h" ? "kn" : unit === "°/h" ? "°" : unit;
   for (let i = 0; i < count; i += 1) {
     const peak = peaks && peaks[i] ? peaks[i] : null;
     if (peak && Number.isFinite(peak.periodSec)) {
-      labels.push(formatPeriodLabelSeconds(peak.periodSec));
+      const periodLabel = formatPeriodLabelSeconds(peak.periodSec);
+      const amplitudeLabel = Number.isFinite(peak.amplitude)
+        ? formatAmplitudeLabel(peak.amplitude, amplitudeUnit)
+        : "";
+      labels.push(amplitudeLabel ? `${periodLabel} ${amplitudeLabel}` : periodLabel);
     }
   }
   const trendLabel = formatTrendLabel(trendRate, unit);
@@ -796,9 +816,9 @@ function renderSpeedPlot() {
       .map((entry) => ({
         frequency: entry.frequency,
         periodSec: 1 / entry.frequency,
+        amplitude: Number.NaN,
       }))
-      .filter((entry) => Number.isFinite(entry.periodSec))
-      .sort((a, b) => a.periodSec - b.periodSec);
+      .filter((entry) => Number.isFinite(entry.periodSec));
     const frequencies = peakPeriods.map((entry) => entry.frequency);
     const jointFit = computeJointSinusoidFit(
       analysis.times,
@@ -806,6 +826,13 @@ function renderSpeedPlot() {
       frequencies
     );
     if (jointFit) {
+      peakPeriods.forEach((peak, idx) => {
+        const cosCoeff = jointFit.coeffs[idx * 2];
+        const sinCoeff = jointFit.coeffs[idx * 2 + 1];
+        if (Number.isFinite(cosCoeff) && Number.isFinite(sinCoeff)) {
+          peak.amplitude = Math.sqrt(cosCoeff * cosCoeff + sinCoeff * sinCoeff);
+        }
+      });
       reconstruction = samples
         .filter((sample) => sample && Number.isFinite(sample.ts))
         .map((sample) => {
@@ -828,6 +855,7 @@ function renderSpeedPlot() {
         .filter(Boolean);
       explained = computeStdExplainedCentered(analysis, jointFit);
     }
+    peakPeriods.sort((a, b) => a.periodSec - b.periodSec);
   }
   updateReconNote(
     els.raceKblSpeedReconNote,
@@ -958,9 +986,9 @@ function renderDirectionPlot() {
       .map((entry) => ({
         frequency: entry.frequency,
         periodSec: 1 / entry.frequency,
+        amplitude: Number.NaN,
       }))
-      .filter((entry) => Number.isFinite(entry.periodSec))
-      .sort((a, b) => a.periodSec - b.periodSec);
+      .filter((entry) => Number.isFinite(entry.periodSec));
     const frequencies = peakPeriods.map((entry) => entry.frequency);
     const jointFit = computeJointSinusoidFit(
       analysis.times,
@@ -968,6 +996,13 @@ function renderDirectionPlot() {
       frequencies
     );
     if (jointFit) {
+      peakPeriods.forEach((peak, idx) => {
+        const cosCoeff = jointFit.coeffs[idx * 2];
+        const sinCoeff = jointFit.coeffs[idx * 2 + 1];
+        if (Number.isFinite(cosCoeff) && Number.isFinite(sinCoeff)) {
+          peak.amplitude = Math.sqrt(cosCoeff * cosCoeff + sinCoeff * sinCoeff);
+        }
+      });
       reconstruction = samples
         .filter((sample) => sample && Number.isFinite(sample.ts))
         .map((sample) => {
@@ -990,6 +1025,7 @@ function renderDirectionPlot() {
         .filter(Boolean);
       explained = computeStdExplainedCentered(analysis, jointFit);
     }
+    peakPeriods.sort((a, b) => a.periodSec - b.periodSec);
   }
   updateReconNote(
     els.raceKblDirReconNote,
