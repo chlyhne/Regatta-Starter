@@ -15,11 +15,11 @@ without discarding input data.
 
 \subsection{Detrending and centering}
 
-This subsection explains how the signal is detrended and mean-centered before any correlation or
-spectral computation so long-term drift does not dominate the output.
+This subsection explains how the signal is detrended and mean-centered before any spectral
+computation so long-term drift does not dominate the output.
 
-RaceKBL removes a linear trend from the samples, then subtracts the mean of the detrended series.
-For the periodogram, the model is fit against actual timestamps.
+RaceKBL removes an affine trend (offset plus linear component) from the samples, then subtracts
+the mean of the detrended series. For the periodogram, the model is fit against actual timestamps.
 
 \begin{flalign}
 \hspace{5em}\tilde{x}_i &= x_i - \left(a + b\,t_i\right) && \left[u\right] \label{eq:racekbl:detrend}
@@ -138,12 +138,13 @@ immediately when the order changes.
 The reconstructed signal can be written as:
 
 \begin{flalign}
-\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{M}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \mu + \left(\alpha + \beta t\right) && \left[u\right] \label{eq:racekbl:reconstruction}
+\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{M}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \gamma + \beta t && \left[u\right] \label{eq:racekbl:reconstruction}
 \end{flalign}
 In \eqref{eq:racekbl:reconstruction}, \(\omega_m\) are the top \(M\) angular frequencies ranked by
 periodogram power, \(a_m\) and \(b_m\) are the jointly fitted cosine and sine coefficients, \(\tau_m\)
-are the phase offsets used to align each basis function, \(\mu\) is the mean of the detrended
-series, and \(\alpha + \beta t\) is the linear trend that was removed before the spectral analysis.
+are the phase offsets used to align each basis function, \(\gamma\) is the constant offset that
+combines the detrended mean with the affine intercept, and \(\beta t\) is the strictly linear
+through-origin trend component that was removed before the spectral analysis.
 This overlay shares the same history window as the wind speed plot, so it updates whenever new
 samples arrive or the history slider changes.
 
