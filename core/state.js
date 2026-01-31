@@ -41,6 +41,8 @@ const state = {
   windHistoryMinutes: 60,
   windAutoCorrMinutes: 60,
   windPeriodogramMinutes: 60,
+  windSpeedFitOrder: 3,
+  windDirFitOrder: 3,
   imuEnabled: false,
   gpsEnabled: true,
   replay: {

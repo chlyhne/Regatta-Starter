@@ -1961,6 +1961,10 @@ button:active {
   color: #000000;
 }
 
+.racekbl-fit-control {
+  margin-top: 12px;
+}
+
 .racekbl-hide-correlations .racekbl-speed-acf-panel,
 .racekbl-hide-correlations .racekbl-dir-acf-panel,
 .racekbl-hide-correlations .racekbl-xcorr-dir-speed-panel,

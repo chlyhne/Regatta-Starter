@@ -2,13 +2,16 @@
 
 \section{RaceKBL wind analysis}
 
-This section describes how RaceKBL converts wind history into autocorrelation, cross-correlation,
-and period estimates that are legible during a start sequence.
+This section explains how RaceKBL helps a sailor answer a practical question: is the wind
+oscillating in a way that can be timed, or is it too irregular to trust a rhythm? The method is
+designed to surface repeatable periods, turn them into a compact reconstruction overlay, and report
+how much of the recent variation that overlay explains. Each step below is chosen to support that
+goal.
 
-RaceKBL uses the same wind history the rest of the view relies on. The history slider determines
-how much data is fed into the analysis, while the autocorrelation and periodogram sliders only cap
-the maximum lag or period shown on the plots. This separation lets the plots zoom into a shorter
-window without throwing away samples.
+RaceKBL uses the same wind history the rest of the view relies on. The history window sets which
+samples participate in the analysis, while the period cap limits which candidate periods are
+considered for the reconstruction. This separation keeps the model focused on actionable cycles
+without discarding input data.
 
 \subsection{Detrending and centering}
 
@@ -26,31 +29,8 @@ timestamps.
 In \eqref{eq:racekbl:detrend}, \(x_i\) is the raw series, \(\tilde{x}_i\) is the detrended series,
 \(t_i\) is the time coordinate, and \(u\) is the unit of the signal (knots for wind speed or degrees
 for unwrapped direction). After detrending, the mean of \(\tilde{x}_i\) is removed so the resulting
-series is centered on zero.
-
-\subsection{Autocorrelation and cross-correlation}
-
-This subsection describes how the autocorrelation and cross-correlation plots are computed and how
-their lag axes are capped.
-
-Autocorrelation is normalized by the total variance of the detrended, centered series so the scale
-is stable:
-
-\begin{flalign}
-\hspace{5em}r_k &= \frac{\sum_{i=0}^{N-k-1}\tilde{x}_i\,\tilde{x}_{i+k}}{\sum_{i=0}^{N-1}\tilde{x}_i^2} && \left[1\right] \label{eq:racekbl:autocorr}
-\end{flalign}
-In \eqref{eq:racekbl:autocorr}, \(r_k\) is the autocorrelation at lag \(k\), and \(N\) is the number
-of samples in the history window. Cross-correlation uses the same detrended data but averages the
-product without variance normalization so its magnitude remains in signal units:
-
-\begin{flalign}
-\hspace{5em}c_k &= \frac{1}{N_k}\sum_{i=0}^{N_k-1}\tilde{x}_i\,\tilde{y}_{i+k} && \left[u_x\,u_y\right] \label{eq:racekbl:crosscorr}
-\end{flalign}
-In \eqref{eq:racekbl:crosscorr}, \(c_k\) is the cross-correlation between series \(x\) and \(y\), and
-\(N_k\) is the number of overlapping pairs at lag \(k\). Wind direction is unwrapped before this
-step so the computation stays smooth across the \(359^\circ/0^\circ\) boundary. The autocorrelation
-and cross-correlation sliders cap the maximum lag shown, and the tick spacing is recalculated each
-time so the labels match the displayed domain.
+series is centered on zero. This centered signal is the starting point for period selection and
+model fitting, which are covered next.
 
 \subsection{Lomb--Scargle periodogram}
 
@@ -129,6 +109,9 @@ that suggests a durable cycle worth timing your maneuvers around. Conversely, wh
 around or wash out, the periodogram is telling you the wind is too irregular for a reliable
 cycle-based tactic.
 
+At this stage we have a ranked list of candidate periods. The next step is to turn those candidates
+into a single reconstruction that can be compared to the live wind trace.
+
 \subsection{Reconstructed speed overlay}
 
 This subsection explains the reconstructed wind speed overlay that is drawn on top of the raw
@@ -136,14 +119,16 @@ speed history to visualize the dominant periodic components and to quantify how 
 wind appears to be.
 
 RaceKBL takes the three most significant Lomb--Scargle peaks and treats them as candidate periods.
-Those candidates are then fitted together in a single least-squares solve, so the amplitudes and
-phases are optimized jointly rather than one frequency at a time. The reconstruction is the sum of
-those three sinusoids, with the original linear trend and mean added back so the overlay sits in the
-same amplitude range as the measured wind speed. This two-step flow keeps the throughline clear:
-the periodogram is the scout that picks promising periods, and the joint fit is the model that
-explains as much of the centered signal as possible. The result is a compact, readable hint of the
-strongest cycles without pretending to be a forecast. The line is drawn in magenta so it is visually
-distinct from the raw speed trace.
+Those candidates are then fitted together in a single least-squares solve: we build a design matrix
+with cosine and sine columns for each selected frequency, solve for all six coefficients at once,
+and then sum the resulting sinusoids. This means the amplitudes and phases are optimized jointly
+rather than one frequency at a time. The reconstruction is the sum of those three sinusoids, with
+the original linear trend and mean added back so the overlay sits in the same amplitude range as the
+measured wind speed. This two-step flow keeps the throughline clear: the periodogram is the scout
+that picks promising periods, and the joint fit is the model that explains as much of the centered
+signal as possible. The result is a compact, readable hint of the strongest cycles without
+pretending to be a forecast. The line is drawn in magenta so it is visually distinct from the raw
+speed trace.
 
 The reconstructed signal can be written as:
 
@@ -156,3 +141,29 @@ highest periodogram power, \(a_m\) and \(b_m\) are the jointly fitted cosine and
 detrended series, and \(\alpha + \beta t\) is the linear trend that was removed before the spectral
 analysis. This overlay shares the same history window as the wind speed plot, so it updates whenever
 new samples arrive or the history slider changes.
+
+Once the reconstruction is assembled, RaceKBL also reports a goodness-of-fit value. The fit score
+is computed on the detrended, mean-centered series, so it reflects how much of the remaining
+variation is explained by the three-period model rather than by slow drift or offset.
+
+To make the fitting step explicit, we assemble a design matrix \(A\) from the cosine and sine basis
+terms evaluated at each sample time:
+
+\begin{flalign}
+\hspace{5em}A_{i,2m-1} &= \cos\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racekbl:fit-matrix-cos}
+\end{flalign}
+\begin{flalign}
+\hspace{5em}A_{i,2m} &= \sin\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racekbl:fit-matrix-sin}
+\end{flalign}
+In \eqref{eq:racekbl:fit-matrix-cos} and \eqref{eq:racekbl:fit-matrix-sin}, \(i\) indexes samples in
+the centered series, and \(m \in \{1,2,3\}\) indexes the three selected frequencies. With the
+centered data vector \(y\) (detrended and mean-removed), the coefficient vector
+\(\beta = [a_1, b_1, a_2, b_2, a_3, b_3]^\mathsf{T}\) is obtained by the Moore--Penrose least-squares
+solution:
+
+\begin{flalign}
+\hspace{5em}\beta &= \left(A^\mathsf{T}A\right)^{-1}A^\mathsf{T}y && \left[u\right] \label{eq:racekbl:fit-solve}
+\end{flalign}
+In \eqref{eq:racekbl:fit-solve}, \(u\) is the unit of the centered signal, so each coefficient is
+expressed in knots for speed or degrees for direction. This explicit construction is the joint fit
+step referenced above.

@@ -41,6 +41,8 @@ const WIND_PERIODOGRAM_MINUTES_MAX = 120;
 const WIND_PERIODOGRAM_STEP_MINUTES = 2;
 const LAG_TICK_OPTIONS_MIN = [2, 5, 10, 15, 20, 30, 60, 90, 120];
 const LAG_TICK_TARGET = 6;
+const FIT_ORDER_MIN = 1;
+const FIT_ORDER_MAX = 5;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
@@ -882,8 +884,13 @@ function formatTrendLabel(value, unit) {
 
 function formatExplainedLabel(value) {
   if (!Number.isFinite(value)) return "--";
-  const clamped = Math.max(0, Math.min(1, value));
-  return `${Math.round(clamped * 100)}%`;
+  const rounded = Math.round(value * 100);
+  return `${rounded}%`;
+}
+
+function clampFitOrder(value) {
+  if (!Number.isFinite(value)) return 3;
+  return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(value)));
 }
 
 function updateReconNote(el, peaks, trendRate, unit, explained) {
@@ -896,8 +903,95 @@ function updateReconNote(el, peaks, trendRate, unit, explained) {
   el.textContent = `Significant periods: ${labels.join(", ")} Trend: ${trendLabel} Fit: ${explainedLabel}`;
 }
 
-function computeStdExplainedCentered(analysis, fits) {
-  if (!analysis || !Array.isArray(fits) || !fits.length) return Number.NaN;
+function solveLinearSystem(matrix, vector) {
+  const size = vector.length;
+  const a = matrix.map((row) => row.slice());
+  const b = vector.slice();
+
+  for (let i = 0; i < size; i += 1) {
+    let pivotRow = i;
+    let pivotValue = Math.abs(a[i][i]);
+    for (let r = i + 1; r < size; r += 1) {
+      const value = Math.abs(a[r][i]);
+      if (value > pivotValue) {
+        pivotValue = value;
+        pivotRow = r;
+      }
+    }
+    if (pivotValue <= 1e-12) return null;
+    if (pivotRow !== i) {
+      [a[i], a[pivotRow]] = [a[pivotRow], a[i]];
+      [b[i], b[pivotRow]] = [b[pivotRow], b[i]];
+    }
+    const pivot = a[i][i];
+    for (let c = i; c < size; c += 1) {
+      a[i][c] /= pivot;
+    }
+    b[i] /= pivot;
+    for (let r = i + 1; r < size; r += 1) {
+      const factor = a[r][i];
+      if (factor === 0) continue;
+      for (let c = i; c < size; c += 1) {
+        a[r][c] -= factor * a[i][c];
+      }
+      b[r] -= factor * b[i];
+    }
+  }
+
+  const solution = new Array(size).fill(0);
+  for (let i = size - 1; i >= 0; i -= 1) {
+    let sum = b[i];
+    for (let c = i + 1; c < size; c += 1) {
+      sum -= a[i][c] * solution[c];
+    }
+    solution[i] = sum;
+  }
+  return solution;
+}
+
+function computeJointSinusoidFit(times, values, frequencies) {
+  if (!times || !values || !frequencies || !frequencies.length) return null;
+  const omega = frequencies.map((freq) => 2 * Math.PI * freq);
+  const taus = frequencies.map((freq) => {
+    const fit = computeLombScargleFit(times, values, freq);
+    return fit ? fit.tau : 0;
+  });
+
+  const paramCount = frequencies.length * 2;
+  const normal = Array.from({ length: paramCount }, () => new Array(paramCount).fill(0));
+  const rhs = new Array(paramCount).fill(0);
+
+  for (let i = 0; i < times.length; i += 1) {
+    const time = times[i];
+    const actual = values[i];
+    if (!Number.isFinite(time) || !Number.isFinite(actual)) continue;
+    const basis = [];
+    for (let j = 0; j < frequencies.length; j += 1) {
+      const angle = omega[j] * (time - taus[j]);
+      basis.push(Math.cos(angle));
+      basis.push(Math.sin(angle));
+    }
+    for (let r = 0; r < paramCount; r += 1) {
+      rhs[r] += basis[r] * actual;
+      for (let c = r; c < paramCount; c += 1) {
+        normal[r][c] += basis[r] * basis[c];
+      }
+    }
+  }
+
+  for (let r = 0; r < paramCount; r += 1) {
+    for (let c = 0; c < r; c += 1) {
+      normal[r][c] = normal[c][r];
+    }
+  }
+
+  const coeffs = solveLinearSystem(normal, rhs);
+  if (!coeffs) return null;
+  return { coeffs, omega, taus };
+}
+
+function computeStdExplainedCentered(analysis, fit) {
+  if (!analysis || !fit) return Number.NaN;
   const { times, centered } = analysis;
   if (!times || !centered || !Array.isArray(centered.values)) return Number.NaN;
   const values = centered.values;
@@ -909,12 +1003,12 @@ function computeStdExplainedCentered(analysis, fits) {
     const actual = values[i];
     if (!Number.isFinite(time) || !Number.isFinite(actual)) continue;
     let oscillation = 0;
-    fits.forEach((entry) => {
-      const omega = 2 * Math.PI * entry.frequency;
-      oscillation +=
-        entry.fit.cosCoeff * Math.cos(omega * (time - entry.fit.tau)) +
-        entry.fit.sinCoeff * Math.sin(omega * (time - entry.fit.tau));
-    });
+    for (let j = 0; j < fit.omega.length; j += 1) {
+      const angle = fit.omega[j] * (time - fit.taus[j]);
+      const cosCoeff = fit.coeffs[j * 2];
+      const sinCoeff = fit.coeffs[j * 2 + 1];
+      oscillation += cosCoeff * Math.cos(angle) + sinCoeff * Math.sin(angle);
+    }
     const residual = actual - oscillation;
     totalVar += actual * actual;
     residualVar += residual * residual;
@@ -1007,43 +1101,39 @@ function renderSpeedPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
+    const order = clampFitOrder(state.windSpeedFitOrder);
     const peaks = analysis.spectrum
       .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
       .sort((a, b) => {
         if (b.power !== a.power) return b.power - a.power;
         return b.frequency - a.frequency;
       })
-      .slice(0, 3);
+      .slice(0, order);
     peakPeriods = peaks
       .map((entry) => ({
         frequency: entry.frequency,
         periodSec: 1 / entry.frequency,
       }))
       .filter((entry) => Number.isFinite(entry.periodSec));
-    const fits = peaks
-      .map((entry) => {
-        const fit = computeLombScargleFit(
-          analysis.times,
-          analysis.centered.values,
-          entry.frequency
-        );
-        if (!fit) return null;
-        return { frequency: entry.frequency, fit };
-      })
-      .filter(Boolean);
-    if (fits.length) {
+    const frequencies = peakPeriods.map((entry) => entry.frequency);
+    const jointFit = computeJointSinusoidFit(
+      analysis.times,
+      analysis.centered.values,
+      frequencies
+    );
+    if (jointFit) {
       reconstruction = samples
         .filter((sample) => sample && Number.isFinite(sample.ts))
         .map((sample) => {
           const time = (sample.ts - analysis.baseTs) / 1000;
           if (!Number.isFinite(time)) return null;
           let oscillation = 0;
-          fits.forEach((entry) => {
-            const omega = 2 * Math.PI * entry.frequency;
-            oscillation +=
-              entry.fit.cosCoeff * Math.cos(omega * (time - entry.fit.tau)) +
-              entry.fit.sinCoeff * Math.sin(omega * (time - entry.fit.tau));
-          });
+          for (let i = 0; i < jointFit.omega.length; i += 1) {
+            const angle = jointFit.omega[i] * (time - jointFit.taus[i]);
+            const cosCoeff = jointFit.coeffs[i * 2];
+            const sinCoeff = jointFit.coeffs[i * 2 + 1];
+            oscillation += cosCoeff * Math.cos(angle) + sinCoeff * Math.sin(angle);
+          }
           const value =
             oscillation +
             analysis.centered.mean +
@@ -1052,7 +1142,7 @@ function renderSpeedPlot() {
           return { ts: sample.ts, recon: value };
         })
         .filter(Boolean);
-      explained = computeStdExplainedCentered(analysis, fits);
+      explained = computeStdExplainedCentered(analysis, jointFit);
     }
   }
   updateReconNote(els.raceKblSpeedReconNote, peakPeriods, trendRate, "kn/h", explained);
@@ -1165,43 +1255,39 @@ function renderDirectionPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
+    const order = clampFitOrder(state.windDirFitOrder);
     const peaks = analysis.spectrum
       .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
       .sort((a, b) => {
         if (b.power !== a.power) return b.power - a.power;
         return b.frequency - a.frequency;
       })
-      .slice(0, 3);
+      .slice(0, order);
     peakPeriods = peaks
       .map((entry) => ({
         frequency: entry.frequency,
         periodSec: 1 / entry.frequency,
       }))
       .filter((entry) => Number.isFinite(entry.periodSec));
-    const fits = peaks
-      .map((entry) => {
-        const fit = computeLombScargleFit(
-          analysis.times,
-          analysis.centered.values,
-          entry.frequency
-        );
-        if (!fit) return null;
-        return { frequency: entry.frequency, fit };
-      })
-      .filter(Boolean);
-    if (fits.length) {
+    const frequencies = peakPeriods.map((entry) => entry.frequency);
+    const jointFit = computeJointSinusoidFit(
+      analysis.times,
+      analysis.centered.values,
+      frequencies
+    );
+    if (jointFit) {
       reconstruction = samples
         .filter((sample) => sample && Number.isFinite(sample.ts))
         .map((sample) => {
           const time = (sample.ts - analysis.baseTs) / 1000;
           if (!Number.isFinite(time)) return null;
           let oscillation = 0;
-          fits.forEach((entry) => {
-            const omega = 2 * Math.PI * entry.frequency;
-            oscillation +=
-              entry.fit.cosCoeff * Math.cos(omega * (time - entry.fit.tau)) +
-              entry.fit.sinCoeff * Math.sin(omega * (time - entry.fit.tau));
-          });
+          for (let i = 0; i < jointFit.omega.length; i += 1) {
+            const angle = jointFit.omega[i] * (time - jointFit.taus[i]);
+            const cosCoeff = jointFit.coeffs[i * 2];
+            const sinCoeff = jointFit.coeffs[i * 2 + 1];
+            oscillation += cosCoeff * Math.cos(angle) + sinCoeff * Math.sin(angle);
+          }
           const value =
             oscillation +
             analysis.centered.mean +
@@ -1210,7 +1296,7 @@ function renderDirectionPlot() {
           return { ts: sample.ts, recon: value };
         })
         .filter(Boolean);
-      explained = computeStdExplainedCentered(analysis, fits);
+      explained = computeStdExplainedCentered(analysis, jointFit);
     }
   }
   updateReconNote(els.raceKblDirReconNote, peakPeriods, trendRate, "°/h", explained);
@@ -1602,6 +1688,26 @@ function syncRaceKblInputs() {
   if (els.raceKblPeriodogramValue) {
     els.raceKblPeriodogramValue.textContent = formatWindowMinutes(periodMinutes);
   }
+  const speedOrder = clampFitOrder(state.windSpeedFitOrder);
+  if (speedOrder !== state.windSpeedFitOrder) {
+    state.windSpeedFitOrder = speedOrder;
+  }
+  if (els.raceKblSpeedFitOrder) {
+    els.raceKblSpeedFitOrder.value = String(speedOrder);
+  }
+  if (els.raceKblSpeedFitValue) {
+    els.raceKblSpeedFitValue.textContent = String(speedOrder);
+  }
+  const dirOrder = clampFitOrder(state.windDirFitOrder);
+  if (dirOrder !== state.windDirFitOrder) {
+    state.windDirFitOrder = dirOrder;
+  }
+  if (els.raceKblDirFitOrder) {
+    els.raceKblDirFitOrder.value = String(dirOrder);
+  }
+  if (els.raceKblDirFitValue) {
+    els.raceKblDirFitValue.textContent = String(dirOrder);
+  }
 }
 
 function setHistoryWindow(minutes) {
@@ -1664,6 +1770,36 @@ function setPeriodogramWindow(minutes) {
   updateRaceKblUi();
 }
 
+function setSpeedFitOrder(value) {
+  const clamped = clampFitOrder(value);
+  state.windSpeedFitOrder = clamped;
+  if (raceKblDeps.saveSettings) {
+    raceKblDeps.saveSettings();
+  }
+  if (els.raceKblSpeedFitOrder) {
+    els.raceKblSpeedFitOrder.value = String(clamped);
+  }
+  if (els.raceKblSpeedFitValue) {
+    els.raceKblSpeedFitValue.textContent = String(clamped);
+  }
+  updateRaceKblUi();
+}
+
+function setDirFitOrder(value) {
+  const clamped = clampFitOrder(value);
+  state.windDirFitOrder = clamped;
+  if (raceKblDeps.saveSettings) {
+    raceKblDeps.saveSettings();
+  }
+  if (els.raceKblDirFitOrder) {
+    els.raceKblDirFitOrder.value = String(clamped);
+  }
+  if (els.raceKblDirFitValue) {
+    els.raceKblDirFitValue.textContent = String(clamped);
+  }
+  updateRaceKblUi();
+}
+
 function setRaceKblSettingsOpen(open) {
   const next = Boolean(open);
   if (els.raceKblSettingsView) {
@@ -1719,6 +1855,16 @@ function bindRaceKblEvents() {
   if (els.raceKblPeriodogram) {
     els.raceKblPeriodogram.addEventListener("input", () => {
       setPeriodogramWindow(els.raceKblPeriodogram.value);
+    });
+  }
+  if (els.raceKblSpeedFitOrder) {
+    els.raceKblSpeedFitOrder.addEventListener("input", () => {
+      setSpeedFitOrder(els.raceKblSpeedFitOrder.value);
+    });
+  }
+  if (els.raceKblDirFitOrder) {
+    els.raceKblDirFitOrder.addEventListener("input", () => {
+      setDirFitOrder(els.raceKblDirFitOrder.value);
     });
   }
   const raceKblView = document.getElementById("racekbl-view");

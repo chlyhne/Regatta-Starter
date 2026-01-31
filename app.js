@@ -896,6 +896,12 @@ function loadSettings() {
   state.windPeriodogramMinutes = Number.isFinite(settings.windPeriodogramMinutes)
     ? settings.windPeriodogramMinutes
     : state.windAutoCorrMinutes;
+  state.windSpeedFitOrder = Number.isFinite(settings.windSpeedFitOrder)
+    ? settings.windSpeedFitOrder
+    : 3;
+  state.windDirFitOrder = Number.isFinite(settings.windDirFitOrder)
+    ? settings.windDirFitOrder
+    : 3;
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
@@ -927,6 +933,8 @@ function saveSettings() {
     windHistoryMinutes: state.windHistoryMinutes,
     windAutoCorrMinutes: state.windAutoCorrMinutes,
     windPeriodogramMinutes: state.windPeriodogramMinutes,
+    windSpeedFitOrder: state.windSpeedFitOrder,
+    windDirFitOrder: state.windDirFitOrder,
     replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,
