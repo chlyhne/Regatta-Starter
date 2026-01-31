@@ -56,6 +56,7 @@ let renderTimer = null;
 let historyLoadedHours = 0;
 let wheelZoomBound = false;
 let wheelZoomAccumulator = 0;
+let pendingHistoryHours = 0;
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
@@ -165,18 +166,22 @@ function getHistoryRequestMinutes() {
   return snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
 }
 
-function buildWindHistoryUrl() {
+function buildWindHistoryUrl(hoursOverride) {
   const minutes = getHistoryRequestMinutes();
-  const hours = Math.max(1, Math.ceil(minutes / 60));
+  const hours = Number.isFinite(hoursOverride)
+    ? Math.max(1, Math.ceil(hoursOverride))
+    : Math.max(1, Math.ceil(minutes / 60));
   return `/wind?history=1&hours=${hours}&t=${Date.now()}`;
 }
 
-function resetWindHistory() {
+function resetWindHistory(options = {}) {
   windSamples.length = 0;
   lastDir = null;
   lastDirUnwrapped = null;
   lastSampleHash = null;
-  historyLoadedHours = 0;
+  if (!options.keepLoadedHours) {
+    historyLoadedHours = 0;
+  }
 }
 
 function recordWindSample(sample) {
@@ -276,26 +281,71 @@ function applyLatestPayload(data) {
   lastError = "";
 }
 
-function applyHistoryPayload(data) {
+function applyHistoryPayload(data, requestedHours) {
   if (!data || !Array.isArray(data.history)) return false;
-  const minutes = getHistoryRequestMinutes();
-  historyLoadedHours = Math.max(historyLoadedHours, Math.max(1, Math.ceil(minutes / 60)));
-  resetWindHistory();
   const entries = data.history
     .map(parseHistoryEntry)
     .filter(Boolean)
     .sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  entries.forEach((entry) => recordWindSample(entry));
   const latest = parseLatestSample(data);
+  const hours = Number.isFinite(requestedHours)
+    ? Math.max(1, Math.ceil(requestedHours))
+    : Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
+  historyLoadedHours = Math.max(historyLoadedHours, hours);
+
+  const merged = windSamples.concat(entries);
   if (latest) {
-    const lastSample = getLatestSample();
-    if (!lastSample || lastSample.ts !== latest.ts) {
-      recordWindSample(latest);
+    merged.push(latest);
+  }
+  const byTs = new Map();
+  merged.forEach((entry) => {
+    if (!entry || !Number.isFinite(entry.ts)) return;
+    const existing = byTs.get(entry.ts);
+    if (!existing) {
+      byTs.set(entry.ts, { ...entry });
+      return;
     }
+    byTs.set(entry.ts, {
+      ts: entry.ts,
+      speed: Number.isFinite(entry.speed) ? entry.speed : existing.speed,
+      gust: Number.isFinite(entry.gust) ? entry.gust : existing.gust,
+      dir: Number.isFinite(entry.dir) ? entry.dir : existing.dir,
+      sampleHash: entry.sampleHash || existing.sampleHash || null,
+    });
+  });
+
+  const mergedEntries = Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);
+  resetWindHistory({ keepLoadedHours: true });
+  mergedEntries.forEach((entry) => recordWindSample(entry));
+  if (latest) {
     lastFetchAt = latest.ts;
     lastError = "";
   }
   return true;
+}
+
+function requestHistoryFetch(requiredHours) {
+  const hours = Math.max(1, Math.ceil(requiredHours || 1), pendingHistoryHours);
+  pendingHistoryHours = 0;
+  if (windPollInFlight) {
+    pendingHistoryHours = Math.max(pendingHistoryHours, hours);
+    return false;
+  }
+  fetchWindHistory(hours);
+  return true;
+}
+
+function flushPendingHistory() {
+  if (pendingHistoryHours <= 0) return;
+  if (windPollInFlight) return;
+  const requiredHours = Math.max(
+    pendingHistoryHours,
+    Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60))
+  );
+  pendingHistoryHours = 0;
+  if (requiredHours > historyLoadedHours) {
+    fetchWindHistory(requiredHours);
+  }
 }
 
 async function fetchWindSample() {
@@ -314,20 +364,29 @@ async function fetchWindSample() {
   } finally {
     windPollInFlight = false;
     updateRaceKblUi();
+    flushPendingHistory();
   }
 }
 
-async function fetchWindHistory() {
-  if (windPollInFlight) return;
+async function fetchWindHistory(requestedHours) {
+  if (windPollInFlight) {
+    if (Number.isFinite(requestedHours)) {
+      pendingHistoryHours = Math.max(pendingHistoryHours, requestedHours);
+    }
+    return;
+  }
   windPollInFlight = true;
+  const hours = Number.isFinite(requestedHours)
+    ? Math.max(1, Math.ceil(requestedHours))
+    : Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   try {
-    const url = buildWindHistoryUrl();
+    const url = buildWindHistoryUrl(hours);
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Wind error ${response.status}`);
     }
     const data = await response.json();
-    if (!applyHistoryPayload(data)) {
+    if (!applyHistoryPayload(data, hours)) {
       applyLatestPayload(data);
     }
   } catch (err) {
@@ -335,6 +394,7 @@ async function fetchWindHistory() {
   } finally {
     windPollInFlight = false;
     updateRaceKblUi();
+    flushPendingHistory();
   }
 }
 
@@ -1354,7 +1414,7 @@ function setHistoryWindow(minutes) {
   }
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
-    fetchWindHistory();
+    requestHistoryFetch(requiredHours);
   }
   updateRaceKblUi();
 }
@@ -1373,7 +1433,7 @@ function setPeriodogramWindow(minutes) {
   }
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
-    fetchWindHistory();
+    requestHistoryFetch(requiredHours);
   }
   updateRaceKblUi();
 }
