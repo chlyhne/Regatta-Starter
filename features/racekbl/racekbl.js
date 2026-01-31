@@ -1945,21 +1945,21 @@ function bindRaceKblEvents() {
     };
     raceKblView.addEventListener("touchend", endPinch, { passive: true });
     raceKblView.addEventListener("touchcancel", endPinch, { passive: true });
-  }
-  const plotCanvases = document.querySelectorAll(".racekbl-plot canvas");
-  plotCanvases.forEach((canvas) => {
-    canvas.addEventListener(
+    raceKblView.addEventListener(
       "wheel",
       (event) => {
         if (!document.body.classList.contains("racekbl-mode")) return;
         if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+        const target = event.target;
+        if (!target || typeof target.closest !== "function") return;
+        if (!target.closest(".racekbl-plot")) return;
         const factor = event.deltaY > 0 ? 1.1 : 0.9;
         zoomHistoryByFactor(factor);
         event.preventDefault();
       },
       { passive: false }
     );
-  });
+  }
   document.addEventListener("visibilitychange", () => {
     if (!document.body.classList.contains("racekbl-mode")) return;
     if (document.visibilityState === "hidden") {
