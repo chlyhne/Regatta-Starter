@@ -55,10 +55,11 @@ are not actionable in the moment, while still using the full history window so s
 are computed from as much data as possible.
 
 The Lomb--Scargle formulation can be viewed as a least-squares fit of sine and cosine waves at each
-test frequency. The phase offset \(\tau\) aligns the basis functions to the data so that the sine
-and cosine terms remain orthogonal even with irregular sampling. This makes the power comparable
-across frequencies and avoids bias toward specific phases. The offset is computed for each angular
-frequency \(\omega\):
+test frequency. Although a cosine and sine pair already spans any phase, the phase offset \(\tau\)
+is still essential with irregular sampling: it re-centers the basis so the cosine and sine columns
+are as orthogonal as possible under the actual time stamps. That improves numerical conditioning
+and makes the power comparable across frequencies, rather than letting sampling skew one phase
+direction. The offset is computed for each angular frequency \(\omega\):
 
 \begin{flalign}
 \hspace{5em}\tau &= \frac{1}{2\omega}\tan^{-1}\left(\frac{\sum_i \sin(2\omega t_i)}{\sum_i \cos(2\omega t_i)}\right) && \left[\mathrm{s}\right] \label{eq:racekbl:ls-tau}
