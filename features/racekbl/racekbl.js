@@ -914,7 +914,7 @@ function clampFitOrder(value) {
   return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
 }
 
-function updateReconNote(el, peaks, trendRate, unit, explained, order = 3) {
+function updateReconNote(el, peaks, trendRate, unit, explained, order = 3, waveletPeriods = null) {
   if (!el) return;
   const labels = [];
   const count = Math.max(0, Math.round(order));
@@ -927,7 +927,13 @@ function updateReconNote(el, peaks, trendRate, unit, explained, order = 3) {
   const trendLabel = formatTrendLabel(trendRate, unit);
   const explainedLabel = formatExplainedLabel(explained);
   const periodLabel = labels.length ? labels.join(", ") : "none";
-  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}`;
+  const waveletLabel =
+    waveletPeriods && waveletPeriods.length
+      ? ` Wavelet: ${waveletPeriods
+          .map((period) => formatPeriodLabelSeconds(period))
+          .join(", ")}`
+      : "";
+  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}${waveletLabel}`;
 }
 
 function solveLinearSystem(matrix, vector) {
@@ -1179,18 +1185,23 @@ function renderSpeedPlot() {
     startTs,
     startTs + windowMs,
     windowMs,
-    windowMinutes
+    windowMinutes,
+    order
   );
   if (waveletAnalysis?.reconstruction?.length) {
     waveletReconstruction = waveletAnalysis.reconstruction;
   }
+  const waveletPeriods = waveletAnalysis?.dominantPeriods
+    ? waveletAnalysis.dominantPeriods.slice(0, order)
+    : null;
   updateReconNote(
     els.raceKblSpeedReconNote,
     peakPeriods,
     trendRate,
     "kn/h",
     explained,
-    order
+    order,
+    waveletPeriods
   );
 
   let min = Math.min(...speedValues);
@@ -1731,7 +1742,7 @@ function buildWaveletPeriods(maxMinutes) {
   return periods;
 }
 
-function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) {
+function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, topK) {
   const stepMs = Math.max(1000, Math.round(windowMs / Math.max(8, WAVELET_TIME_BINS - 1)));
   const series = buildUniformSeries(samples, "speed", startTs, endTs, stepMs);
   if (!series.length) return null;
@@ -1798,6 +1809,8 @@ function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) 
   }
 
   const reconstruction = [];
+  const reconCount = Math.max(1, Math.round(topK || WAVELET_RECON_TOP_K));
+  const scaleScores = [];
   for (let c = 0; c < cols; c += 1) {
     const entries = [];
     for (let r = 0; r < rows; r += 1) {
@@ -1807,7 +1820,7 @@ function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) 
     }
     entries.sort((a, b) => b.amp - a.amp);
     let sum = 0;
-    for (let i = 0; i < Math.min(WAVELET_RECON_TOP_K, entries.length); i += 1) {
+    for (let i = 0; i < Math.min(reconCount, entries.length); i += 1) {
       sum += entries[i].cos;
     }
     const value = sum + centered.mean + evaluateTrend(trend, times[c]);
@@ -1815,22 +1828,46 @@ function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) 
     reconstruction.push({ ts: startTs + c * stepMs, recon: value });
   }
 
+  for (let r = 0; r < rows; r += 1) {
+    const row = amplitudeMatrix[r];
+    let idx = cols - 1;
+    let score = 0;
+    while (idx >= 0) {
+      const value = row[idx];
+      if (Number.isFinite(value)) {
+        score = value;
+        break;
+      }
+      idx -= 1;
+    }
+    scaleScores.push({ periodSec: periodsMinutes[r] * 60, score });
+  }
+  scaleScores.sort((a, b) => b.score - a.score);
+
   return {
     periodsMinutes,
     heatmap: amplitudeMatrix.slice().reverse(),
     heatmapMax: peak,
     reconstruction,
+    dominantPeriods: scaleScores.map((entry) => entry.periodSec),
   };
 }
 
-function getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes) {
+function getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, topK) {
   const cache = waveletCache.speed;
   const signature = getSamplesSignature(samples);
-  const cacheKey = `${signature}:${windowMinutes}:${WAVELET_SCALE_COUNT}:${WAVELET_TIME_BINS}`;
+  const cacheKey = `${signature}:${windowMinutes}:${WAVELET_SCALE_COUNT}:${WAVELET_TIME_BINS}:${topK}`;
   if (cache && cache.key === cacheKey) {
     return cache.analysis;
   }
-  const analysis = buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes);
+  const analysis = buildWaveletAnalysis(
+    samples,
+    startTs,
+    endTs,
+    windowMs,
+    windowMinutes,
+    topK
+  );
   if (cache) {
     cache.key = cacheKey;
     cache.analysis = analysis;
@@ -1860,7 +1897,8 @@ function renderSpeedWaveletPlot() {
     return;
   }
 
-  const analysis = getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes);
+  const order = clampFitOrder(state.windSpeedFitOrder);
+  const analysis = getWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, order);
   if (!analysis || !analysis.heatmap?.length) {
     drawPlotMessage(ctx, "Not enough data");
     return;
