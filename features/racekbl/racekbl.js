@@ -914,7 +914,16 @@ function clampFitOrder(value) {
   return Math.min(FIT_ORDER_MAX, Math.max(FIT_ORDER_MIN, Math.round(parsed)));
 }
 
-function updateReconNote(el, peaks, trendRate, unit, explained, order = 3, waveletPeriods = null) {
+function updateReconNote(
+  el,
+  peaks,
+  trendRate,
+  unit,
+  explained,
+  order = 3,
+  waveletPeriods = null,
+  waveletExplained = Number.NaN
+) {
   if (!el) return;
   const labels = [];
   const count = Math.max(0, Math.round(order));
@@ -933,7 +942,10 @@ function updateReconNote(el, peaks, trendRate, unit, explained, order = 3, wavel
           .map((period) => formatPeriodLabelSeconds(period))
           .join(", ")}`
       : "";
-  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}${waveletLabel}`;
+  const waveletFitLabel = Number.isFinite(waveletExplained)
+    ? ` Wavelet fit: ${formatExplainedLabel(waveletExplained)}`
+    : "";
+  el.textContent = `Significant periods: ${periodLabel} Trend: ${trendLabel} Fit: ${explainedLabel}${waveletLabel}${waveletFitLabel}`;
 }
 
 function solveLinearSystem(matrix, vector) {
@@ -1194,6 +1206,42 @@ function renderSpeedPlot() {
   const waveletPeriods = waveletAnalysis?.dominantPeriods
     ? waveletAnalysis.dominantPeriods.slice(0, order)
     : null;
+  let waveletExplained = Number.NaN;
+  if (
+    waveletAnalysis?.times &&
+    waveletAnalysis?.centered &&
+    waveletReconstruction &&
+    waveletReconstruction.length
+  ) {
+    const reconMap = new Map(
+      waveletReconstruction
+        .filter((sample) => Number.isFinite(sample?.ts) && Number.isFinite(sample?.recon))
+        .map((sample) => [sample.ts, sample.recon])
+    );
+    let totalVar = 0;
+    let residualVar = 0;
+    let count = 0;
+    waveletAnalysis.times.forEach((time, idx) => {
+      const actual = waveletAnalysis.centered.values?.[idx];
+      if (!Number.isFinite(time) || !Number.isFinite(actual)) return;
+      const ts = startTs + time * 1000;
+      const recon = reconMap.get(ts);
+      if (!Number.isFinite(recon)) return;
+      const predicted =
+        recon -
+        waveletAnalysis.centered.mean -
+        evaluateTrend(waveletAnalysis.trend, time);
+      const residual = actual - predicted;
+      totalVar += actual * actual;
+      residualVar += residual * residual;
+      count += 1;
+    });
+    if (count >= 2 && totalVar > 1e-9) {
+      const sigmaTotal = Math.sqrt(totalVar / count);
+      const sigmaResidual = Math.sqrt(residualVar / count);
+      waveletExplained = 1 - sigmaResidual / sigmaTotal;
+    }
+  }
   updateReconNote(
     els.raceKblSpeedReconNote,
     peakPeriods,
@@ -1201,7 +1249,8 @@ function renderSpeedPlot() {
     "kn/h",
     explained,
     order,
-    waveletPeriods
+    waveletPeriods,
+    waveletExplained
   );
 
   let min = Math.min(...speedValues);
@@ -1843,6 +1892,9 @@ function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, 
   scaleScores.sort((a, b) => b.score - a.score);
 
   return {
+    times,
+    centered,
+    trend,
     periodsMinutes,
     heatmap: amplitudeMatrix.slice().reverse(),
     heatmapMax: peak,
