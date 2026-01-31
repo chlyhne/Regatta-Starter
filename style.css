@@ -894,6 +894,10 @@ body {
   touch-action: manipulation;
 }
 
+#open-racekbl-settings {
+  display: none;
+}
+
 .icon-btn .icon-gear {
   width: 20px;
   height: 20px;

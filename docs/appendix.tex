@@ -83,6 +83,30 @@ boots the sampler if it has been idle. The public endpoint remains \texttt{/wind
 supports optional query flags such as \texttt{history=1} and \texttt{hours=24} for returning
 the stored history, or \texttt{refresh=1} to force an immediate upstream pull.
 
+\subsection{RaceKBL windowing and cache behavior}
+
+This subsection summarizes the client-side performance tricks used in the RaceKBL view so
+large history windows remain responsive on mobile hardware.
+
+The RaceKBL client retains only a bounded horizon locally (currently eight hours) even
+though the server can provide more. The trim happens on ingest, so older samples never
+enter the in-memory ring. When the window size changes, the client does not discard the
+history and refetch; instead it merges any returned history into the existing sample list
+and deduplicates by timestamp, which keeps the timeline stable and avoids extra churn.
+
+Two caches keep redraws lightweight. The history slice shown on the plots is obtained by
+binary-searching into the timestamped sample array, rather than scanning the entire list.
+That slice is cached for the current horizon so the speed and direction plots reuse the
+same window without repeating the search. For the spectral analysis, the periodogram
+selection and joint fit are cached per history window and period cap. As long as the
+underlying samples are unchanged, the reconstruction overlay reuses that cached selection
+and fit rather than recomputing the spectrum on every paint.
+
+Finally, history fetches are queued. If a live sample fetch is already in flight when the
+user expands the horizon, the requested history load is recorded and executed as soon as
+the network becomes idle. This avoids dropped requests while keeping the code path simple
+and deterministic under real-time polling.
+
 \subsection{Replay pipeline and timing model}
 
 This subsection explains how recorded sessions are fed back into the app so algorithms

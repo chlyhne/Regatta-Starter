@@ -39,7 +39,7 @@ const state = {
   diagUploadToken: "",
   windEndpoint: "/wind",
   windHistoryMinutes: 60,
-  windPeriodogramMinutes: 60,
+  windPeriodogramMinutes: 120,
   windSpeedFitOrder: 3,
   windDirFitOrder: 3,
   imuEnabled: false,
