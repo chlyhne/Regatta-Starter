@@ -57,6 +57,8 @@ let historyLoadedHours = 0;
 let wheelZoomBound = false;
 let wheelZoomAccumulator = 0;
 let pendingHistoryHours = 0;
+let lastWindowCache = null;
+let analysisCache = { key: "", availablePeaks: [], fitByOrder: new Map() };
 const periodogramCache = {
   speed: { key: null, analysis: null },
   dirUnwrapped: { key: null, analysis: null },
@@ -873,15 +875,85 @@ function computeStdExplainedCentered(analysis, fit) {
 function getWindowSamples() {
   const windowMinutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
   const windowMs = windowMinutes * 60 * 1000;
-  const startTs = Date.now() - windowMs;
+  const now = Date.now();
+  const startTs = now - windowMs;
   const endTs = startTs + windowMs;
-  return {
-    startTs,
-    endTs,
-    windowMs,
+  const signature = `${windSamples.length}:${lastSampleHash || ""}`;
+  const cacheKey = `${windowMinutes}:${Math.floor(now / 1000)}:${signature}`;
+  if (lastWindowCache && lastWindowCache.key === cacheKey) {
+    return lastWindowCache.value;
+  }
+  let startIndex = 0;
+  let endIndex = windSamples.length;
+  if (windSamples.length) {
+    let lo = 0;
+    let hi = windSamples.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if ((windSamples[mid]?.ts || 0) < startTs) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    startIndex = lo;
+    lo = startIndex;
+    hi = windSamples.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if ((windSamples[mid]?.ts || 0) <= endTs) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    endIndex = lo;
+  }
+  const samples = windSamples.slice(startIndex, endIndex);
+  const value = { startTs, endTs, windowMs, windowMinutes, samples, signature };
+  lastWindowCache = { key: cacheKey, value };
+  return value;
+}
+
+function getPeriodogramKey(analysis, windowMinutes, capMinutes, fitOrder) {
+  if (!analysis) return "";
+  return [
+    analysis.baseTs,
+    analysis.times?.length || 0,
+    analysis.centered?.count || 0,
     windowMinutes,
-    samples: windSamples.filter((sample) => sample && sample.ts >= startTs),
-  };
+    capMinutes,
+    fitOrder,
+  ].join(":");
+}
+
+function resolvePeriodogramForSelection(analysis, windowMinutes, fitOrder) {
+  if (!analysis) return { peaks: [], fit: null, maxOrder: FIT_ORDER_MIN, order: FIT_ORDER_MIN };
+  const capMinutes = resolvePeriodogramCapMinutes();
+  const key = getPeriodogramKey(analysis, windowMinutes, capMinutes, FIT_ORDER_MAX);
+  if (analysisCache.key !== key) {
+    analysisCache = {
+      key,
+      availablePeaks: selectPeriodogramPeaks(analysis, FIT_ORDER_MAX, windowMinutes),
+      fitByOrder: new Map(),
+    };
+  }
+  const maxOrder = Math.max(
+    FIT_ORDER_MIN,
+    Math.min(FIT_ORDER_MAX, analysisCache.availablePeaks.length || FIT_ORDER_MIN)
+  );
+  const order = clampFitOrder(fitOrder, maxOrder);
+  let fit = analysisCache.fitByOrder.get(order) || null;
+  if (!fit) {
+    const peaks = analysisCache.availablePeaks.slice(0, order);
+    const frequencies = peaks.map((entry) => entry.frequency);
+    fit = frequencies.length
+      ? computeJointSinusoidFit(analysis.times, analysis.centered.values, frequencies)
+      : null;
+    analysisCache.fitByOrder.set(order, fit);
+  }
+  const peaks = analysisCache.availablePeaks.slice(0, order);
+  return { peaks, fit, maxOrder, order };
 }
 
 function renderSpeedPlot() {
@@ -932,16 +1004,13 @@ function renderSpeedPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
-    const availablePeaks = selectPeriodogramPeaks(
+    const selection = resolvePeriodogramForSelection(
       analysis,
-      FIT_ORDER_MAX,
-      windowMinutes
+      windowMinutes,
+      state.windSpeedFitOrder
     );
-    const maxOrder = Math.max(
-      FIT_ORDER_MIN,
-      Math.min(FIT_ORDER_MAX, availablePeaks.length || FIT_ORDER_MIN)
-    );
-    order = clampFitOrder(state.windSpeedFitOrder, maxOrder);
+    const { peaks, fit, maxOrder } = selection;
+    order = selection.order;
     if (order !== state.windSpeedFitOrder) {
       state.windSpeedFitOrder = order;
     }
@@ -952,7 +1021,6 @@ function renderSpeedPlot() {
     if (els.raceKblSpeedFitValue) {
       els.raceKblSpeedFitValue.textContent = String(order);
     }
-    const peaks = availablePeaks.slice(0, order);
     peakPeriods = peaks
       .map((entry) => ({
         frequency: entry.frequency,
@@ -961,11 +1029,9 @@ function renderSpeedPlot() {
       }))
       .filter((entry) => Number.isFinite(entry.periodSec));
     const frequencies = peakPeriods.map((entry) => entry.frequency);
-    const jointFit = computeJointSinusoidFit(
-      analysis.times,
-      analysis.centered.values,
-      frequencies
-    );
+    const jointFit = fit
+      ? { ...fit }
+      : computeJointSinusoidFit(analysis.times, analysis.centered.values, frequencies);
     if (jointFit) {
       peakPeriods.forEach((peak, idx) => {
         const cosCoeff = jointFit.coeffs[idx * 2];
@@ -1116,16 +1182,13 @@ function renderDirectionPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
-    const availablePeaks = selectPeriodogramPeaks(
+    const selection = resolvePeriodogramForSelection(
       analysis,
-      FIT_ORDER_MAX,
-      windowMinutes
+      windowMinutes,
+      state.windDirFitOrder
     );
-    const maxOrder = Math.max(
-      FIT_ORDER_MIN,
-      Math.min(FIT_ORDER_MAX, availablePeaks.length || FIT_ORDER_MIN)
-    );
-    order = clampFitOrder(state.windDirFitOrder, maxOrder);
+    const { peaks, fit, maxOrder } = selection;
+    order = selection.order;
     if (order !== state.windDirFitOrder) {
       state.windDirFitOrder = order;
     }
@@ -1136,7 +1199,6 @@ function renderDirectionPlot() {
     if (els.raceKblDirFitValue) {
       els.raceKblDirFitValue.textContent = String(order);
     }
-    const peaks = availablePeaks.slice(0, order);
     peakPeriods = peaks
       .map((entry) => ({
         frequency: entry.frequency,
@@ -1145,11 +1207,9 @@ function renderDirectionPlot() {
       }))
       .filter((entry) => Number.isFinite(entry.periodSec));
     const frequencies = peakPeriods.map((entry) => entry.frequency);
-    const jointFit = computeJointSinusoidFit(
-      analysis.times,
-      analysis.centered.values,
-      frequencies
-    );
+    const jointFit = fit
+      ? { ...fit }
+      : computeJointSinusoidFit(analysis.times, analysis.centered.values, frequencies);
     if (jointFit) {
       peakPeriods.forEach((peak, idx) => {
         const cosCoeff = jointFit.coeffs[idx * 2];
