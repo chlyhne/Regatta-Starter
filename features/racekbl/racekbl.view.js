@@ -32,12 +32,18 @@ export const raceKblView = `
       <div class="racekbl-plot racekbl-speed-plot" aria-label="Wind speed history plot">
         <canvas id="racekbl-speed-canvas"></canvas>
       </div>
+      <div id="racekbl-speed-recon-note" class="racekbl-plot-note">
+        Significant periods: --:--, --:--, --:-- Trend: --
+      </div>
     </section>
 
     <section class="panel racekbl-dir-panel">
       <h2>Wind direction</h2>
       <div class="racekbl-plot racekbl-dir-plot" aria-label="Wind direction history plot">
         <canvas id="racekbl-dir-canvas"></canvas>
+      </div>
+      <div id="racekbl-dir-recon-note" class="racekbl-plot-note">
+        Significant periods: --:--, --:--, --:-- Trend: --
       </div>
     </section>
 
@@ -74,7 +80,7 @@ export const raceKblView = `
   <section id="racekbl-settings-view" class="racekbl-settings-view" aria-hidden="true">
     <div class="racekbl-settings-panel">
       <h2>Wind settings</h2>
-      <div class="racekbl-settings-group">
+      <div class="racekbl-settings-group racekbl-autocorr-settings">
         <div class="racekbl-control-head">
           <h3 id="racekbl-history-title">History window</h3>
           <div id="racekbl-history-value" class="racekbl-window-value">1 h</div>
@@ -110,7 +116,7 @@ export const raceKblView = `
           <span>24h</span>
         </div>
       </div>
-      <div class="racekbl-settings-group">
+      <div class="racekbl-settings-group racekbl-periodogram-settings">
         <div class="racekbl-control-head">
           <h3 id="racekbl-autocorr-title">Autocorr max lag</h3>
           <div id="racekbl-autocorr-value" class="racekbl-window-value">1 h</div>

@@ -31,6 +31,8 @@ const WIND_PLOT_TIME_GUTTER = 22;
 const WIND_PLOT_LABEL_FONT = "14px sans-serif";
 const WIND_PLOT_LINE_WIDTH = 2;
 const WIND_PLOT_TIME_FONT = "12px sans-serif";
+const SHOW_CORRELATION_PLOTS = false;
+const SHOW_PERIOD_PLOT = false;
 const WIND_AUTOCORR_MINUTES_MIN = 0;
 const WIND_AUTOCORR_MINUTES_MAX = 120;
 const WIND_AUTOCORR_STEP_MINUTES = 2;
@@ -42,7 +44,7 @@ const LAG_TICK_TARGET = 6;
 const AUTO_CORR_MAX_POINTS = 600;
 const AUTO_CORR_GAP_MULTIPLIER = 6;
 const AUTO_CORR_DOT_SIZE = 4;
-const PERIODOGRAM_MIN_PERIOD_SEC = 60;
+const PERIODOGRAM_MIN_PERIOD_SEC = 120;
 const PERIODOGRAM_MIN_POINTS = 80;
 const PERIODOGRAM_MAX_POINTS = 240;
 
@@ -57,6 +59,10 @@ let lastSampleHash = null;
 let lastRenderAt = 0;
 let renderTimer = null;
 let historyLoadedHours = 0;
+const periodogramCache = {
+  speed: { key: null, analysis: null },
+  dirUnwrapped: { key: null, analysis: null },
+};
 
 let raceKblDeps = {
   saveSettings: null,
@@ -467,6 +473,13 @@ function buildIrregularSeries(samples, key, startTs, endTs) {
     .map((sample) => ({ ts: sample.ts, value: sample[key] }));
 }
 
+function getSamplesSignature(samples) {
+  if (!samples.length) return "0";
+  const last = samples[samples.length - 1];
+  const lastTs = Number.isFinite(last?.ts) ? last.ts : 0;
+  return `${samples.length}:${lastTs}:${lastSampleHash || ""}`;
+}
+
 function fitLinearTrend(times, values) {
   const points = [];
   for (let i = 0; i < times.length; i += 1) {
@@ -737,9 +750,9 @@ function computeLombScargleFit(times, values, frequency) {
   };
 }
 
-function buildSpeedPeriodogramAnalysis(samples, startTs, endTs, windowMs, windowMinutes) {
+function buildPeriodogramAnalysis(samples, key, startTs, endTs, windowMs, windowMinutes) {
   if (!samples.length) return null;
-  const series = buildIrregularSeries(samples, "speed", startTs, endTs);
+  const series = buildIrregularSeries(samples, key, startTs, endTs);
   if (series.length < 4) return null;
 
   const baseTs = series[0].ts;
@@ -810,6 +823,29 @@ function buildSpeedPeriodogramAnalysis(samples, startTs, endTs, windowMs, window
   };
 }
 
+function getPeriodogramAnalysis(samples, key, startTs, endTs, windowMs, windowMinutes) {
+  const cache = periodogramCache[key];
+  const signature = getSamplesSignature(samples);
+  const capMinutes = resolvePeriodogramCapMinutes();
+  const cacheKey = `${signature}:${windowMinutes}:${capMinutes}`;
+  if (cache && cache.key === cacheKey) {
+    return cache.analysis;
+  }
+  const analysis = buildPeriodogramAnalysis(
+    samples,
+    key,
+    startTs,
+    endTs,
+    windowMs,
+    windowMinutes
+  );
+  if (cache) {
+    cache.key = cacheKey;
+    cache.analysis = analysis;
+  }
+  return analysis;
+}
+
 function formatCorrValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
@@ -826,6 +862,30 @@ function formatPowerValue(value) {
   if (!Number.isFinite(value)) return "";
   const rounded = Math.round(value * 100) / 100;
   return trimTrailingZeros(rounded.toFixed(2));
+}
+
+function formatPeriodLabelSeconds(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "--:--";
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const secs = rounded % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatTrendLabel(value, unit) {
+  if (!Number.isFinite(value)) return "--";
+  const rounded = Math.round(value * 10) / 10;
+  const text = trimTrailingZeros(rounded.toFixed(1));
+  return `${text} ${unit}`;
+}
+
+function updateReconNote(el, peaks, trendRate, unit) {
+  if (!el) return;
+  const labels = [0, 1, 2].map((idx) =>
+    peaks && peaks[idx] ? formatPeriodLabelSeconds(peaks[idx].periodSec) : "--:--"
+  );
+  const trendLabel = formatTrendLabel(trendRate, unit);
+  el.textContent = `Significant periods: ${labels.join(", ")} Trend: ${trendLabel}`;
 }
 
 function buildLagSamples(acf, stepMs) {
@@ -875,6 +935,7 @@ function renderSpeedPlot() {
 
   const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
+    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h");
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -887,21 +948,26 @@ function renderSpeedPlot() {
   });
 
   if (!speedValues.length) {
+    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h");
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No speed data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
     return;
   }
 
-  const analysis = buildSpeedPeriodogramAnalysis(
+  const analysis = getPeriodogramAnalysis(
     samples,
+    "speed",
     startTs,
     startTs + windowMs,
     windowMs,
     windowMinutes
   );
+  let peakPeriods = null;
+  let trendRate = Number.NaN;
   let reconstruction = null;
   if (analysis) {
+    trendRate = analysis.trend.slope * 3600;
     const peaks = analysis.spectrum
       .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
       .sort((a, b) => {
@@ -909,6 +975,12 @@ function renderSpeedPlot() {
         return b.frequency - a.frequency;
       })
       .slice(0, 3);
+    peakPeriods = peaks
+      .map((entry) => ({
+        frequency: entry.frequency,
+        periodSec: 1 / entry.frequency,
+      }))
+      .filter((entry) => Number.isFinite(entry.periodSec));
     const fits = peaks
       .map((entry) => {
         const fit = computeLombScargleFit(
@@ -943,6 +1015,7 @@ function renderSpeedPlot() {
         .filter(Boolean);
     }
   }
+  updateReconNote(els.raceKblSpeedReconNote, peakPeriods, trendRate, "kn/h");
 
   let min = Math.min(...speedValues);
   let max = Math.max(...speedValues);
@@ -1019,6 +1092,7 @@ function renderDirectionPlot() {
 
   const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
+    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h");
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -1030,14 +1104,84 @@ function renderDirectionPlot() {
     if (Number.isFinite(sample.dirUnwrapped)) dirValues.push(sample.dirUnwrapped);
   });
   if (!dirValues.length) {
+    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h");
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No dir data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
     return;
   }
 
+  const analysis = getPeriodogramAnalysis(
+    samples,
+    "dirUnwrapped",
+    startTs,
+    startTs + windowMs,
+    windowMs,
+    windowMinutes
+  );
+  let peakPeriods = null;
+  let trendRate = Number.NaN;
+  let reconstruction = null;
+  if (analysis) {
+    trendRate = analysis.trend.slope * 3600;
+    const peaks = analysis.spectrum
+      .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
+      .sort((a, b) => {
+        if (b.power !== a.power) return b.power - a.power;
+        return b.frequency - a.frequency;
+      })
+      .slice(0, 3);
+    peakPeriods = peaks
+      .map((entry) => ({
+        frequency: entry.frequency,
+        periodSec: 1 / entry.frequency,
+      }))
+      .filter((entry) => Number.isFinite(entry.periodSec));
+    const fits = peaks
+      .map((entry) => {
+        const fit = computeLombScargleFit(
+          analysis.times,
+          analysis.centered.values,
+          entry.frequency
+        );
+        if (!fit) return null;
+        return { frequency: entry.frequency, fit };
+      })
+      .filter(Boolean);
+    if (fits.length) {
+      reconstruction = samples
+        .filter((sample) => sample && Number.isFinite(sample.ts))
+        .map((sample) => {
+          const time = (sample.ts - analysis.baseTs) / 1000;
+          if (!Number.isFinite(time)) return null;
+          let oscillation = 0;
+          fits.forEach((entry) => {
+            const omega = 2 * Math.PI * entry.frequency;
+            oscillation +=
+              entry.fit.cosCoeff * Math.cos(omega * (time - entry.fit.tau)) +
+              entry.fit.sinCoeff * Math.sin(omega * (time - entry.fit.tau));
+          });
+          const value =
+            oscillation +
+            analysis.centered.mean +
+            evaluateTrend(analysis.trend, time);
+          if (!Number.isFinite(value)) return null;
+          return { ts: sample.ts, recon: value };
+        })
+        .filter(Boolean);
+    }
+  }
+  updateReconNote(els.raceKblDirReconNote, peakPeriods, trendRate, "°/h");
+
   let min = Math.min(...dirValues);
   let max = Math.max(...dirValues);
+  if (reconstruction && reconstruction.length) {
+    const reconValues = reconstruction.map((sample) => sample.recon).filter(Number.isFinite);
+    if (reconValues.length) {
+      min = Math.min(min, ...reconValues);
+      max = Math.max(max, ...reconValues);
+    }
+  }
   const latest = dirValues[dirValues.length - 1];
   const span = max - min;
   if (!Number.isFinite(span) || span < 10) {
@@ -1071,6 +1215,17 @@ function renderDirectionPlot() {
     color: "#000000",
     lineWidth: WIND_PLOT_LINE_WIDTH,
   });
+
+  if (reconstruction && reconstruction.length) {
+    drawLine(ctx, reconstruction, "recon", rect, {
+      min,
+      max,
+      startTs,
+      windowMs,
+      color: "#ff00aa",
+      lineWidth: WIND_PLOT_LINE_WIDTH,
+    });
+  }
 }
 
 function renderAutoCorrPlot(canvas, key, emptyLabel) {
@@ -1364,10 +1519,14 @@ function renderSpeedPeriodogramPlot() {
 function renderRaceKblPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
-  renderSpeedAutoCorrPlot();
-  renderDirAutoCorrPlot();
-  renderDirSpeedCrossCorrPlot();
-  renderSpeedPeriodogramPlot();
+  if (SHOW_CORRELATION_PLOTS) {
+    renderSpeedAutoCorrPlot();
+    renderDirAutoCorrPlot();
+    renderDirSpeedCrossCorrPlot();
+  }
+  if (SHOW_PERIOD_PLOT) {
+    renderSpeedPeriodogramPlot();
+  }
 }
 
 function syncRaceKblInputs() {
@@ -1474,6 +1633,11 @@ function setRaceKblSettingsOpen(open) {
   }
 }
 
+function updateRaceKblPlotVisibility() {
+  document.body.classList.toggle("racekbl-hide-correlations", !SHOW_CORRELATION_PLOTS);
+  document.body.classList.toggle("racekbl-hide-periodogram", !SHOW_PERIOD_PLOT);
+}
+
 function bindRaceKblEvents() {
   if (els.openRaceKblSettings) {
     els.openRaceKblSettings.addEventListener("click", () => {
@@ -1515,11 +1679,13 @@ function bindRaceKblEvents() {
 
 function initRaceKbl(deps = {}) {
   raceKblDeps = { ...raceKblDeps, ...deps };
+  updateRaceKblPlotVisibility();
   syncRaceKblInputs();
   updateRaceKblUi();
 }
 
 function enterRaceKblView() {
+  updateRaceKblPlotVisibility();
   syncRaceKblInputs();
   updateRaceKblUi();
   startWindPolling();

@@ -107,6 +107,8 @@ const els = {
   closeRaceKblSettings: document.getElementById("close-racekbl-settings"),
   raceKblSpeedCanvas: document.getElementById("racekbl-speed-canvas"),
   raceKblDirCanvas: document.getElementById("racekbl-dir-canvas"),
+  raceKblSpeedReconNote: document.getElementById("racekbl-speed-recon-note"),
+  raceKblDirReconNote: document.getElementById("racekbl-dir-recon-note"),
   raceKblSpeedAcfCanvas: document.getElementById("racekbl-speed-acf-canvas"),
   raceKblDirAcfCanvas: document.getElementById("racekbl-dir-acf-canvas"),
   raceKblXcorrDirSpeedCanvas: document.getElementById("racekbl-xcorr-dir-speed-canvas"),

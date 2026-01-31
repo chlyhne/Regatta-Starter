@@ -1953,6 +1953,25 @@ button:active {
   height: 300px;
 }
 
+.racekbl-plot-note {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #000000;
+}
+
+.racekbl-hide-correlations .racekbl-speed-acf-panel,
+.racekbl-hide-correlations .racekbl-dir-acf-panel,
+.racekbl-hide-correlations .racekbl-xcorr-dir-speed-panel,
+.racekbl-hide-correlations .racekbl-autocorr-settings {
+  display: none;
+}
+
+.racekbl-hide-periodogram .racekbl-speed-periodogram-panel {
+  display: none;
+}
+
 .track-close {
   position: absolute;
   left: 50%;
