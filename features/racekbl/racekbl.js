@@ -1094,6 +1094,7 @@ function renderSpeedPlot() {
     return;
   }
 
+  const order = clampFitOrder(state.windSpeedFitOrder);
   const analysis = getPeriodogramAnalysis(
     samples,
     "speed",
@@ -1108,7 +1109,6 @@ function renderSpeedPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
-    const order = clampFitOrder(state.windSpeedFitOrder);
     const peaks = analysis.spectrum
       .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
       .sort((a, b) => {
@@ -1256,6 +1256,7 @@ function renderDirectionPlot() {
     return;
   }
 
+  const order = clampFitOrder(state.windDirFitOrder);
   const analysis = getPeriodogramAnalysis(
     samples,
     "dirUnwrapped",
@@ -1270,7 +1271,6 @@ function renderDirectionPlot() {
   let explained = Number.NaN;
   if (analysis) {
     trendRate = analysis.trend.slope * 3600;
-    const order = clampFitOrder(state.windDirFitOrder);
     const peaks = analysis.spectrum
       .filter((entry) => Number.isFinite(entry?.power) && Number.isFinite(entry?.frequency))
       .sort((a, b) => {
