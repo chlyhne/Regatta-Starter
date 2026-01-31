@@ -1851,6 +1851,15 @@ function shouldHandlePinch(event) {
   return Boolean(target.closest(".racekbl-plot"));
 }
 
+function zoomHistoryByFactor(factor) {
+  if (!Number.isFinite(factor) || factor <= 0) return;
+  const current = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
+  const next = snapHistoryMinutes(current * factor);
+  if (next !== state.windHistoryMinutes) {
+    setHistoryWindow(next);
+  }
+}
+
 function bindRaceKblEvents() {
   if (els.openRaceKblSettings) {
     els.openRaceKblSettings.addEventListener("click", () => {
@@ -1937,6 +1946,20 @@ function bindRaceKblEvents() {
     raceKblView.addEventListener("touchend", endPinch, { passive: true });
     raceKblView.addEventListener("touchcancel", endPinch, { passive: true });
   }
+  const plotCanvases = document.querySelectorAll(".racekbl-plot canvas");
+  plotCanvases.forEach((canvas) => {
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+        const factor = event.deltaY > 0 ? 1.1 : 0.9;
+        zoomHistoryByFactor(factor);
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+  });
   document.addEventListener("visibilitychange", () => {
     if (!document.body.classList.contains("racekbl-mode")) return;
     if (document.visibilityState === "hidden") {
