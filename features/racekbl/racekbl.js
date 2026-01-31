@@ -1321,7 +1321,6 @@ function setHistoryWindow(minutes) {
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
     fetchWindHistory();
-    return;
   }
   updateRaceKblUi();
 }
@@ -1341,7 +1340,6 @@ function setPeriodogramWindow(minutes) {
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
   if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
     fetchWindHistory();
-    return;
   }
   updateRaceKblUi();
 }
