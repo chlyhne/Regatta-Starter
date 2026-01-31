@@ -1830,16 +1830,14 @@ function buildWaveletAnalysis(samples, startTs, endTs, windowMs, windowMinutes, 
 
   for (let r = 0; r < rows; r += 1) {
     const row = amplitudeMatrix[r];
-    let idx = cols - 1;
-    let score = 0;
-    while (idx >= 0) {
-      const value = row[idx];
-      if (Number.isFinite(value)) {
-        score = value;
-        break;
-      }
-      idx -= 1;
-    }
+    let sum = 0;
+    let count = 0;
+    row.forEach((value) => {
+      if (!Number.isFinite(value)) return;
+      sum += value;
+      count += 1;
+    });
+    const score = count ? sum / count : 0;
     scaleScores.push({ periodSec: periodsMinutes[r] * 60, score });
   }
   scaleScores.sort((a, b) => b.score - a.score);
