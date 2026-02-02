@@ -1,14 +1,14 @@
 % !TeX root = master.tex
 
-\section{RaceKBL wind analysis}
+\section{RaceWind wind analysis}
 
-This section explains how RaceKBL helps a sailor answer a practical question: is the wind
+This section explains how RaceWind helps a sailor answer a practical question: is the wind
 oscillating in a way that can be timed, or is it too irregular to trust a rhythm? The method is
 designed to surface repeatable periods, turn them into a compact reconstruction overlay, and report
 how much of the recent variation that overlay explains. Each step below is chosen to support that
 goal.
 
-RaceKBL uses the same wind history the rest of the view relies on. The history window sets which
+RaceWind uses the same wind history the rest of the view relies on. The history window sets which
 samples participate in the analysis, while the period cap limits which candidate periods are
 considered for the reconstruction. This separation keeps the model focused on actionable cycles
 without discarding input data.
@@ -18,15 +18,15 @@ without discarding input data.
 This subsection explains how the signal is detrended and mean-centered before any spectral
 computation so long-term drift does not dominate the output.
 
-RaceKBL removes an offset plus a strictly linear term in time from the samples, then subtracts
+RaceWind removes an offset plus a strictly linear term in time from the samples, then subtracts
 the mean of the detrended series. We refer to the full expression as an affine trend, but the
 linear part is the through-origin term only. For the periodogram, the model is fit against actual
 timestamps.
 
 \begin{flalign}
-\hspace{5em}\tilde{x}_i &= x_i - \left(a + b\,t_i\right) && \left[u\right] \label{eq:racekbl:detrend}
+\hspace{5em}\tilde{x}_i &= x_i - \left(a + b\,t_i\right) && \left[u\right] \label{eq:racewind:detrend}
 \end{flalign}
-In \eqref{eq:racekbl:detrend}, \(x_i\) is the raw series, \(\tilde{x}_i\) is the detrended series,
+In \eqref{eq:racewind:detrend}, \(x_i\) is the raw series, \(\tilde{x}_i\) is the detrended series,
 \(t_i\) is the time coordinate, and \(u\) is the unit of the signal (knots for wind speed or degrees
 for unwrapped direction). After detrending, the mean of \(\tilde{x}_i\) is removed so the resulting
 series is centered on zero. This centered signal is the starting point for period selection and
@@ -38,7 +38,7 @@ This subsection explains the Lomb--Scargle periodogram used to detect periodic s
 irregularly sampled wind speed data, with an emphasis on why we use it and how it feeds the
 reconstruction overlay.
 
-The goal of the periodogram in RaceKBL is not to estimate a full spectral density; it is a
+The goal of the periodogram in RaceWind is not to estimate a full spectral density; it is a
 diagnostic lens for spotting repeated patterns in wind speed that might matter over the next few
 minutes. We prefer a method that tolerates uneven sampling, missing points, and latency spikes,
 because those are realities of live wind feeds. A naive FFT requires a uniform grid, and forcing
@@ -64,42 +64,42 @@ and makes the power comparable across frequencies, rather than letting sampling 
 direction. The offset is computed for each angular frequency \(\omega\):
 
 \begin{flalign}
-\hspace{5em}\tau &= \frac{1}{2\omega}\tan^{-1}\left(\frac{\sum_i \sin(2\omega t_i)}{\sum_i \cos(2\omega t_i)}\right) && \left[\mathrm{s}\right] \label{eq:racekbl:ls-tau}
+\hspace{5em}\tau &= \frac{1}{2\omega}\tan^{-1}\left(\frac{\sum_i \sin(2\omega t_i)}{\sum_i \cos(2\omega t_i)}\right) && \left[\mathrm{s}\right] \label{eq:racewind:ls-tau}
 \end{flalign}
-With \(\tau\) from \eqref{eq:racekbl:ls-tau}, we first define the cosine and sine projections and
+With \(\tau\) from \eqref{eq:racewind:ls-tau}, we first define the cosine and sine projections and
 their normalizers:
 
 \begin{flalign}
-\hspace{5em}C(\omega) &= \sum_i \tilde{x}_i\cos\left(\omega(t_i-\tau)\right) && \left[u\right] \label{eq:racekbl:ls-cos-proj}
+\hspace{5em}C(\omega) &= \sum_i \tilde{x}_i\cos\left(\omega(t_i-\tau)\right) && \left[u\right] \label{eq:racewind:ls-cos-proj}
 \end{flalign}
 \begin{flalign}
-\hspace{5em}S(\omega) &= \sum_i \tilde{x}_i\sin\left(\omega(t_i-\tau)\right) && \left[u\right] \label{eq:racekbl:ls-sin-proj}
+\hspace{5em}S(\omega) &= \sum_i \tilde{x}_i\sin\left(\omega(t_i-\tau)\right) && \left[u\right] \label{eq:racewind:ls-sin-proj}
 \end{flalign}
 \begin{flalign}
-\hspace{5em}D_c(\omega) &= \sum_i \cos^2\left(\omega(t_i-\tau)\right) && \left[1\right] \label{eq:racekbl:ls-cos-denom}
+\hspace{5em}D_c(\omega) &= \sum_i \cos^2\left(\omega(t_i-\tau)\right) && \left[1\right] \label{eq:racewind:ls-cos-denom}
 \end{flalign}
 \begin{flalign}
-\hspace{5em}D_s(\omega) &= \sum_i \sin^2\left(\omega(t_i-\tau)\right) && \left[1\right] \label{eq:racekbl:ls-sin-denom}
+\hspace{5em}D_s(\omega) &= \sum_i \sin^2\left(\omega(t_i-\tau)\right) && \left[1\right] \label{eq:racewind:ls-sin-denom}
 \end{flalign}
-In \eqref{eq:racekbl:ls-cos-proj} and \eqref{eq:racekbl:ls-sin-proj}, \(C(\omega)\) and \(S(\omega)\)
+In \eqref{eq:racewind:ls-cos-proj} and \eqref{eq:racewind:ls-sin-proj}, \(C(\omega)\) and \(S(\omega)\)
 are the least-squares projections of the detrended series onto cosine and sine bases. The terms
-\(D_c(\omega)\) and \(D_s(\omega)\) in \eqref{eq:racekbl:ls-cos-denom} and \eqref{eq:racekbl:ls-sin-denom}
+\(D_c(\omega)\) and \(D_s(\omega)\) in \eqref{eq:racewind:ls-cos-denom} and \eqref{eq:racewind:ls-sin-denom}
 are the corresponding energy normalizers that keep each projection scale-consistent even with
 irregular sampling.
 
 With those pieces, the Lomb--Scargle power is:
 
 \begin{flalign}
-\hspace{5em}P(\omega) &= \frac{1}{2\sigma^2}\left[\frac{C(\omega)^2}{D_c(\omega)} + \frac{S(\omega)^2}{D_s(\omega)}\right] && \left[1\right] \label{eq:racekbl:ls-power}
+\hspace{5em}P(\omega) &= \frac{1}{2\sigma^2}\left[\frac{C(\omega)^2}{D_c(\omega)} + \frac{S(\omega)^2}{D_s(\omega)}\right] && \left[1\right] \label{eq:racewind:ls-power}
 \end{flalign}
-In \eqref{eq:racekbl:ls-power}, \(P(\omega)\) is the normalized power and \(\sigma^2\) is the
+In \eqref{eq:racewind:ls-power}, \(P(\omega)\) is the normalized power and \(\sigma^2\) is the
 variance of the detrended, centered series. The normalization keeps the scale readable and makes a
 peak at one frequency comparable to a peak at another, even if the absolute wind variance changes
 through the day.
 
 The periodogram is also intentionally bounded in both directions. Very short periods can be
 dominated by noise or sensor jitter, while very long periods can be hard to validate with the
-available history. RaceKBL therefore sets a minimum period based on the median sampling interval
+available history. RaceWind therefore sets a minimum period based on the median sampling interval
 and caps the maximum period to the slider setting. These bounds are not meant to be theoretical
 limits; they are practical guards against over-interpreting either high-frequency noise or
 slow drift.
@@ -122,7 +122,7 @@ This subsection explains the reconstructed wind speed overlay that is drawn on t
 speed history to visualize the dominant periodic components and to quantify how predictable the
 wind appears to be.
 
-RaceKBL selects candidate periods by the greedy residual method described above, then fits all of
+RaceWind selects candidate periods by the greedy residual method described above, then fits all of
 the selected frequencies together in a single least-squares solve. We build a design matrix with
 cosine and sine columns for each selected frequency, solve for all coefficients at once, and then
 sum the resulting sinusoids. This means the amplitudes and phases are optimized jointly rather
@@ -144,9 +144,9 @@ fit score update immediately when the order changes.
 The reconstructed signal can be written as:
 
 \begin{flalign}
-\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{M}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \gamma + \beta t && \left[u\right] \label{eq:racekbl:reconstruction}
+\hspace{5em}\hat{x}(t) &= \sum_{m=1}^{M}\left(a_m\cos\left(\omega_m(t-\tau_m)\right) + b_m\sin\left(\omega_m(t-\tau_m)\right)\right) + \gamma + \beta t && \left[u\right] \label{eq:racewind:reconstruction}
 \end{flalign}
-In \eqref{eq:racekbl:reconstruction}, \(\omega_m\) are the \(M\) angular frequencies selected by the
+In \eqref{eq:racewind:reconstruction}, \(\omega_m\) are the \(M\) angular frequencies selected by the
 greedy residual search, \(a_m\) and \(b_m\) are the jointly fitted cosine and sine coefficients,
 \(\tau_m\) are the phase offsets used to align each basis function, \(\gamma\) is the constant
 offset that combines the detrended mean with the affine intercept, and \(\beta t\) is the strictly
@@ -154,7 +154,7 @@ linear through-origin trend component that was removed before the spectral analy
 This overlay shares the same history window as the wind plots, so it updates whenever new samples
 arrive or the horizon is adjusted via the zoom controls.
 
-Once the reconstruction is assembled, RaceKBL also reports a goodness-of-fit value. The fit score
+Once the reconstruction is assembled, RaceWind also reports a goodness-of-fit value. The fit score
 is computed on the detrended, mean-centered series, so it reflects how much of the remaining
 variation is explained by the \(M\)-period model rather than by slow drift or offset.
 
@@ -162,21 +162,21 @@ To make the fitting step explicit, we assemble a design matrix \(A\) from the co
 terms evaluated at each sample time:
 
 \begin{flalign}
-\hspace{5em}A_{i,2m-1} &= \cos\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racekbl:fit-matrix-cos}
+\hspace{5em}A_{i,2m-1} &= \cos\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racewind:fit-matrix-cos}
 \end{flalign}
 \begin{flalign}
-\hspace{5em}A_{i,2m} &= \sin\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racekbl:fit-matrix-sin}
+\hspace{5em}A_{i,2m} &= \sin\left(\omega_m(t_i-\tau_m)\right) && \left[1\right] \label{eq:racewind:fit-matrix-sin}
 \end{flalign}
-In \eqref{eq:racekbl:fit-matrix-cos} and \eqref{eq:racekbl:fit-matrix-sin}, \(i\) indexes samples in
+In \eqref{eq:racewind:fit-matrix-cos} and \eqref{eq:racewind:fit-matrix-sin}, \(i\) indexes samples in
 the centered series, and \(m \in \{1,\dots,M\}\) indexes the selected frequencies. With the centered
 data vector \(y\) (detrended and mean-removed), the coefficient vector
 \(\beta = [a_1, b_1, \dots, a_M, b_M]^\mathsf{T}\) is obtained by the Moore--Penrose least-squares
 solution:
 
 \begin{flalign}
-\hspace{5em}\beta &= \left(A^\mathsf{T}A\right)^{-1}A^\mathsf{T}y && \left[u\right] \label{eq:racekbl:fit-solve}
+\hspace{5em}\beta &= \left(A^\mathsf{T}A\right)^{-1}A^\mathsf{T}y && \left[u\right] \label{eq:racewind:fit-solve}
 \end{flalign}
-In \eqref{eq:racekbl:fit-solve}, \(u\) is the unit of the centered signal, so each coefficient is
+In \eqref{eq:racewind:fit-solve}, \(u\) is the unit of the centered signal, so each coefficient is
 expressed in knots for speed or degrees for direction. This explicit construction is the joint fit
 step referenced above. The same reconstruction procedure is applied to the unwrapped wind direction
 series, with its own fit order control and the same interpretation for periods and amplitudes.

@@ -5,10 +5,10 @@ import {
   setLifterSettingsOpen,
 } from "../features/lifter/lifter.js";
 import {
-  enterRaceKblView,
-  leaveRaceKblView,
-  setRaceKblSettingsOpen,
-} from "../features/racekbl/racekbl.js";
+  enterRaceWindView,
+  leaveRaceWindView,
+  setRaceWindSettingsOpen,
+} from "../features/racewind/racewind.js";
 import { renderTrack } from "../features/starter/track.js";
 import { fitRaceText } from "../features/starter/race-fit.js";
 
@@ -50,15 +50,15 @@ const VIEW_CONFIG = {
     onEnter: enterLifterView,
     onLeave: leaveLifterView,
   },
-  racekbl: {
-    id: "racekbl-view",
-    hash: "#racekbl",
-    bodyClass: "racekbl-mode",
+  racewind: {
+    id: "racewind-view",
+    hash: "#racewind",
+    bodyClass: "racewind-mode",
     scrollTop: true,
     gpsMode: "setup",
     releaseWakeLock: true,
-    onEnter: enterRaceKblView,
-    onLeave: leaveRaceKblView,
+    onEnter: enterRaceWindView,
+    onLeave: leaveRaceWindView,
   },
   race: {
     id: "race-view",
@@ -169,7 +169,7 @@ function setView(view) {
 
   setVmgSettingsOpen(false);
   setLifterSettingsOpen(false);
-  setRaceKblSettingsOpen(false);
+  setRaceWindSettingsOpen(false);
 
   BODY_CLASSES.forEach((name) => document.body.classList.remove(name));
   VIEW_IDS.forEach((id) => {

@@ -45,11 +45,11 @@ import {
   requestLifterRender,
 } from "./features/lifter/lifter.js";
 import {
-  initRaceKbl,
-  bindRaceKblEvents,
-  syncRaceKblInputs,
-  requestRaceKblRender,
-} from "./features/racekbl/racekbl.js";
+  initRaceWind,
+  bindRaceWindEvents,
+  syncRaceWindInputs,
+  requestRaceWindRender,
+} from "./features/racewind/racewind.js";
 import { clamp, headingFromVelocity } from "./core/common.js";
 import {
   initReplay,
@@ -956,7 +956,7 @@ function updateInputs() {
   updateVmgSmoothToggle();
   updateVmgCapToggle();
   updateStatusUnitLabels();
-  syncRaceKblInputs();
+  syncRaceWindInputs();
 }
 
 function handleReplayStatus() {
@@ -1198,7 +1198,7 @@ function bindEvents() {
   bindSettingsEvents();
   bindVmgEvents();
   bindLifterEvents();
-  bindRaceKblEvents();
+  bindRaceWindEvents();
   bindSensorStatusEvents();
   window.addEventListener("hashchange", syncViewFromHash);
 }
@@ -1287,7 +1287,7 @@ initVmg({
 initLifter({
   setImuEnabled,
 });
-initRaceKbl({
+initRaceWind({
   saveSettings,
 });
 bindEvents();
@@ -1309,8 +1309,8 @@ window.addEventListener("resize", () => {
   if (document.body.classList.contains("lifter-mode")) {
     requestLifterRender({ force: true });
   }
-  if (document.body.classList.contains("racekbl-mode")) {
-    requestRaceKblRender();
+  if (document.body.classList.contains("racewind-mode")) {
+    requestRaceWindRender();
   }
   if (document.body.classList.contains("track-mode")) {
     renderTrack();

@@ -54,8 +54,8 @@ export const homeView = `
       <button id="open-lifter" class="home-entry brand-btn brand-mark brand-light" type="button">
         <span class="brand-label">Race</span><span class="brand-accent">Lifter</span>
       </button>
-      <button id="open-racekbl" class="home-entry brand-btn brand-mark brand-light" type="button">
-        <span class="brand-label">Race</span><span class="brand-accent">KBL</span>
+      <button id="open-racewind" class="home-entry brand-btn brand-mark brand-light" type="button">
+        <span class="brand-label">Race</span><span class="brand-accent">Wind</span>
       </button>
       <button id="open-track" class="home-entry brand-btn brand-mark brand-light" type="button">
         <span class="brand-label">GPS</span><span class="brand-accent">Track</span>

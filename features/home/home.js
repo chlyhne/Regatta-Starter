@@ -226,10 +226,10 @@ function bindHomeEvents() {
     });
   }
 
-  if (els.openRaceKbl) {
-    els.openRaceKbl.addEventListener("click", () => {
+  if (els.openRaceWind) {
+    els.openRaceWind.addEventListener("click", () => {
       if (homeDeps.setView) {
-        homeDeps.setView("racekbl");
+        homeDeps.setView("racewind");
       }
     });
   }

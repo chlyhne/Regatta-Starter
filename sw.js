@@ -1,4 +1,4 @@
-const CACHE_NAME = "racetimer-v168";
+const CACHE_NAME = "racetimer-v169";
 const ASSETS = [
   "./",
   "./index.html",
@@ -37,7 +37,7 @@ const ASSETS = [
   "./features/starter/track.js",
   "./features/vmg/vmg.js",
   "./features/lifter/lifter.js",
-  "./features/racekbl/racekbl.js",
+  "./features/racewind/racewind.js",
   "./features/home/home.js",
   "./features/settings/settings-view.js",
   "./ui/app-shell.js",
@@ -52,7 +52,7 @@ const ASSETS = [
   "./features/starter/track.view.js",
   "./features/vmg/vmg.view.js",
   "./features/lifter/lifter.view.js",
-  "./features/racekbl/racekbl.view.js",
+  "./features/racewind/racewind.view.js",
   "./features/settings/settings.view.js",
   "./features/settings/boat.view.js",
   "./features/settings/info.view.js",
@@ -61,6 +61,7 @@ const ASSETS = [
   "./docs/master.tex",
   "./docs/preamble.tex",
   "./docs/intro.tex",
+  "./docs/racewind.tex",
   "./docs/racelifter.tex",
   "./docs/appendix.tex",
   "./docs/plots/gain-q-length.pdf",

@@ -94,7 +94,7 @@ body {
 
 .vmg-mode #setup-view,
 .lifter-mode #setup-view,
-.racekbl-mode #setup-view,
+.racewind-mode #setup-view,
 .race-mode #setup-view,
 .coords-mode #setup-view,
 .location-mode #setup-view,
@@ -161,7 +161,7 @@ body {
   display: flex;
 }
 
-.racekbl-mode .racekbl-view {
+.racewind-mode .racewind-view {
   display: flex;
 }
 
@@ -489,7 +489,7 @@ body {
 
 .vmg-settings-view,
 .lifter-settings-view,
-.racekbl-settings-view {
+.racewind-settings-view {
   display: none;
   position: fixed;
   inset: 0;
@@ -510,19 +510,19 @@ body {
   overflow: hidden;
 }
 
-.racekbl-settings-open {
+.racewind-settings-open {
   overflow: hidden;
 }
 
 .vmg-settings-open .vmg-settings-view,
 .lifter-settings-open .lifter-settings-view,
-.racekbl-settings-open .racekbl-settings-view {
+.racewind-settings-open .racewind-settings-view {
   display: flex;
 }
 
 .vmg-settings-panel,
 .lifter-settings-panel,
-.racekbl-settings-panel {
+.racewind-settings-panel {
   border: 3px solid #000000;
   border-radius: 24px;
   padding: 24px;
@@ -534,7 +534,7 @@ body {
 
 .vmg-settings-panel h2,
 .lifter-settings-panel h2,
-.racekbl-settings-panel h2 {
+.racewind-settings-panel h2 {
   margin: 0;
   font-size: 1.2rem;
   font-weight: 700;
@@ -544,7 +544,7 @@ body {
 
 .vmg-settings-group,
 .lifter-settings-group,
-.racekbl-settings-group {
+.racewind-settings-group {
   display: grid;
   gap: 12px;
 }
@@ -885,7 +885,7 @@ body {
 
 #open-vmg-settings,
 #open-lifter-settings,
-#open-racekbl-settings {
+#open-racewind-settings {
   min-width: 44px;
   min-height: 44px;
   flex-shrink: 0;
@@ -894,7 +894,7 @@ body {
   touch-action: manipulation;
 }
 
-#open-racekbl-settings {
+#open-racewind-settings {
   display: none;
 }
 
@@ -1805,7 +1805,7 @@ button:active {
   color: #000000;
 }
 
-.racekbl-view {
+.racewind-view {
   display: none;
   min-height: var(--app-height);
   flex-direction: column;
@@ -1849,27 +1849,27 @@ button:active {
   touch-action: none;
 }
 
-.racekbl-control-head {
+.racewind-control-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
 }
 
-.racekbl-control-head h3 {
+.racewind-control-head h3 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 
-.racekbl-window-value {
+.racewind-window-value {
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
-.racekbl-window-slider {
+.racewind-window-slider {
   width: 100%;
   background: transparent;
   margin: 6px 0 0;
@@ -1877,18 +1877,18 @@ button:active {
   -webkit-appearance: none;
 }
 
-.racekbl-window-slider:focus {
+.racewind-window-slider:focus {
   outline: none;
 }
 
-.racekbl-window-slider::-webkit-slider-runnable-track {
+.racewind-window-slider::-webkit-slider-runnable-track {
   height: 14px;
   background: #ffffff;
   border: 2px solid #000000;
   border-radius: 999px;
 }
 
-.racekbl-window-slider::-webkit-slider-thumb {
+.racewind-window-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 32px;
   height: 32px;
@@ -1898,14 +1898,14 @@ button:active {
   margin-top: -10px;
 }
 
-.racekbl-window-slider::-moz-range-track {
+.racewind-window-slider::-moz-range-track {
   height: 14px;
   background: #ffffff;
   border: 2px solid #000000;
   border-radius: 999px;
 }
 
-.racekbl-window-slider::-moz-range-thumb {
+.racewind-window-slider::-moz-range-thumb {
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -1913,7 +1913,7 @@ button:active {
   border: 2px solid #000000;
 }
 
-.racekbl-history-scale {
+.racewind-history-scale {
   display: flex;
   justify-content: space-between;
   font-size: 0.8rem;
@@ -1921,31 +1921,31 @@ button:active {
   letter-spacing: 0.06em;
 }
 
-.racekbl-plot {
+.racewind-plot {
   width: 100%;
   background: transparent;
   padding: 0;
 }
 
-.racekbl-plot canvas {
+.racewind-plot canvas {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.racekbl-speed-plot {
+.racewind-speed-plot {
   height: 300px;
 }
 
-.racekbl-dir-plot {
+.racewind-dir-plot {
   height: 300px;
 }
 
-.racekbl-speed-periodogram-plot {
+.racewind-speed-periodogram-plot {
   height: 300px;
 }
 
-.racekbl-plot-note {
+.racewind-plot-note {
   margin-top: 8px;
   font-size: 0.85rem;
   font-weight: 600;
@@ -1953,11 +1953,11 @@ button:active {
   color: #000000;
 }
 
-.racekbl-fit-control {
+.racewind-fit-control {
   margin-top: 12px;
 }
 
-.racekbl-hide-periodogram .racekbl-speed-periodogram-panel {
+.racewind-hide-periodogram .racewind-speed-periodogram-panel {
   display: none;
 }
 

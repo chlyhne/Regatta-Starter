@@ -83,12 +83,12 @@ boots the sampler if it has been idle. The public endpoint remains \texttt{/wind
 supports optional query flags such as \texttt{history=1} and \texttt{hours=24} for returning
 the stored history, or \texttt{refresh=1} to force an immediate upstream pull.
 
-\subsection{RaceKBL windowing and cache behavior}
+\subsection{RaceWind windowing and cache behavior}
 
-This subsection summarizes the client-side performance tricks used in the RaceKBL view so
+This subsection summarizes the client-side performance tricks used in the RaceWind view so
 large history windows remain responsive on mobile hardware.
 
-The RaceKBL client retains only a bounded horizon locally (currently eight hours) even
+The RaceWind client retains only a bounded horizon locally (currently eight hours) even
 though the server can provide more. The trim happens on ingest, so older samples never
 enter the in-memory ring. When the window size changes, the client does not discard the
 history and refetch; instead it merges any returned history into the existing sample list

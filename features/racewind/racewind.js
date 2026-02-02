@@ -65,7 +65,7 @@ const periodogramCache = {
 };
 let pinchState = null;
 
-let raceKblDeps = {
+let raceWindDeps = {
   saveSettings: null,
 };
 
@@ -228,21 +228,21 @@ function getLatestSample() {
   return null;
 }
 
-function updateRaceKblStatus() {
-  if (els.raceKblStatus) {
+function updateRaceWindStatus() {
+  if (els.raceWindStatus) {
     if (lastError) {
-      els.raceKblStatus.textContent = lastError;
+      els.raceWindStatus.textContent = lastError;
     } else if (lastFetchAt) {
-      els.raceKblStatus.textContent = "Live";
+      els.raceWindStatus.textContent = "Live";
     } else {
-      els.raceKblStatus.textContent = "Waiting";
+      els.raceWindStatus.textContent = "Waiting";
     }
   }
 }
 
-function updateRaceKblUi() {
-  updateRaceKblStatus();
-  requestRaceKblRender();
+function updateRaceWindUi() {
+  updateRaceWindStatus();
+  requestRaceWindRender();
 }
 
 function parseLatestSample(data) {
@@ -365,7 +365,7 @@ async function fetchWindSample() {
     lastError = err instanceof Error ? err.message : "Wind fetch failed";
   } finally {
     windPollInFlight = false;
-    updateRaceKblUi();
+    updateRaceWindUi();
     flushPendingHistory();
   }
 }
@@ -395,7 +395,7 @@ async function fetchWindHistory(requestedHours) {
     lastError = err instanceof Error ? err.message : "Wind fetch failed";
   } finally {
     windPollInFlight = false;
-    updateRaceKblUi();
+    updateRaceWindUi();
     flushPendingHistory();
   }
 }
@@ -412,8 +412,8 @@ function stopWindPolling() {
   windPollTimer = null;
 }
 
-function requestRaceKblRender() {
-  if (!document.body.classList.contains("racekbl-mode")) return;
+function requestRaceWindRender() {
+  if (!document.body.classList.contains("racewind-mode")) return;
   const now = Date.now();
   const elapsed = now - lastRenderAt;
   if (elapsed >= 200 || !Number.isFinite(lastRenderAt)) {
@@ -422,14 +422,14 @@ function requestRaceKblRender() {
       renderTimer = null;
     }
     lastRenderAt = now;
-    renderRaceKblPlots();
+    renderRaceWindPlots();
     return;
   }
   if (renderTimer) return;
   renderTimer = setTimeout(() => {
     renderTimer = null;
     lastRenderAt = Date.now();
-    renderRaceKblPlots();
+    renderRaceWindPlots();
   }, 200 - elapsed);
 }
 
@@ -959,9 +959,9 @@ function resolvePeriodogramForSelection(analysis, seriesKey, windowMinutes, fitO
 }
 
 function renderSpeedPlot() {
-  if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!els.raceKblSpeedCanvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(els.raceKblSpeedCanvas);
+  if (!document.body.classList.contains("racewind-mode")) return;
+  if (!els.raceWindSpeedCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceWindSpeedCanvas);
   if (!canvasInfo) return;
   const { ctx, width, height } = canvasInfo;
 
@@ -971,7 +971,7 @@ function renderSpeedPlot() {
 
   const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
-    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h", Number.NaN);
+    updateReconNote(els.raceWindSpeedReconNote, null, Number.NaN, "kn/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -984,7 +984,7 @@ function renderSpeedPlot() {
   });
 
   if (!speedValues.length) {
-    updateReconNote(els.raceKblSpeedReconNote, null, Number.NaN, "kn/h", Number.NaN);
+    updateReconNote(els.raceWindSpeedReconNote, null, Number.NaN, "kn/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No speed data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -1017,12 +1017,12 @@ function renderSpeedPlot() {
     if (order !== state.windSpeedFitOrder) {
       state.windSpeedFitOrder = order;
     }
-    if (els.raceKblSpeedFitOrder) {
-      els.raceKblSpeedFitOrder.max = String(maxOrder);
-      els.raceKblSpeedFitOrder.value = String(order);
+    if (els.raceWindSpeedFitOrder) {
+      els.raceWindSpeedFitOrder.max = String(maxOrder);
+      els.raceWindSpeedFitOrder.value = String(order);
     }
-    if (els.raceKblSpeedFitValue) {
-      els.raceKblSpeedFitValue.textContent = String(order);
+    if (els.raceWindSpeedFitValue) {
+      els.raceWindSpeedFitValue.textContent = String(order);
     }
     peakPeriods = peaks
       .map((entry) => ({
@@ -1068,7 +1068,7 @@ function renderSpeedPlot() {
     peakPeriods.sort((a, b) => a.periodSec - b.periodSec);
   }
   updateReconNote(
-    els.raceKblSpeedReconNote,
+    els.raceWindSpeedReconNote,
     peakPeriods,
     trendRate,
     "kn/h",
@@ -1139,9 +1139,9 @@ function drawPlotMessage(ctx, message) {
 }
 
 function renderDirectionPlot() {
-  if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!els.raceKblDirCanvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(els.raceKblDirCanvas);
+  if (!document.body.classList.contains("racewind-mode")) return;
+  if (!els.raceWindDirCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceWindDirCanvas);
   if (!canvasInfo) return;
   const { ctx, width, height } = canvasInfo;
 
@@ -1151,7 +1151,7 @@ function renderDirectionPlot() {
 
   const { startTs, windowMs, samples, windowMinutes } = getWindowSamples();
   if (!samples.length) {
-    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h", Number.NaN);
+    updateReconNote(els.raceWindDirReconNote, null, Number.NaN, "°/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("Waiting for wind", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -1163,7 +1163,7 @@ function renderDirectionPlot() {
     if (Number.isFinite(sample.dirUnwrapped)) dirValues.push(sample.dirUnwrapped);
   });
   if (!dirValues.length) {
-    updateReconNote(els.raceKblDirReconNote, null, Number.NaN, "°/h", Number.NaN);
+    updateReconNote(els.raceWindDirReconNote, null, Number.NaN, "°/h", Number.NaN);
     ctx.fillStyle = "#000000";
     ctx.font = WIND_PLOT_LABEL_FONT;
     ctx.fillText("No dir data", WIND_PLOT_PADDING, WIND_PLOT_PADDING + 12);
@@ -1196,12 +1196,12 @@ function renderDirectionPlot() {
     if (order !== state.windDirFitOrder) {
       state.windDirFitOrder = order;
     }
-    if (els.raceKblDirFitOrder) {
-      els.raceKblDirFitOrder.max = String(maxOrder);
-      els.raceKblDirFitOrder.value = String(order);
+    if (els.raceWindDirFitOrder) {
+      els.raceWindDirFitOrder.max = String(maxOrder);
+      els.raceWindDirFitOrder.value = String(order);
     }
-    if (els.raceKblDirFitValue) {
-      els.raceKblDirFitValue.textContent = String(order);
+    if (els.raceWindDirFitValue) {
+      els.raceWindDirFitValue.textContent = String(order);
     }
     peakPeriods = peaks
       .map((entry) => ({
@@ -1247,7 +1247,7 @@ function renderDirectionPlot() {
     peakPeriods.sort((a, b) => a.periodSec - b.periodSec);
   }
   updateReconNote(
-    els.raceKblDirReconNote,
+    els.raceWindDirReconNote,
     peakPeriods,
     trendRate,
     "°/h",
@@ -1311,9 +1311,9 @@ function renderDirectionPlot() {
 }
 
 function renderSpeedPeriodogramPlot() {
-  if (!document.body.classList.contains("racekbl-mode")) return;
-  if (!els.raceKblSpeedPeriodogramCanvas) return;
-  const canvasInfo = resizeCanvasToCssPixels(els.raceKblSpeedPeriodogramCanvas);
+  if (!document.body.classList.contains("racewind-mode")) return;
+  if (!els.raceWindSpeedPeriodogramCanvas) return;
+  const canvasInfo = resizeCanvasToCssPixels(els.raceWindSpeedPeriodogramCanvas);
   if (!canvasInfo) return;
   const { ctx, width, height } = canvasInfo;
 
@@ -1407,7 +1407,7 @@ function renderSpeedPeriodogramPlot() {
   drawZeroLine(ctx, rect, min, max);
 }
 
-function renderRaceKblPlots() {
+function renderRaceWindPlots() {
   renderSpeedPlot();
   renderDirectionPlot();
   if (SHOW_PERIOD_PLOT) {
@@ -1415,146 +1415,146 @@ function renderRaceKblPlots() {
   }
 }
 
-function syncRaceKblInputs() {
+function syncRaceWindInputs() {
   const minutes = snapHistoryMinutes(state.windHistoryMinutes || WIND_HISTORY_MINUTES_MIN);
   if (minutes !== state.windHistoryMinutes) {
     state.windHistoryMinutes = minutes;
   }
-  updateRaceKblTitles(minutes);
-  if (els.raceKblHistory) {
-    els.raceKblHistory.value = String(minutes);
+  updateRaceWindTitles(minutes);
+  if (els.raceWindHistory) {
+    els.raceWindHistory.value = String(minutes);
   }
-  if (els.raceKblHistoryValue) {
-    els.raceKblHistoryValue.textContent = formatHistoryMinutes(minutes);
+  if (els.raceWindHistoryValue) {
+    els.raceWindHistoryValue.textContent = formatHistoryMinutes(minutes);
   }
   const periodMinutes = resolvePeriodogramCapMinutes();
   if (periodMinutes !== state.windPeriodogramMinutes) {
     state.windPeriodogramMinutes = periodMinutes;
   }
-  if (els.raceKblPeriodogram) {
-    els.raceKblPeriodogram.value = String(periodMinutes);
+  if (els.raceWindPeriodogram) {
+    els.raceWindPeriodogram.value = String(periodMinutes);
   }
-  if (els.raceKblPeriodogramValue) {
-    els.raceKblPeriodogramValue.textContent = formatWindowMinutes(periodMinutes);
+  if (els.raceWindPeriodogramValue) {
+    els.raceWindPeriodogramValue.textContent = formatWindowMinutes(periodMinutes);
   }
-  const speedMax = resolveFitOrderMax(els.raceKblSpeedFitOrder);
+  const speedMax = resolveFitOrderMax(els.raceWindSpeedFitOrder);
   const speedOrder = clampFitOrder(state.windSpeedFitOrder, speedMax);
   if (speedOrder !== state.windSpeedFitOrder) {
     state.windSpeedFitOrder = speedOrder;
   }
-  if (els.raceKblSpeedFitOrder) {
-    els.raceKblSpeedFitOrder.max = String(speedMax);
-    els.raceKblSpeedFitOrder.value = String(speedOrder);
+  if (els.raceWindSpeedFitOrder) {
+    els.raceWindSpeedFitOrder.max = String(speedMax);
+    els.raceWindSpeedFitOrder.value = String(speedOrder);
   }
-  if (els.raceKblSpeedFitValue) {
-    els.raceKblSpeedFitValue.textContent = String(speedOrder);
+  if (els.raceWindSpeedFitValue) {
+    els.raceWindSpeedFitValue.textContent = String(speedOrder);
   }
-  const dirMax = resolveFitOrderMax(els.raceKblDirFitOrder);
+  const dirMax = resolveFitOrderMax(els.raceWindDirFitOrder);
   const dirOrder = clampFitOrder(state.windDirFitOrder, dirMax);
   if (dirOrder !== state.windDirFitOrder) {
     state.windDirFitOrder = dirOrder;
   }
-  if (els.raceKblDirFitOrder) {
-    els.raceKblDirFitOrder.max = String(dirMax);
-    els.raceKblDirFitOrder.value = String(dirOrder);
+  if (els.raceWindDirFitOrder) {
+    els.raceWindDirFitOrder.max = String(dirMax);
+    els.raceWindDirFitOrder.value = String(dirOrder);
   }
-  if (els.raceKblDirFitValue) {
-    els.raceKblDirFitValue.textContent = String(dirOrder);
+  if (els.raceWindDirFitValue) {
+    els.raceWindDirFitValue.textContent = String(dirOrder);
   }
 }
 
 function setHistoryWindow(minutes) {
   const clamped = snapHistoryMinutes(minutes);
   state.windHistoryMinutes = clamped;
-  if (raceKblDeps.saveSettings) {
-    raceKblDeps.saveSettings();
+  if (raceWindDeps.saveSettings) {
+    raceWindDeps.saveSettings();
   }
-  updateRaceKblTitles(clamped);
-  if (els.raceKblHistory) {
-    els.raceKblHistory.value = String(clamped);
+  updateRaceWindTitles(clamped);
+  if (els.raceWindHistory) {
+    els.raceWindHistory.value = String(clamped);
   }
-  if (els.raceKblHistoryValue) {
-    els.raceKblHistoryValue.textContent = formatHistoryMinutes(clamped);
+  if (els.raceWindHistoryValue) {
+    els.raceWindHistoryValue.textContent = formatHistoryMinutes(clamped);
   }
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
-  if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
+  if (requiredHours > historyLoadedHours && document.body.classList.contains("racewind-mode")) {
     requestHistoryFetch(requiredHours);
   }
-  updateRaceKblUi();
+  updateRaceWindUi();
 }
 
 function setPeriodogramWindow(minutes) {
   const clamped = snapPeriodogramMinutes(minutes);
   state.windPeriodogramMinutes = clamped;
-  if (raceKblDeps.saveSettings) {
-    raceKblDeps.saveSettings();
+  if (raceWindDeps.saveSettings) {
+    raceWindDeps.saveSettings();
   }
-  if (els.raceKblPeriodogram) {
-    els.raceKblPeriodogram.value = String(clamped);
+  if (els.raceWindPeriodogram) {
+    els.raceWindPeriodogram.value = String(clamped);
   }
-  if (els.raceKblPeriodogramValue) {
-    els.raceKblPeriodogramValue.textContent = formatWindowMinutes(clamped);
+  if (els.raceWindPeriodogramValue) {
+    els.raceWindPeriodogramValue.textContent = formatWindowMinutes(clamped);
   }
   const requiredHours = Math.max(1, Math.ceil(getHistoryRequestMinutes() / 60));
-  if (requiredHours > historyLoadedHours && document.body.classList.contains("racekbl-mode")) {
+  if (requiredHours > historyLoadedHours && document.body.classList.contains("racewind-mode")) {
     requestHistoryFetch(requiredHours);
   }
-  updateRaceKblUi();
+  updateRaceWindUi();
 }
 
 function setSpeedFitOrder(value) {
-  const clamped = clampFitOrder(value, resolveFitOrderMax(els.raceKblSpeedFitOrder));
+  const clamped = clampFitOrder(value, resolveFitOrderMax(els.raceWindSpeedFitOrder));
   state.windSpeedFitOrder = clamped;
-  if (raceKblDeps.saveSettings) {
-    raceKblDeps.saveSettings();
+  if (raceWindDeps.saveSettings) {
+    raceWindDeps.saveSettings();
   }
-  if (els.raceKblSpeedFitOrder) {
-    els.raceKblSpeedFitOrder.value = String(clamped);
+  if (els.raceWindSpeedFitOrder) {
+    els.raceWindSpeedFitOrder.value = String(clamped);
   }
-  if (els.raceKblSpeedFitValue) {
-    els.raceKblSpeedFitValue.textContent = String(clamped);
+  if (els.raceWindSpeedFitValue) {
+    els.raceWindSpeedFitValue.textContent = String(clamped);
   }
-  updateRaceKblUi();
+  updateRaceWindUi();
 }
 
 function setDirFitOrder(value) {
-  const clamped = clampFitOrder(value, resolveFitOrderMax(els.raceKblDirFitOrder));
+  const clamped = clampFitOrder(value, resolveFitOrderMax(els.raceWindDirFitOrder));
   state.windDirFitOrder = clamped;
-  if (raceKblDeps.saveSettings) {
-    raceKblDeps.saveSettings();
+  if (raceWindDeps.saveSettings) {
+    raceWindDeps.saveSettings();
   }
-  if (els.raceKblDirFitOrder) {
-    els.raceKblDirFitOrder.value = String(clamped);
+  if (els.raceWindDirFitOrder) {
+    els.raceWindDirFitOrder.value = String(clamped);
   }
-  if (els.raceKblDirFitValue) {
-    els.raceKblDirFitValue.textContent = String(clamped);
+  if (els.raceWindDirFitValue) {
+    els.raceWindDirFitValue.textContent = String(clamped);
   }
-  updateRaceKblUi();
+  updateRaceWindUi();
 }
 
-function setRaceKblSettingsOpen(open) {
+function setRaceWindSettingsOpen(open) {
   const next = Boolean(open);
-  if (els.raceKblSettingsView) {
-    els.raceKblSettingsView.setAttribute("aria-hidden", next ? "false" : "true");
+  if (els.raceWindSettingsView) {
+    els.raceWindSettingsView.setAttribute("aria-hidden", next ? "false" : "true");
   }
-  document.body.classList.toggle("racekbl-settings-open", next);
+  document.body.classList.toggle("racewind-settings-open", next);
   if (next) {
-    syncRaceKblInputs();
+    syncRaceWindInputs();
   }
 }
 
-function updateRaceKblPlotVisibility() {
-  document.body.classList.remove("racekbl-hide-correlations");
-  document.body.classList.toggle("racekbl-hide-periodogram", !SHOW_PERIOD_PLOT);
+function updateRaceWindPlotVisibility() {
+  document.body.classList.remove("racewind-hide-correlations");
+  document.body.classList.toggle("racewind-hide-periodogram", !SHOW_PERIOD_PLOT);
 }
 
-function updateRaceKblTitles(minutes) {
+function updateRaceWindTitles(minutes) {
   const horizon = formatHorizonMinutes(minutes);
-  if (els.raceKblSpeedTitle) {
-    els.raceKblSpeedTitle.textContent = `Wind speed ${horizon}`;
+  if (els.raceWindSpeedTitle) {
+    els.raceWindSpeedTitle.textContent = `Wind speed ${horizon}`;
   }
-  if (els.raceKblDirTitle) {
-    els.raceKblDirTitle.textContent = `Wind direction ${horizon}`;
+  if (els.raceWindDirTitle) {
+    els.raceWindDirTitle.textContent = `Wind direction ${horizon}`;
   }
 }
 
@@ -1567,7 +1567,7 @@ function getTouchDistance(touchA, touchB) {
 function shouldHandlePinch(event) {
   const target = event.target;
   if (!target || typeof target.closest !== "function") return false;
-  return Boolean(target.closest(".racekbl-plot"));
+  return Boolean(target.closest(".racewind-plot"));
 }
 
 function zoomHistoryByFactor(factor) {
@@ -1601,95 +1601,95 @@ function zoomHistoryByStep(step) {
   }
 }
 
-function bindRaceKblEvents() {
-  if (els.openRaceKblSettings) {
-    els.openRaceKblSettings.addEventListener("click", () => {
-      const isOpen = document.body.classList.contains("racekbl-settings-open");
-      setRaceKblSettingsOpen(!isOpen);
+function bindRaceWindEvents() {
+  if (els.openRaceWindSettings) {
+    els.openRaceWindSettings.addEventListener("click", () => {
+      const isOpen = document.body.classList.contains("racewind-settings-open");
+      setRaceWindSettingsOpen(!isOpen);
     });
   }
 
-  if (els.closeRaceKblSettings) {
-    els.closeRaceKblSettings.addEventListener("click", () => {
-      setRaceKblSettingsOpen(false);
+  if (els.closeRaceWindSettings) {
+    els.closeRaceWindSettings.addEventListener("click", () => {
+      setRaceWindSettingsOpen(false);
     });
   }
 
-  if (els.raceKblHistory) {
-    els.raceKblHistory.addEventListener("input", () => {
-      setHistoryWindow(els.raceKblHistory.value);
+  if (els.raceWindHistory) {
+    els.raceWindHistory.addEventListener("input", () => {
+      setHistoryWindow(els.raceWindHistory.value);
     });
   }
-  if (els.raceKblPeriodogram) {
-    els.raceKblPeriodogram.addEventListener("input", () => {
-      setPeriodogramWindow(els.raceKblPeriodogram.value);
+  if (els.raceWindPeriodogram) {
+    els.raceWindPeriodogram.addEventListener("input", () => {
+      setPeriodogramWindow(els.raceWindPeriodogram.value);
     });
   }
-  if (els.raceKblSpeedFitOrder) {
-    els.raceKblSpeedFitOrder.addEventListener("input", () => {
-      setSpeedFitOrder(els.raceKblSpeedFitOrder.value);
+  if (els.raceWindSpeedFitOrder) {
+    els.raceWindSpeedFitOrder.addEventListener("input", () => {
+      setSpeedFitOrder(els.raceWindSpeedFitOrder.value);
     });
   }
-  if (els.raceKblDirFitOrder) {
-    els.raceKblDirFitOrder.addEventListener("input", () => {
-      setDirFitOrder(els.raceKblDirFitOrder.value);
+  if (els.raceWindDirFitOrder) {
+    els.raceWindDirFitOrder.addEventListener("input", () => {
+      setDirFitOrder(els.raceWindDirFitOrder.value);
     });
   }
-  const raceKblView = document.getElementById("racekbl-view");
-  if (raceKblView) {
-    raceKblView.addEventListener(
+  const raceWindView = document.getElementById("racewind-view");
+  if (raceWindView) {
+    raceWindView.addEventListener(
       "gesturestart",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         const target = event.target;
-        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+        if (target && typeof target.closest === "function" && target.closest(".racewind-plot")) {
           return;
         }
         event.preventDefault();
       },
       { passive: false }
     );
-    raceKblView.addEventListener(
+    raceWindView.addEventListener(
       "gesturechange",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         const target = event.target;
-        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+        if (target && typeof target.closest === "function" && target.closest(".racewind-plot")) {
           return;
         }
         event.preventDefault();
       },
       { passive: false }
     );
-    raceKblView.addEventListener(
+    raceWindView.addEventListener(
       "gestureend",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         const target = event.target;
-        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+        if (target && typeof target.closest === "function" && target.closest(".racewind-plot")) {
           return;
         }
         event.preventDefault();
       },
       { passive: false }
     );
-    raceKblView.addEventListener(
+    raceWindView.addEventListener(
       "touchmove",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         if (!event.touches || event.touches.length < 2) return;
         const target = event.target;
-        if (target && typeof target.closest === "function" && target.closest(".racekbl-plot")) {
+        if (target && typeof target.closest === "function" && target.closest(".racewind-plot")) {
           return;
         }
         event.preventDefault();
       },
       { passive: false }
     );
-    raceKblView.addEventListener(
+    raceWindView.addEventListener(
       "touchstart",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         if (!shouldHandlePinch(event)) return;
         if (event.touches.length !== 2) return;
         const [touchA, touchB] = event.touches;
@@ -1703,7 +1703,7 @@ function bindRaceKblEvents() {
       },
       { passive: true }
     );
-    raceKblView.addEventListener(
+    raceWindView.addEventListener(
       "touchmove",
       (event) => {
         if (!pinchState) return;
@@ -1728,16 +1728,16 @@ function bindRaceKblEvents() {
     const endPinch = () => {
       pinchState = null;
     };
-    raceKblView.addEventListener("touchend", endPinch, { passive: true });
-    raceKblView.addEventListener("touchcancel", endPinch, { passive: true });
-    raceKblView.addEventListener(
+    raceWindView.addEventListener("touchend", endPinch, { passive: true });
+    raceWindView.addEventListener("touchcancel", endPinch, { passive: true });
+    raceWindView.addEventListener(
       "wheel",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
         const target = event.target;
         if (!target || typeof target.closest !== "function") return;
-        if (!target.closest(".racekbl-plot")) return;
+        if (!target.closest(".racewind-plot")) return;
         const factor = event.deltaY > 0 ? 1.1 : 0.9;
         zoomHistoryByFactor(factor);
         event.preventDefault();
@@ -1750,7 +1750,7 @@ function bindRaceKblEvents() {
     window.addEventListener(
       "wheel",
       (event) => {
-        if (!document.body.classList.contains("racekbl-mode")) return;
+        if (!document.body.classList.contains("racewind-mode")) return;
         if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
         const path = typeof event.composedPath === "function" ? event.composedPath() : [];
         const onPlot = path.some(
@@ -1758,7 +1758,7 @@ function bindRaceKblEvents() {
             node &&
             node.nodeType === 1 &&
             typeof node.classList?.contains === "function" &&
-            node.classList.contains("racekbl-plot")
+            node.classList.contains("racewind-plot")
         );
         if (!onPlot) return;
         if (!event.cancelable) return;
@@ -1774,7 +1774,7 @@ function bindRaceKblEvents() {
     );
   }
   document.addEventListener("visibilitychange", () => {
-    if (!document.body.classList.contains("racekbl-mode")) return;
+    if (!document.body.classList.contains("racewind-mode")) return;
     if (document.visibilityState === "hidden") {
       stopWindPolling();
     } else {
@@ -1783,31 +1783,31 @@ function bindRaceKblEvents() {
   });
 }
 
-function initRaceKbl(deps = {}) {
-  raceKblDeps = { ...raceKblDeps, ...deps };
-  updateRaceKblPlotVisibility();
-  syncRaceKblInputs();
-  updateRaceKblUi();
+function initRaceWind(deps = {}) {
+  raceWindDeps = { ...raceWindDeps, ...deps };
+  updateRaceWindPlotVisibility();
+  syncRaceWindInputs();
+  updateRaceWindUi();
 }
 
-function enterRaceKblView() {
-  updateRaceKblPlotVisibility();
-  syncRaceKblInputs();
-  updateRaceKblUi();
+function enterRaceWindView() {
+  updateRaceWindPlotVisibility();
+  syncRaceWindInputs();
+  updateRaceWindUi();
   startWindPolling();
 }
 
-function leaveRaceKblView() {
+function leaveRaceWindView() {
   stopWindPolling();
 }
 
 export {
-  initRaceKbl,
-  bindRaceKblEvents,
-  syncRaceKblInputs,
-  enterRaceKblView,
-  leaveRaceKblView,
-  requestRaceKblRender,
-  renderRaceKblPlots,
-  setRaceKblSettingsOpen,
+  initRaceWind,
+  bindRaceWindEvents,
+  syncRaceWindInputs,
+  enterRaceWindView,
+  leaveRaceWindView,
+  requestRaceWindRender,
+  renderRaceWindPlots,
+  setRaceWindSettingsOpen,
 };
