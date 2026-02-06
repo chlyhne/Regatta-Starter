@@ -14,6 +14,14 @@
   <body>
     <header class="map-head">
       <div id="map-title" class="map-title">Select marks</div>
+      <div class="map-mode-toggle" role="group" aria-label="Edit mode">
+        <button id="map-mode-venue" class="map-tab" type="button" aria-pressed="true">
+          Venue
+        </button>
+        <button id="map-mode-race" class="map-tab" type="button" aria-pressed="false">
+          Race
+        </button>
+      </div>
       <div class="map-actions">
         <button id="add-course-mark" class="map-btn" hidden>Add mark</button>
         <button id="undo-course-mark" class="map-btn" hidden>Undo</button>
@@ -21,46 +29,64 @@
         <button id="close-map" class="map-btn">Done</button>
       </div>
       <div id="course-meta" class="map-meta" hidden aria-hidden="true">
-        <div class="map-field">
-          <label for="map-mark-name">Mark name</label>
-          <input
-            id="map-mark-name"
-            class="map-input"
-            type="text"
-            placeholder="Mark 1"
-            autocomplete="off"
-            spellcheck="false"
-          />
+        <div class="map-panel map-panel-venue">
+          <div class="map-field">
+            <label for="map-mark-name">Mark name</label>
+            <input
+              id="map-mark-name"
+              class="map-input"
+              type="text"
+              placeholder="Mark 1"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="map-field">
+            <label for="map-mark-desc">Description</label>
+            <input
+              id="map-mark-desc"
+              class="map-input"
+              type="text"
+              placeholder="Optional"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="map-role-row" role="group" aria-label="Mark role">
+            <button class="map-role" type="button" data-role="none">Ordinary</button>
+            <button class="map-role" type="button" data-role="start-port">Start P</button>
+            <button class="map-role" type="button" data-role="start-starboard">
+              Start SB
+            </button>
+            <button class="map-role" type="button" data-role="finish-port">Finish P</button>
+            <button class="map-role" type="button" data-role="finish-starboard">
+              Finish SB
+            </button>
+          </div>
+          <div class="map-edit-actions">
+            <button id="new-mark" class="map-btn" type="button">New mark</button>
+            <button id="delete-mark" class="map-btn" type="button">Delete mark</button>
+          </div>
         </div>
-        <div class="map-field">
-          <label for="map-mark-desc">Description</label>
-          <input
-            id="map-mark-desc"
-            class="map-input"
-            type="text"
-            placeholder="Optional"
-            autocomplete="off"
-            spellcheck="false"
-          />
+        <div class="map-panel map-panel-shared">
+          <div class="map-label">Marks</div>
+          <div id="map-mark-list" class="map-mark-list"></div>
         </div>
-        <div class="map-role-row" role="group" aria-label="Mark role">
-          <button class="map-role" type="button" data-role="none">Ordinary</button>
-          <button class="map-role" type="button" data-role="start-port">Start P</button>
-          <button class="map-role" type="button" data-role="start-starboard">Start SB</button>
-          <button class="map-role" type="button" data-role="finish-port">Finish P</button>
-          <button class="map-role" type="button" data-role="finish-starboard">Finish SB</button>
+        <div class="map-panel map-panel-race">
+          <div class="map-help">
+            <span>Need to edit marks?</span>
+            <button id="map-to-venue" class="map-btn map-btn-small" type="button">
+              Edit venue marks
+            </button>
+          </div>
+          <div class="map-label">Route</div>
+          <div class="map-route-actions">
+            <button id="add-route-mark" class="map-btn" type="button">Add to route</button>
+            <button id="undo-route-mark" class="map-btn" type="button">Undo route</button>
+            <button id="clear-route" class="map-btn" type="button">Clear route</button>
+          </div>
+          <div id="map-course-list" class="map-course-list"></div>
         </div>
-        <div class="map-edit-actions">
-          <button id="new-mark" class="map-btn" type="button">New mark</button>
-          <button id="delete-mark" class="map-btn" type="button">Delete mark</button>
-        </div>
-        <div id="map-mark-list" class="map-mark-list"></div>
-        <div class="map-route-actions">
-          <button id="add-route-mark" class="map-btn" type="button">Add to route</button>
-          <button id="undo-route-mark" class="map-btn" type="button">Undo route</button>
-          <button id="clear-route" class="map-btn" type="button">Clear route</button>
-        </div>
-        <div id="map-course-list" class="map-course-list"></div>
       </div>
     </header>
     <main class="map-wrap">

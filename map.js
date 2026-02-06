@@ -18,6 +18,9 @@ const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 
 const els = {
   mapTitle: document.getElementById("map-title"),
+  mapModeVenue: document.getElementById("map-mode-venue"),
+  mapModeRace: document.getElementById("map-mode-race"),
+  mapToVenue: document.getElementById("map-to-venue"),
   addMark: document.getElementById("add-course-mark"),
   undoMark: document.getElementById("undo-course-mark"),
   clearMarks: document.getElementById("clear-course-marks"),
@@ -43,6 +46,7 @@ const state = {
   races: [],
   venue: null,
   race: null,
+  editMode: "race",
   selectedMarkId: null,
   markMarkers: [],
   labelMarkers: [],
@@ -57,6 +61,19 @@ function getNoCacheQuery() {
   if (!token) return "";
   sessionStorage.setItem(NO_CACHE_KEY, token);
   return `?nocache=${encodeURIComponent(token)}`;
+}
+
+function normalizeEditMode(value) {
+  return value === "race" ? "race" : "venue";
+}
+
+function getInitialEditMode() {
+  const params = new URLSearchParams(window.location.search);
+  const queryMode = params.get("mode");
+  if (queryMode) {
+    return normalizeEditMode(queryMode);
+  }
+  return "race";
 }
 
 function loadData() {
@@ -129,6 +146,45 @@ function roleLabel(role) {
   }
 }
 
+function setEditMode(mode) {
+  const normalized = normalizeEditMode(mode);
+  state.editMode = normalized;
+  document.body.dataset.mapMode = normalized;
+  if (els.mapModeVenue) {
+    els.mapModeVenue.setAttribute(
+      "aria-pressed",
+      normalized === "venue" ? "true" : "false"
+    );
+  }
+  if (els.mapModeRace) {
+    els.mapModeRace.setAttribute(
+      "aria-pressed",
+      normalized === "race" ? "true" : "false"
+    );
+  }
+  if (els.mapTitle) {
+    els.mapTitle.textContent = normalized === "race" ? "Race route" : "Venue marks";
+  }
+  if (els.mapCaption) {
+    els.mapCaption.textContent =
+      normalized === "race"
+        ? "Select a mark, then add it to the route."
+        : "Drag the map. Add marks on the crosshair.";
+  }
+  const inputsDisabled = normalized !== "venue";
+  if (els.mapMarkName) {
+    els.mapMarkName.disabled = inputsDisabled;
+  }
+  if (els.mapMarkDesc) {
+    els.mapMarkDesc.disabled = inputsDisabled;
+  }
+  if (els.newMark) {
+    els.newMark.disabled = inputsDisabled;
+  }
+  syncRoleButtons();
+  syncRouteButtons();
+}
+
 function setSelectedMark(markId) {
   state.selectedMarkId = markId;
   const mark = getSelectedMark();
@@ -160,29 +216,33 @@ function clearSelection() {
 function syncRoleButtons() {
   const mark = getSelectedMark();
   const role = mark ? mark.role : null;
+  const isVenueMode = state.editMode === "venue";
   els.mapRoleButtons.forEach((button) => {
     const buttonRole = button.dataset.role || "none";
     const selected = role === buttonRole || (!role && buttonRole === "none");
     button.classList.toggle("selected", Boolean(mark) && selected);
-    button.disabled = !mark;
+    button.disabled = !mark || !isVenueMode;
   });
   if (els.deleteMark) {
-    els.deleteMark.disabled = !mark;
+    els.deleteMark.disabled = !mark || !isVenueMode;
   }
 }
 
 function syncRouteButtons() {
   const mark = getSelectedMark();
   if (els.addRoute) {
-    const canAdd = Boolean(mark) && (!mark.role || mark.role === MARK_ROLES.NONE);
+    const canAdd =
+      state.editMode === "race" &&
+      Boolean(mark) &&
+      (!mark.role || mark.role === MARK_ROLES.NONE);
     els.addRoute.disabled = !canAdd;
   }
   const routeLength = state.race?.route?.length || 0;
   if (els.undoRoute) {
-    els.undoRoute.disabled = routeLength === 0;
+    els.undoRoute.disabled = state.editMode !== "race" || routeLength === 0;
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = routeLength === 0;
+    els.clearRoute.disabled = state.editMode !== "race" || routeLength === 0;
   }
 }
 
@@ -222,6 +282,7 @@ function assignRole(mark, role) {
 
 function updateSelectedMarkFromInputs() {
   const mark = getSelectedMark();
+  if (state.editMode !== "venue") return;
   if (!mark) return;
   if (els.mapMarkName) {
     const name = els.mapMarkName.value.trim();
@@ -387,12 +448,7 @@ function updateMapOverlays() {
 }
 
 function updateUi() {
-  if (els.mapTitle) {
-    els.mapTitle.textContent = "Define course";
-  }
-  if (els.mapCaption) {
-    els.mapCaption.textContent = "Add marks on the crosshair, name them, then build the route.";
-  }
+  setEditMode(state.editMode);
   if (els.courseMeta) {
     els.courseMeta.hidden = false;
     els.courseMeta.setAttribute("aria-hidden", "false");
@@ -478,9 +534,26 @@ function initMap() {
 }
 
 function bindEvents() {
+  if (els.mapModeVenue) {
+    els.mapModeVenue.addEventListener("click", () => {
+      setEditMode("venue");
+    });
+  }
+  if (els.mapModeRace) {
+    els.mapModeRace.addEventListener("click", () => {
+      setEditMode("race");
+    });
+  }
+  if (els.mapToVenue) {
+    els.mapToVenue.addEventListener("click", () => {
+      setEditMode("venue");
+    });
+  }
+
   if (els.addMark) {
     els.addMark.addEventListener("click", () => {
       if (!state.map || !state.venue) return;
+      if (state.editMode !== "venue") return;
       const center = state.map.getCenter();
       const nameInput = els.mapMarkName ? els.mapMarkName.value.trim() : "";
       const descInput = els.mapMarkDesc ? els.mapMarkDesc.value.trim() : "";
@@ -502,6 +575,7 @@ function bindEvents() {
 
   if (els.undoMark) {
     els.undoMark.addEventListener("click", () => {
+      if (state.editMode !== "venue") return;
       if (!state.venue || !state.venue.marks.length) return;
       const removed = state.venue.marks.pop();
       if (removed && removed.id === state.selectedMarkId) {
@@ -517,6 +591,7 @@ function bindEvents() {
 
   if (els.clearMarks) {
     els.clearMarks.addEventListener("click", () => {
+      if (state.editMode !== "venue") return;
       if (!state.venue || !state.venue.marks.length) return;
       const confirmed = window.confirm("Clear all marks?");
       if (!confirmed) return;
@@ -545,6 +620,7 @@ function bindEvents() {
   if (els.mapRoleButtons.length) {
     els.mapRoleButtons.forEach((button) => {
       button.addEventListener("click", () => {
+        if (state.editMode !== "venue") return;
         const mark = getSelectedMark();
         if (!mark) return;
         const role = button.dataset.role || MARK_ROLES.NONE;
@@ -567,6 +643,7 @@ function bindEvents() {
 
   if (els.deleteMark) {
     els.deleteMark.addEventListener("click", () => {
+      if (state.editMode !== "venue") return;
       const mark = getSelectedMark();
       if (!mark || !state.venue) return;
       const confirmed = window.confirm(`Delete "${mark.name}"?`);
@@ -582,6 +659,7 @@ function bindEvents() {
 
   if (els.addRoute) {
     els.addRoute.addEventListener("click", () => {
+      if (state.editMode !== "race") return;
       if (!state.race) return;
       const mark = getSelectedMark();
       if (!mark) return;
@@ -607,6 +685,7 @@ function bindEvents() {
 
   if (els.undoRoute) {
     els.undoRoute.addEventListener("click", () => {
+      if (state.editMode !== "race") return;
       if (!state.race || !Array.isArray(state.race.route) || !state.race.route.length) return;
       state.race.route.pop();
       syncVenueDefaultRoute();
@@ -619,6 +698,7 @@ function bindEvents() {
 
   if (els.clearRoute) {
     els.clearRoute.addEventListener("click", () => {
+      if (state.editMode !== "race") return;
       if (!state.race || !Array.isArray(state.race.route) || !state.race.route.length) return;
       const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
@@ -651,6 +731,7 @@ function bindEvents() {
 }
 
 loadData();
+state.editMode = getInitialEditMode();
 updateUi();
 initMap();
 bindEvents();

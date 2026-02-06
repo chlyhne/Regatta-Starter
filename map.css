@@ -18,6 +18,8 @@ body {
   height: 100vh;
   -webkit-user-select: none;
   user-select: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .map-head {
@@ -38,6 +40,31 @@ body {
   letter-spacing: 0.12em;
 }
 
+.map-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.map-tab {
+  border: 0;
+  background: #ffffff;
+  color: #000000;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.map-tab[aria-pressed="true"] {
+  background: #000000;
+  color: #ffffff;
+}
+
 .map-actions {
   display: flex;
   gap: 8px;
@@ -51,6 +78,20 @@ body {
   display: grid;
   gap: 10px;
   width: 100%;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.map-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.map-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: none;
 }
 
 .map-role-row {
@@ -93,6 +134,22 @@ body {
   flex-wrap: wrap;
 }
 
+.map-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.map-btn.map-btn-small {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  border-radius: 12px;
+}
+
 .map-field {
   display: grid;
   gap: 4px;
@@ -115,6 +172,8 @@ body {
 
 .map-course-list {
   min-height: 40px;
+  max-height: 140px;
+  overflow-y: auto;
   border: 2px solid #000000;
   border-radius: 12px;
   padding: 6px 8px;
@@ -127,6 +186,8 @@ body {
 
 .map-mark-list {
   min-height: 48px;
+  max-height: 160px;
+  overflow-y: auto;
   border: 2px solid #000000;
   border-radius: 12px;
   padding: 6px 8px;
@@ -199,6 +260,11 @@ body {
   white-space: nowrap;
 }
 
+.map-btn[aria-pressed="true"] {
+  background: #000000;
+  color: #ffffff;
+}
+
 .map-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -212,9 +278,27 @@ body {
 
 .map-wrap {
   position: relative;
-  height: calc(100vh - 64px);
-  min-height: 260px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
+}
+
+body[data-map-mode="race"] .map-panel-venue {
+  display: none;
+}
+
+body[data-map-mode="venue"] .map-panel-race {
+  display: none;
+}
+
+body[data-map-mode="race"] #add-course-mark,
+body[data-map-mode="race"] #undo-course-mark,
+body[data-map-mode="race"] #clear-course-marks {
+  display: none !important;
+}
+
+body[data-map-mode="race"] .map-crosshair {
+  display: none;
 }
 
 .map {

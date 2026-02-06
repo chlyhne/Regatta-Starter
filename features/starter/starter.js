@@ -1782,7 +1782,12 @@ function bindStarterEvents() {
       const nameInput = window.prompt("Race name:", fallback);
       if (nameInput === null) return;
       const name = normalizeMarkName(nameInput, fallback);
-      const race = createRace(name, state.venue);
+      const race = createRace(name, state.venue, {
+        startEnabled: state.race?.startEnabled !== false,
+        finishEnabled: state.race?.finishEnabled !== false,
+        finishUseStartLine: Boolean(state.race?.finishUseStartLine),
+        finishReverse: Boolean(state.race?.finishReverse),
+      });
       state.races.unshift(race);
       state.race = race;
       state.activeRaceId = race.id;
