@@ -1,4 +1,9 @@
-import { state, TRACK_MAX_POINTS, TRACK_WINDOW_MS } from "../../core/state.js";
+import {
+  state,
+  TRACK_MAX_POINTS,
+  TRACK_WINDOW_MS,
+  COURSE_TRACK_MAX_POINTS,
+} from "../../core/state.js";
 import { els } from "../../ui/dom.js";
 import { toMeters } from "../../core/geo.js";
 import { getNowMs } from "../../core/clock.js";
@@ -26,6 +31,8 @@ const boatSvg = {
   loading: false,
   ready: false,
 };
+let lastTrackMode = null;
+let lastCourseVersion = null;
 
 function parseSvgLength(value) {
   if (!value) return Number.NaN;
@@ -87,10 +94,48 @@ function loadBoatSvg() {
     });
 }
 
-function appendTrackPoint(list, point) {
+function resetViewState() {
+  viewState.origin = null;
+  viewState.center = null;
+  viewState.scale = null;
+  viewState.pointers.clear();
+  viewState.panStart = null;
+  viewState.pinchStart = null;
+}
+
+function syncTrackTitle() {
+  if (!els.trackTitle) return;
+  const mode = state.trackMode === "course" ? "course" : "gps";
+  els.trackTitle.textContent = mode === "course" ? "RaceCourse" : "RaceTrack";
+}
+
+function syncTrackViewState() {
+  const mode = state.trackMode === "course" ? "course" : "gps";
+  if (lastTrackMode !== mode) {
+    resetViewState();
+    lastTrackMode = mode;
+  }
+  if (mode === "course") {
+    const version = Number.isFinite(state.course?.version) ? state.course.version : 0;
+    if (lastCourseVersion !== version) {
+      resetViewState();
+      lastCourseVersion = version;
+    }
+  }
+}
+
+function setTrackMode(mode) {
+  const next = mode === "course" ? "course" : "gps";
+  if (state.trackMode === next) return;
+  state.trackMode = next;
+  resetViewState();
+  syncTrackTitle();
+}
+
+function appendTrackPoint(list, point, maxPoints = TRACK_MAX_POINTS) {
   list.push(point);
-  if (list.length > TRACK_MAX_POINTS) {
-    list.splice(0, list.length - TRACK_MAX_POINTS);
+  if (list.length > maxPoints) {
+    list.splice(0, list.length - maxPoints);
   }
 }
 
@@ -110,6 +155,28 @@ function hasLine() {
     Number.isFinite(state.line.b.lat) &&
     Number.isFinite(state.line.b.lon)
   );
+}
+
+function getFinishLine() {
+  const finish = state.course?.finish;
+  if (!finish) return null;
+  if (finish.useStartLine) {
+    if (!hasLine()) return null;
+    const reverse = Boolean(finish.reverse);
+    return {
+      a: reverse ? { ...state.line.b } : { ...state.line.a },
+      b: reverse ? { ...state.line.a } : { ...state.line.b },
+    };
+  }
+  if (
+    Number.isFinite(finish.a?.lat) &&
+    Number.isFinite(finish.a?.lon) &&
+    Number.isFinite(finish.b?.lat) &&
+    Number.isFinite(finish.b?.lon)
+  ) {
+    return { a: { ...finish.a }, b: { ...finish.b } };
+  }
+  return null;
 }
 
 function distanceToSegment(point, pointA, pointB) {
@@ -322,6 +389,8 @@ function bindTrackControls() {
 
 function renderTrack() {
   if (!els.trackCanvas) return;
+  syncTrackViewState();
+  syncTrackTitle();
   bindTrackControls();
   const canvas = els.trackCanvas;
   const ctx = canvas.getContext("2d");
@@ -343,10 +412,25 @@ function renderTrack() {
   const rawPoints = state.gpsTrackRaw;
   const devicePoints = state.gpsTrackDevice || [];
   const bowPoints = state.gpsTrackFiltered;
+  const isCourseMode = state.trackMode === "course";
+  const courseMarks = Array.isArray(state.course?.marks) ? state.course.marks : [];
+  const coursePoints = courseMarks
+    .filter((mark) => Number.isFinite(mark?.lat) && Number.isFinite(mark?.lon))
+    .map((mark) => ({ lat: mark.lat, lon: mark.lon }));
+  const courseTrack = Array.isArray(state.courseTrack) ? state.courseTrack : [];
   const hasLineData = hasLine();
-  let basePoints = bowPoints.length ? bowPoints : devicePoints;
+  const finishLineData = getFinishLine();
+  let basePoints =
+    isCourseMode && courseTrack.length
+      ? courseTrack
+      : bowPoints.length
+        ? bowPoints
+        : devicePoints;
   if (!basePoints.length) {
     basePoints = rawPoints;
+  }
+  if (!basePoints.length && isCourseMode && coursePoints.length) {
+    basePoints = coursePoints;
   }
   if (!basePoints.length && state.position) {
     basePoints = [
@@ -364,7 +448,15 @@ function renderTrack() {
       },
     ];
   }
-  if (!basePoints.length) {
+  if (!basePoints.length && finishLineData) {
+    basePoints = [
+      {
+        lat: (finishLineData.a.lat + finishLineData.b.lat) / 2,
+        lon: (finishLineData.a.lon + finishLineData.b.lon) / 2,
+      },
+    ];
+  }
+  if (!basePoints.length && !coursePoints.length) {
     ctx.fillStyle = "#666666";
     ctx.font = "14px sans-serif";
     ctx.textAlign = "center";
@@ -375,10 +467,12 @@ function renderTrack() {
 
   let origin = viewState.origin;
   if (!origin) {
+    const originPoints =
+      isCourseMode && coursePoints.length ? coursePoints : basePoints;
     const meanLat =
-      basePoints.reduce((sum, p) => sum + p.lat, 0) / basePoints.length;
+      originPoints.reduce((sum, p) => sum + p.lat, 0) / originPoints.length;
     const meanLon =
-      basePoints.reduce((sum, p) => sum + p.lon, 0) / basePoints.length;
+      originPoints.reduce((sum, p) => sum + p.lon, 0) / originPoints.length;
     origin = { lat: meanLat, lon: meanLon };
     viewState.origin = origin;
   }
@@ -399,6 +493,16 @@ function renderTrack() {
   rawPoints.forEach((point) => addBounds(toXY(point)));
   devicePoints.forEach((point) => addBounds(toXY(point)));
   bowPoints.forEach((point) => addBounds(toXY(point)));
+  if (coursePoints.length) {
+    coursePoints.forEach((point) => addBounds(toXY(point)));
+  }
+  if (courseTrack.length) {
+    courseTrack.forEach((point) => addBounds(toXY(point)));
+  }
+  if (finishLineData) {
+    addBounds(toXY(finishLineData.a));
+    addBounds(toXY(finishLineData.b));
+  }
 
   let line = null;
   if (hasLineData) {
@@ -407,6 +511,17 @@ function renderTrack() {
     const lineLen = Math.hypot(pointB.x - pointA.x, pointB.y - pointA.y);
     if (lineLen >= 1) {
       line = { pointA, pointB };
+      addBounds(pointA);
+      addBounds(pointB);
+    }
+  }
+  let finishLine = null;
+  if (finishLineData) {
+    const pointA = toMeters(finishLineData.a, origin);
+    const pointB = toMeters(finishLineData.b, origin);
+    const lineLen = Math.hypot(pointB.x - pointA.x, pointB.y - pointA.y);
+    if (lineLen >= 1) {
+      finishLine = { pointA, pointB };
       addBounds(pointA);
       addBounds(pointB);
     }
@@ -568,7 +683,9 @@ function renderTrack() {
     return { x, y };
   };
   let latestPoint = null;
-  if (bowPoints.length) {
+  if (isCourseMode && courseTrack.length) {
+    latestPoint = courseTrack[courseTrack.length - 1];
+  } else if (bowPoints.length) {
     latestPoint = bowPoints[bowPoints.length - 1];
   } else if (devicePoints.length) {
     latestPoint = devicePoints[devicePoints.length - 1];
@@ -719,14 +836,29 @@ function renderTrack() {
   }
   ctx.stroke();
 
-  drawDots(rawPoints, "#ff00ff", 2.5);
-  drawLine(devicePoints, "#000000", 2.5);
-  drawLine(bowPoints, "#c00000", 2.5);
+  if (isCourseMode) {
+    if (coursePoints.length) {
+      drawLine(coursePoints, "#000000", 3);
+      drawDots(coursePoints, "#000000", 3);
+    }
+    if (courseTrack.length) {
+      drawLine(courseTrack, "#c00000", 2.5);
+    }
+  } else {
+    drawDots(rawPoints, "#ff00ff", 2.5);
+    drawLine(devicePoints, "#000000", 2.5);
+    drawLine(bowPoints, "#c00000", 2.5);
+  }
 
   if (line) {
     drawSegment(line.pointA, line.pointB, "#000000", 3);
     drawCircle(line.pointA, 4, "#ffffff", "#000000");
     drawCircle(line.pointB, 4, "#000000", "#ffffff");
+  }
+  if (isCourseMode && finishLine) {
+    drawSegment(finishLine.pointA, finishLine.pointB, "#000000", 2.5, [8, 6]);
+    drawSquare(finishLine.pointA, 8, "#ffffff", "#000000");
+    drawSquare(finishLine.pointB, 8, "#000000", "#ffffff");
   }
 
   if (projectedDirectFrom && projectedDirect) {
@@ -862,9 +994,23 @@ function recordTrackPoints(rawPosition, devicePosition, bowPosition) {
     });
     pruneTrackPoints(state.gpsTrackFiltered, cutoff);
   }
+  if (state.courseTrackActive) {
+    const source = bowPosition || devicePosition || rawPosition;
+    if (source) {
+      appendTrackPoint(
+        state.courseTrack,
+        {
+          lat: source.coords.latitude,
+          lon: source.coords.longitude,
+          ts: source.timestamp || nowMs,
+        },
+        COURSE_TRACK_MAX_POINTS
+      );
+    }
+  }
   if (document.body.classList.contains("track-mode")) {
     renderTrack();
   }
 }
 
-export { recordTrackPoints, renderTrack };
+export { recordTrackPoints, renderTrack, setTrackMode };

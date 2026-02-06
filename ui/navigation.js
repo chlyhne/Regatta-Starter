@@ -120,7 +120,7 @@ const VIEW_CONFIG = {
     bodyClass: "track-mode",
     scrollTop: true,
     gpsMode: "setup",
-    gpsOptions: { force: true, highAccuracy: true },
+    gpsOptions: { force: true },
     releaseWakeLock: true,
     onEnter: renderTrack,
   },
@@ -207,7 +207,9 @@ function setView(view) {
   }
 
   if (target.gpsMode && navDeps.setGpsMode) {
-    navDeps.setGpsMode(target.gpsMode, target.gpsOptions);
+    const gpsOptions =
+      typeof target.gpsOptions === "function" ? target.gpsOptions() : target.gpsOptions;
+    navDeps.setGpsMode(target.gpsMode, gpsOptions);
   }
 
   if (typeof target.onEnter === "function") {

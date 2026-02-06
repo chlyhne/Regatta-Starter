@@ -37,6 +37,56 @@ export const modalsView = `
   </div>
 </section>
 
+<section id="load-course-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Load Course</h2>
+    <div id="saved-courses-list" class="modal-list"></div>
+    <div class="modal-actions">
+      <button id="confirm-course-load">Use course</button>
+      <button id="confirm-course-delete" class="ghost danger">Delete course</button>
+      <button id="close-course-load" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section id="saved-marks-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Saved Marks</h2>
+    <p class="info-text">Select a mark to add to the course.</p>
+    <div id="saved-marks-list" class="modal-list"></div>
+    <div class="modal-actions">
+      <button id="confirm-mark-add">Add mark</button>
+      <button id="confirm-mark-delete" class="ghost danger">Delete mark</button>
+      <button id="close-marks" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section id="course-marks-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Course Marks</h2>
+    <p class="info-text">Tap a mark to switch port/starboard rounding.</p>
+    <div id="course-marks-list" class="modal-list"></div>
+    <div class="modal-actions">
+      <button id="close-course-marks" class="ghost">Done</button>
+    </div>
+  </div>
+</section>
+
+<section id="course-keyboard-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Course Keyboard</h2>
+    <p class="info-text">Tap letter marks to build the course.</p>
+    <div id="course-sequence" class="course-sequence"></div>
+    <div id="course-keyboard" class="course-keyboard"></div>
+    <div class="modal-actions">
+      <button id="course-keyboard-undo" class="ghost">Undo</button>
+      <button id="course-keyboard-clear" class="ghost">Clear</button>
+      <button id="course-keyboard-close" class="ghost">Done</button>
+    </div>
+  </div>
+</section>
+
 <section id="record-note-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
     <h2>Recording note</h2>

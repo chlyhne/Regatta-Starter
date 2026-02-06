@@ -5,13 +5,27 @@ const NO_CACHE_KEY = "racetimer-nocache";
 
 const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 
+function getMapMode() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get("mode");
+  if (mode === "course") return "course";
+  if (mode === "finish") return "finish";
+  return "line";
+}
+
+const MAP_MODE = getMapMode();
+
 const els = {
   mapTitle: document.getElementById("map-title"),
   setA: document.getElementById("set-map-a"),
   setB: document.getElementById("set-map-b"),
   swap: document.getElementById("swap-map"),
+  addCourse: document.getElementById("add-course-mark"),
+  undoCourse: document.getElementById("undo-course-mark"),
+  clearCourse: document.getElementById("clear-course-marks"),
   closeMap: document.getElementById("close-map"),
   mapStatus: document.getElementById("map-status"),
+  mapCaption: document.getElementById("map-caption"),
 };
 
 const state = {
@@ -29,10 +43,24 @@ const state = {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
   },
+  finishLine: {
+    a: { lat: null, lon: null },
+    b: { lat: null, lon: null },
+  },
   sessionSet: {
     a: false,
     b: false,
   },
+  finishSessionSet: {
+    a: false,
+    b: false,
+  },
+  course: {
+    enabled: false,
+    marks: [],
+  },
+  courseMarkers: [],
+  courseLine: null,
 };
 
 function getArrowLabelHalfDiagonalPx() {
@@ -70,13 +98,44 @@ function loadSettings() {
   if (settings.line) {
     state.line = settings.line;
   }
+  if (settings.course) {
+    state.course.enabled = Boolean(settings.course.enabled);
+    state.course.marks = Array.isArray(settings.course.marks)
+      ? settings.course.marks.map((mark) => ({ ...mark }))
+      : [];
+    if (settings.course.finish) {
+      state.finishLine = {
+        a: { ...settings.course.finish.a },
+        b: { ...settings.course.finish.b },
+      };
+    }
+  }
 }
 
 function saveSettings() {
-  saveSettingsToStorage({
-    line: state.line,
-    lineMeta: { name: null, sourceId: null },
-  });
+  const patch = {
+    course: {
+      enabled: Boolean(state.course.enabled),
+      marks: state.course.marks,
+    },
+  };
+  if (MAP_MODE === "finish") {
+    const finish = {
+      a: { ...state.finishLine.a },
+      b: { ...state.finishLine.b },
+    };
+    const hasFinish =
+      Number.isFinite(finish.a.lat) &&
+      Number.isFinite(finish.a.lon) &&
+      Number.isFinite(finish.b.lat) &&
+      Number.isFinite(finish.b.lon);
+    patch.course.finish = hasFinish ? { ...finish, useStartLine: false } : finish;
+  }
+  if (MAP_MODE !== "course") {
+    patch.line = state.line;
+    patch.lineMeta = { name: null, sourceId: null };
+  }
+  saveSettingsToStorage(patch);
 }
 
 function getNoCacheQuery() {
@@ -85,6 +144,14 @@ function getNoCacheQuery() {
   if (!token) return "";
   sessionStorage.setItem(NO_CACHE_KEY, token);
   return `?nocache=${encodeURIComponent(token)}`;
+}
+
+function getActiveLine() {
+  return MAP_MODE === "finish" ? state.finishLine : state.line;
+}
+
+function getActiveSessionSet() {
+  return MAP_MODE === "finish" ? state.finishSessionSet : state.sessionSet;
 }
 
 function initMap() {
@@ -158,9 +225,44 @@ function initMap() {
   updateMapOverlays();
 }
 
+function setModeUi() {
+  const isCourse = MAP_MODE === "course";
+  const isFinish = MAP_MODE === "finish";
+  const toggle = (el, show) => {
+    if (!el) return;
+    el.hidden = !show;
+    el.setAttribute("aria-hidden", show ? "false" : "true");
+  };
+  toggle(els.setA, !isCourse);
+  toggle(els.setB, !isCourse);
+  toggle(els.swap, !isCourse);
+  toggle(els.addCourse, isCourse);
+  toggle(els.undoCourse, isCourse);
+  toggle(els.clearCourse, isCourse);
+  if (els.mapTitle) {
+    if (isCourse) {
+      els.mapTitle.textContent = "Select course";
+    } else if (isFinish) {
+      els.mapTitle.textContent = "Select finish line";
+    } else {
+      els.mapTitle.textContent = "Select marks";
+    }
+  }
+  if (els.mapCaption) {
+    els.mapCaption.textContent = isCourse
+      ? "Drag the map. Add marks in order."
+      : "Drag the map. The crosshair is the exact point.";
+  }
+}
+
 function updateSetButtons() {
-  const hasA = state.sessionSet.a;
-  const hasB = state.sessionSet.b;
+  if (MAP_MODE === "course") {
+    updateCourseButtons();
+    return;
+  }
+  const sessionSet = getActiveSessionSet();
+  const hasA = sessionSet.a;
+  const hasB = sessionSet.b;
   if (els.setA) {
     els.setA.classList.toggle("set", hasA);
     els.setA.textContent = hasA ? "Set P ✓" : "Set P";
@@ -171,10 +273,93 @@ function updateSetButtons() {
   }
 }
 
+function updateCourseButtons() {
+  const count = state.course.marks.length;
+  if (els.addCourse) {
+    els.addCourse.classList.toggle("set", count > 0);
+  }
+  if (els.undoCourse) {
+    els.undoCourse.disabled = count === 0;
+  }
+  if (els.clearCourse) {
+    els.clearCourse.disabled = count === 0;
+  }
+  if (els.mapStatus) {
+    els.mapStatus.textContent = count
+      ? `Marks: ${count}`
+      : "Add the first mark, then press Done.";
+  }
+}
+
+function computeTurnSide(prev, current, next) {
+  if (!prev || !current || !next) return null;
+  const origin = { lat: current.lat, lon: current.lon };
+  const prevMeters = toMeters(prev, origin);
+  const nextMeters = toMeters(next, origin);
+  const v1 = { x: -prevMeters.x, y: -prevMeters.y };
+  const v2 = { x: nextMeters.x, y: nextMeters.y };
+  const cross = v1.x * v2.y - v1.y * v2.x;
+  if (!Number.isFinite(cross) || Math.abs(cross) < 1e-6) return null;
+  return cross > 0 ? "port" : "starboard";
+}
+
+function applyCourseRoundingDefaults() {
+  const marks = state.course.marks;
+  marks.forEach((mark, index) => {
+    if (!mark || mark.manual) return;
+    const prev = index > 0 ? marks[index - 1] : null;
+    const next = index < marks.length - 1 ? marks[index + 1] : null;
+    const side = prev && next ? computeTurnSide(prev, mark, next) : null;
+    mark.rounding = side || mark.rounding || "port";
+  });
+}
+
+function updateCourseOverlays() {
+  if (!state.map || typeof L === "undefined") return;
+  if (state.courseLine) {
+    state.map.removeLayer(state.courseLine);
+    state.courseLine = null;
+  }
+  if (state.courseMarkers.length) {
+    state.courseMarkers.forEach((marker) => state.map.removeLayer(marker));
+    state.courseMarkers = [];
+  }
+  if (!state.course.marks.length) return;
+
+  const markerStyle = {
+    radius: 7,
+    color: "#000000",
+    weight: 2,
+    fillColor: "#ffffff",
+    fillOpacity: 1,
+    interactive: false,
+    pane: "markPane",
+  };
+  state.courseMarkers = state.course.marks.map((mark) =>
+    L.circleMarker([mark.lat, mark.lon], markerStyle).addTo(state.map)
+  );
+
+  if (state.course.marks.length >= 2) {
+    const latLngs = state.course.marks.map((mark) => [mark.lat, mark.lon]);
+    state.courseLine = L.polyline(latLngs, {
+      color: "#000000",
+      weight: 3,
+      opacity: 1,
+      interactive: false,
+      pane: "linePane",
+    }).addTo(state.map);
+  }
+}
+
 function updateMapOverlays() {
   if (!state.map) return;
-  const hasA = Number.isFinite(state.line.a.lat) && Number.isFinite(state.line.a.lon);
-  const hasB = Number.isFinite(state.line.b.lat) && Number.isFinite(state.line.b.lon);
+  if (MAP_MODE === "course") {
+    updateCourseOverlays();
+    return;
+  }
+  const activeLine = getActiveLine();
+  const hasA = Number.isFinite(activeLine.a.lat) && Number.isFinite(activeLine.a.lon);
+  const hasB = Number.isFinite(activeLine.b.lat) && Number.isFinite(activeLine.b.lon);
 
   if (hasA) {
     const portStyle = {
@@ -188,11 +373,11 @@ function updateMapOverlays() {
     };
     if (!state.markerA) {
       state.markerA = L.circleMarker(
-        [state.line.a.lat, state.line.a.lon],
+        [activeLine.a.lat, activeLine.a.lon],
         portStyle
       ).addTo(state.map);
     } else {
-      state.markerA.setLatLng([state.line.a.lat, state.line.a.lon]);
+      state.markerA.setLatLng([activeLine.a.lat, activeLine.a.lon]);
       state.markerA.setStyle(portStyle);
     }
   } else if (state.markerA) {
@@ -212,11 +397,11 @@ function updateMapOverlays() {
     };
     if (!state.markerB) {
       state.markerB = L.circleMarker(
-        [state.line.b.lat, state.line.b.lon],
+        [activeLine.b.lat, activeLine.b.lon],
         starboardStyle
       ).addTo(state.map);
     } else {
-      state.markerB.setLatLng([state.line.b.lat, state.line.b.lon]);
+      state.markerB.setLatLng([activeLine.b.lat, activeLine.b.lon]);
       state.markerB.setStyle(starboardStyle);
     }
   } else if (state.markerB) {
@@ -226,11 +411,11 @@ function updateMapOverlays() {
 
   if (hasA && hasB) {
     const origin = {
-      lat: (state.line.a.lat + state.line.b.lat) / 2,
-      lon: (state.line.a.lon + state.line.b.lon) / 2,
+      lat: (activeLine.a.lat + activeLine.b.lat) / 2,
+      lon: (activeLine.a.lon + activeLine.b.lon) / 2,
     };
-    const pointA = toMeters(state.line.a, origin);
-    const pointB = toMeters(state.line.b, origin);
+    const pointA = toMeters(activeLine.a, origin);
+    const pointB = toMeters(activeLine.b, origin);
     const lineVec = { x: pointB.x - pointA.x, y: pointB.y - pointA.y };
     const lineLen = Math.hypot(lineVec.x, lineVec.y);
     if (lineLen >= 1) {
@@ -368,8 +553,8 @@ function updateMapOverlays() {
     }
 
     const latlngs = [
-      [state.line.a.lat, state.line.a.lon],
-      [state.line.b.lat, state.line.b.lon],
+      [activeLine.a.lat, activeLine.a.lon],
+      [activeLine.b.lat, activeLine.b.lon],
     ];
     if (!state.lineOverlay) {
       state.lineOverlay = L.polyline(latlngs, {
@@ -416,33 +601,88 @@ window.addEventListener("resize", () => {
 });
 
 function bindEvents() {
-  els.setA.addEventListener("click", () => {
-    if (!state.map) return;
-    const center = state.map.getCenter();
-    state.line.a = { lat: center.lat, lon: center.lng };
-    state.sessionSet.a = true;
-    saveSettings();
-    updateSetButtons();
-    updateMapOverlays();
-    if (els.mapStatus) {
-      els.mapStatus.textContent =
-        "Port mark set. You can now set starboard mark or press Done.";
+  if (MAP_MODE === "course") {
+    if (els.addCourse) {
+      els.addCourse.addEventListener("click", () => {
+        if (!state.map) return;
+        const center = state.map.getCenter();
+        const defaultName = `Mark ${state.course.marks.length + 1}`;
+        state.course.marks.push({
+          lat: center.lat,
+          lon: center.lng,
+          name: defaultName,
+          description: "",
+          rounding: null,
+          manual: false,
+        });
+        applyCourseRoundingDefaults();
+        saveSettings();
+        updateSetButtons();
+        updateMapOverlays();
+      });
     }
-  });
 
-  els.setB.addEventListener("click", () => {
-    if (!state.map) return;
-    const center = state.map.getCenter();
-    state.line.b = { lat: center.lat, lon: center.lng };
-    state.sessionSet.b = true;
-    saveSettings();
-    updateSetButtons();
-    updateMapOverlays();
-    if (els.mapStatus) {
-      els.mapStatus.textContent =
-        "Starboard mark set. You can now set port mark or press Done.";
+    if (els.undoCourse) {
+      els.undoCourse.addEventListener("click", () => {
+        if (!state.course.marks.length) return;
+        state.course.marks.pop();
+        applyCourseRoundingDefaults();
+        saveSettings();
+        updateSetButtons();
+        updateMapOverlays();
+      });
     }
-  });
+
+    if (els.clearCourse) {
+      els.clearCourse.addEventListener("click", () => {
+        if (!state.course.marks.length) return;
+        const confirmed = window.confirm("Clear all course marks?");
+        if (!confirmed) return;
+        state.course.marks = [];
+        saveSettings();
+        updateSetButtons();
+        updateMapOverlays();
+      });
+    }
+  } else {
+    if (els.setA) {
+      els.setA.addEventListener("click", () => {
+        if (!state.map) return;
+        const center = state.map.getCenter();
+        const activeLine = getActiveLine();
+        const sessionSet = getActiveSessionSet();
+        activeLine.a = { lat: center.lat, lon: center.lng };
+        sessionSet.a = true;
+        saveSettings();
+        updateSetButtons();
+        updateMapOverlays();
+        if (els.mapStatus) {
+          els.mapStatus.textContent = MAP_MODE === "finish"
+            ? "Finish port mark set. You can now set starboard mark or press Done."
+            : "Port mark set. You can now set starboard mark or press Done.";
+        }
+      });
+    }
+
+    if (els.setB) {
+      els.setB.addEventListener("click", () => {
+        if (!state.map) return;
+        const center = state.map.getCenter();
+        const activeLine = getActiveLine();
+        const sessionSet = getActiveSessionSet();
+        activeLine.b = { lat: center.lat, lon: center.lng };
+        sessionSet.b = true;
+        saveSettings();
+        updateSetButtons();
+        updateMapOverlays();
+        if (els.mapStatus) {
+          els.mapStatus.textContent = MAP_MODE === "finish"
+            ? "Finish starboard mark set. You can now set port mark or press Done."
+            : "Starboard mark set. You can now set port mark or press Done.";
+        }
+      });
+    }
+  }
 
   els.closeMap.addEventListener("click", () => {
     window.location.href = `index.html${getNoCacheQuery()}#setup`;
@@ -458,27 +698,30 @@ function bindEvents() {
   els.closeMap.addEventListener("touchend", close, { passive: false });
   els.closeMap.addEventListener("pointerup", close);
 
-  if (els.swap) {
+  if (els.swap && MAP_MODE !== "course") {
     els.swap.addEventListener("click", () => {
-      const nextA = { ...state.line.b };
-      const nextB = { ...state.line.a };
-      state.line.a = nextA;
-      state.line.b = nextB;
-      const nextSetA = state.sessionSet.b;
-      const nextSetB = state.sessionSet.a;
-      state.sessionSet.a = nextSetA;
-      state.sessionSet.b = nextSetB;
+      const activeLine = getActiveLine();
+      const sessionSet = getActiveSessionSet();
+      const nextA = { ...activeLine.b };
+      const nextB = { ...activeLine.a };
+      activeLine.a = nextA;
+      activeLine.b = nextB;
+      const nextSetA = sessionSet.b;
+      const nextSetB = sessionSet.a;
+      sessionSet.a = nextSetA;
+      sessionSet.b = nextSetB;
       saveSettings();
       updateSetButtons();
       updateMapOverlays();
       if (els.mapStatus) {
-        els.mapStatus.textContent = "Marks swapped.";
+        els.mapStatus.textContent = MAP_MODE === "finish" ? "Finish marks swapped." : "Marks swapped.";
       }
     });
   }
 }
 
 loadSettings();
+setModeUi();
 initMap();
 updateSetButtons();
 bindEvents();

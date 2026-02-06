@@ -10,9 +10,12 @@ const BEEP_DURATION_MS = Math.round(LONG_BEEP_DURATION_MS / 2);
 const START_BEEP_DURATION_MS = 2000;
 const TRACK_MAX_POINTS = 600;
 const TRACK_WINDOW_MS = 3 * 60 * 1000;
+const COURSE_TRACK_MAX_POINTS = 10000;
 const GPS_RETRY_DELAY_MS = 2000;
 const GPS_STALE_MS = 15000;
 const LINES_KEY = "racetimer-lines";
+const COURSES_KEY = "racetimer-courses";
+const MARKS_KEY = "racetimer-marks";
 
 const hemisphereGroups = {};
 
@@ -64,6 +67,7 @@ const state = {
   gpsRetryTimer: null,
   lastGpsFixAt: null,
   gpsMode: "setup",
+  trackMode: "gps",
   start: {
     mode: "countdown",
     countdownSeconds: 300,
@@ -84,10 +88,27 @@ const state = {
   raceMetric: "distance",
   savedLines: [],
   selectedLineId: null,
+  savedCourses: [],
+  selectedCourseId: null,
+  savedMarks: [],
+  selectedMarkId: null,
   wakeLock: null,
   gpsTrackRaw: [],
   gpsTrackDevice: [],
   gpsTrackFiltered: [],
+  course: {
+    enabled: false,
+    marks: [],
+    finish: {
+      useStartLine: true,
+      reverse: false,
+      a: { lat: null, lon: null },
+      b: { lat: null, lon: null },
+    },
+    version: 0,
+  },
+  courseTrack: [],
+  courseTrackActive: false,
   kalman: null,
   audio: {
     ctx: null,
@@ -109,9 +130,12 @@ export {
   START_BEEP_DURATION_MS,
   TRACK_MAX_POINTS,
   TRACK_WINDOW_MS,
+  COURSE_TRACK_MAX_POINTS,
   GPS_RETRY_DELAY_MS,
   GPS_STALE_MS,
   LINES_KEY,
+  COURSES_KEY,
+  MARKS_KEY,
   SPEED_UNITS,
   DISTANCE_UNITS,
   hemisphereGroups,

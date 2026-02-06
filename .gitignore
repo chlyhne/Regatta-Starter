@@ -10,3 +10,5 @@ docs/*.pdf
 node_modules/
 diagnostics-downloads/
 .env.local
+playwright-report/
+test-results/

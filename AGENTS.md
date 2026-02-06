@@ -34,6 +34,11 @@ Instructions for coding agents working in this repo.
 ## Debug and QA
 - Debug mode is optional and enabled via `?debug=true`.
 
+## Communication
+- When presenting options, avoid repeating the same set of options in multiple lists.
+- If two option lists are needed, use `1/2/3` for the first list and `a/b/c` for the next.
+- Avoid bullet lists for options; prefer numbered lists whenever possible.
+
 ## Run locally
 - Open `index.html` directly, or serve the folder with a static server (e.g., `python3 -m http.server`).
 

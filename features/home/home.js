@@ -1,4 +1,5 @@
 import { els } from "../../ui/dom.js";
+import { setTrackMode } from "../starter/track.js";
 
 let homeDeps = {
   setView: null,
@@ -279,6 +280,7 @@ function bindHomeEvents() {
 
   if (els.openTrack) {
     els.openTrack.addEventListener("click", () => {
+      setTrackMode("gps");
       if (homeDeps.setView) {
         homeDeps.setView("track");
       }

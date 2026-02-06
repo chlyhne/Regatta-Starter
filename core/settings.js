@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 15;
+const SETTINGS_VERSION = 18;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -62,6 +62,16 @@ const DEFAULT_SETTINGS = {
     startTs: null,
     crossedEarly: false,
   },
+  course: {
+    enabled: false,
+    marks: [],
+    finish: {
+      useStartLine: true,
+      reverse: false,
+      a: { lat: null, lon: null },
+      b: { lat: null, lon: null },
+    },
+  },
 };
 
 function toNumberOrNull(value) {
@@ -81,6 +91,62 @@ function normalizeLine(line) {
   return {
     a: normalizeLinePoint(line?.a),
     b: normalizeLinePoint(line?.b),
+  };
+}
+
+function normalizeCoursePoint(point) {
+  return {
+    lat: toNumberOrNull(point?.lat),
+    lon: toNumberOrNull(point?.lon),
+  };
+}
+
+function normalizeMarkName(name, fallback) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (trimmed) return trimmed;
+  return fallback || "Mark";
+}
+
+function normalizeMarkDescription(description) {
+  return typeof description === "string" ? description.trim() : "";
+}
+
+function normalizeRoundingSide(value) {
+  return value === "starboard" ? "starboard" : "port";
+}
+
+function normalizeCourseMark(mark, index) {
+  const point = normalizeCoursePoint(mark);
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return null;
+  return {
+    lat: point.lat,
+    lon: point.lon,
+    name: normalizeMarkName(mark?.name, `Mark ${index + 1}`),
+    description: normalizeMarkDescription(mark?.description),
+    rounding: normalizeRoundingSide(mark?.rounding),
+    manual: Boolean(mark?.manual),
+  };
+}
+
+function normalizeCourseFinish(finish) {
+  return {
+    useStartLine: finish?.useStartLine !== undefined ? Boolean(finish.useStartLine) : true,
+    reverse: Boolean(finish?.reverse),
+    a: normalizeLinePoint(finish?.a),
+    b: normalizeLinePoint(finish?.b),
+  };
+}
+
+function normalizeCourse(course) {
+  const enabled = Boolean(course?.enabled);
+  const marks = Array.isArray(course?.marks) ? course.marks : [];
+  const normalizedMarks = marks
+    .map((mark, index) => normalizeCourseMark(mark, index))
+    .filter(Boolean);
+  return {
+    enabled,
+    marks: normalizedMarks.slice(0, 200),
+    finish: normalizeCourseFinish(course?.finish),
   };
 }
 
@@ -256,6 +322,7 @@ function normalizeSettings(raw) {
     replayLoop: Boolean(raw?.replayLoop),
     vmg: normalizeVmgSettings(raw?.vmg),
     start: normalizeStart(raw?.start),
+    course: normalizeCourse(raw?.course),
   };
 }
 
@@ -274,6 +341,18 @@ function mergeSettings(base, patch) {
   }
   if (patch?.start) {
     merged.start = { ...base.start, ...patch.start };
+  }
+  if (patch?.course) {
+    const finishPatch =
+      patch.course.finish && typeof patch.course.finish === "object"
+        ? patch.course.finish
+        : null;
+    merged.course = {
+      ...base.course,
+      ...patch.course,
+      marks: Array.isArray(patch.course.marks) ? patch.course.marks : base.course.marks,
+      finish: { ...base.course.finish, ...(finishPatch || {}) },
+    };
   }
   if (patch?.headingSourceByMode) {
     merged.headingSourceByMode = {
@@ -365,6 +444,45 @@ function migrateSettings(raw) {
   if (version < 15) {
     delete migrated.windAutoCorrMinutes;
     migrated.version = 15;
+  }
+  if (version < 16) {
+    migrated.course = { ...DEFAULT_SETTINGS.course };
+    migrated.version = 16;
+  }
+  if (version < 17) {
+    if (migrated.course && Array.isArray(migrated.course.points)) {
+      migrated.course = {
+        enabled: Boolean(migrated.course.enabled),
+        marks: migrated.course.points.map((point, index) => ({
+          lat: point?.lat,
+          lon: point?.lon,
+          name: `Mark ${index + 1}`,
+          description: "",
+          rounding: "port",
+          manual: false,
+        })),
+        finish: { ...DEFAULT_SETTINGS.course.finish },
+      };
+      delete migrated.course.points;
+    } else {
+      migrated.course = { ...DEFAULT_SETTINGS.course };
+    }
+    migrated.version = 17;
+  }
+  if (version < 18) {
+    if (migrated.course && Array.isArray(migrated.course.marks)) {
+      migrated.course.marks = migrated.course.marks.map((mark, index) => ({
+        lat: mark?.lat,
+        lon: mark?.lon,
+        name: normalizeMarkName(mark?.name, `Mark ${index + 1}`),
+        description: normalizeMarkDescription(mark?.description),
+        rounding: normalizeRoundingSide(mark?.rounding),
+        manual: Boolean(mark?.manual),
+      }));
+    } else {
+      migrated.course = { ...DEFAULT_SETTINGS.course };
+    }
+    migrated.version = 18;
   }
   return migrated;
 }

@@ -3,6 +3,8 @@ import {
   state,
   hemisphereGroups,
   LINES_KEY,
+  COURSES_KEY,
+  MARKS_KEY,
   COORD_DECIMAL_DIGITS,
   COORD_DD_DIGITS,
   START_BEEP_DURATION_MS,
@@ -10,6 +12,7 @@ import {
 } from "../../core/state.js";
 import { unlockAudio, playBeep, handleCountdownBeeps, resetBeepState } from "../../core/audio.js";
 import { requestHighPrecisionPosition } from "../../core/gps-watch.js";
+import { toMeters } from "../../core/geo.js";
 import {
   hasLine,
   updateRaceHintUnits,
@@ -26,6 +29,7 @@ import {
 import { fitRaceText } from "./race-fit.js";
 import { MAX_COUNTDOWN_SECONDS } from "../../core/settings.js";
 import { trimTrailingZeros } from "../../core/common.js";
+import { setTrackMode } from "./track.js";
 
 let countdownPickerLive = false;
 let starterDeps = {
@@ -39,6 +43,7 @@ let starterDeps = {
   openImuCalibrationModal: null,
   startImuCalibration: null,
   closeImuCalibrationModal: null,
+  getNoCacheQuery: null,
 };
 
 function initStarter(deps = {}) {
@@ -139,6 +144,79 @@ function loadSavedLines() {
   }
 }
 
+function normalizeMarkName(name, fallback) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (trimmed) return trimmed;
+  return fallback || "Mark";
+}
+
+function normalizeMarkDescription(description) {
+  return typeof description === "string" ? description.trim() : "";
+}
+
+function normalizeCourseMark(mark, index) {
+  if (!mark) return null;
+  const lat = Number.parseFloat(mark.lat);
+  const lon = Number.parseFloat(mark.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return {
+    lat,
+    lon,
+    name: normalizeMarkName(mark.name, `Mark ${index + 1}`),
+    description: normalizeMarkDescription(mark.description),
+    rounding: mark.rounding === "starboard" ? "starboard" : "port",
+    manual: Boolean(mark.manual),
+  };
+}
+
+function normalizeCourseMarks(marks) {
+  if (!Array.isArray(marks)) return [];
+  return marks
+    .map((mark, index) => normalizeCourseMark(mark, index))
+    .filter(Boolean);
+}
+
+function normalizeSavedMark(mark, index) {
+  if (!mark) return null;
+  const lat = Number.parseFloat(mark.lat);
+  const lon = Number.parseFloat(mark.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const name = normalizeMarkName(mark.name, `Mark ${index + 1}`);
+  return {
+    id: typeof mark.id === "string" ? mark.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    description: normalizeMarkDescription(mark.description),
+    lat,
+    lon,
+  };
+}
+
+function loadSavedMarks() {
+  try {
+    const raw = localStorage.getItem(MARKS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    state.savedMarks = Array.isArray(parsed)
+      ? parsed.map((mark, index) => normalizeSavedMark(mark, index)).filter(Boolean)
+      : [];
+    if (state.savedMarks.length) {
+      const seen = new Set();
+      state.savedMarks = state.savedMarks.filter((mark) => {
+        const key = mark.name.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to load saved marks", err);
+    state.savedMarks = [];
+  }
+}
+
+function saveSavedMarks() {
+  localStorage.setItem(MARKS_KEY, JSON.stringify(state.savedMarks));
+}
+
 function hasStartLine() {
   return (
     Number.isFinite(state.line.a.lat) &&
@@ -146,6 +224,151 @@ function hasStartLine() {
     Number.isFinite(state.line.b.lat) &&
     Number.isFinite(state.line.b.lon)
   );
+}
+
+function getCourseMarks() {
+  const marks = Array.isArray(state.course?.marks) ? state.course.marks : [];
+  marks.forEach((mark, index) => {
+    if (!mark) return;
+    mark.name = normalizeMarkName(mark.name, `Mark ${index + 1}`);
+    if (typeof mark.description !== "string") {
+      mark.description = "";
+    }
+  });
+  return marks;
+}
+
+function getCoursePointCount() {
+  return getCourseMarks().length;
+}
+
+function getStartLineMidpoint() {
+  if (!hasStartLine()) return null;
+  return {
+    lat: (state.line.a.lat + state.line.b.lat) / 2,
+    lon: (state.line.a.lon + state.line.b.lon) / 2,
+  };
+}
+
+function getFinishLine() {
+  const finish = state.course?.finish;
+  if (!finish) return null;
+  if (finish.useStartLine) {
+    if (!hasStartLine()) return null;
+    const reverse = Boolean(finish.reverse);
+    return {
+      a: reverse ? { ...state.line.b } : { ...state.line.a },
+      b: reverse ? { ...state.line.a } : { ...state.line.b },
+    };
+  }
+  if (
+    Number.isFinite(finish.a?.lat) &&
+    Number.isFinite(finish.a?.lon) &&
+    Number.isFinite(finish.b?.lat) &&
+    Number.isFinite(finish.b?.lon)
+  ) {
+    return { a: { ...finish.a }, b: { ...finish.b } };
+  }
+  return null;
+}
+
+function hasFinishLine() {
+  return Boolean(getFinishLine());
+}
+
+function getFinishLineStatusText() {
+  const enabled = Boolean(state.course?.enabled);
+  const hasMarks = getCoursePointCount() > 0;
+  if (!enabled) return "OFF";
+  if (!hasMarks) return "OPTIONAL";
+  if (state.course?.finish?.useStartLine) {
+    if (!hasStartLine()) return "NO LINE";
+    return state.course.finish.reverse ? "Start line (reverse)" : "Start line";
+  }
+  return hasFinishLine() ? "Set" : "NO FINISH";
+}
+
+function computeTurnSide(prev, current, next) {
+  if (!prev || !current || !next) return null;
+  const origin = { lat: current.lat, lon: current.lon };
+  const prevMeters = toMeters(prev, origin);
+  const nextMeters = toMeters(next, origin);
+  const v1 = { x: -prevMeters.x, y: -prevMeters.y };
+  const v2 = { x: nextMeters.x, y: nextMeters.y };
+  const cross = v1.x * v2.y - v1.y * v2.x;
+  if (!Number.isFinite(cross) || Math.abs(cross) < 1e-6) return null;
+  return cross > 0 ? "port" : "starboard";
+}
+
+function syncCourseRoundingDefaults() {
+  const marks = getCourseMarks();
+  if (!marks.length) return;
+  const startMid = getStartLineMidpoint();
+  const finishLine = getFinishLine();
+  const finishMid = finishLine
+    ? {
+        lat: (finishLine.a.lat + finishLine.b.lat) / 2,
+        lon: (finishLine.a.lon + finishLine.b.lon) / 2,
+      }
+    : null;
+  marks.forEach((mark, index) => {
+    if (!mark || mark.manual) return;
+    const prev = index === 0 ? startMid : marks[index - 1];
+    const next = index === marks.length - 1 ? finishMid : marks[index + 1];
+    const side = prev && next ? computeTurnSide(prev, mark, next) : null;
+    mark.rounding = side || mark.rounding || "port";
+  });
+}
+
+function updateCourseUi() {
+  syncCourseRoundingDefaults();
+  const enabled = Boolean(state.course?.enabled);
+  if (els.courseToggle) {
+    els.courseToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+  }
+  if (els.courseMarks) {
+    const count = getCoursePointCount();
+    els.courseMarks.textContent = count ? String(count) : "NO COURSE";
+  }
+  if (els.openCourseMap) {
+    const count = getCoursePointCount();
+    els.openCourseMap.textContent = count ? "Edit on map" : "Select on map";
+  }
+  if (els.openCourseMarks) {
+    const count = getCoursePointCount();
+    els.openCourseMarks.disabled = count === 0;
+  }
+  if (els.finishStatus) {
+    els.finishStatus.textContent = getFinishLineStatusText();
+  }
+  if (els.finishUseStart) {
+    const useStart = Boolean(state.course?.finish?.useStartLine);
+    els.finishUseStart.setAttribute("aria-pressed", useStart ? "true" : "false");
+  }
+  if (els.openFinishMap) {
+    els.openFinishMap.disabled = false;
+  }
+  if (els.swapFinish) {
+    const useStart = Boolean(state.course?.finish?.useStartLine);
+    const hasFinish = hasFinishLine();
+    els.swapFinish.textContent = useStart ? "Reverse finish" : "Swap finish marks";
+    els.swapFinish.disabled = useStart ? !hasStartLine() : !hasFinish;
+  }
+  if (els.clearCourse) {
+    const count = getCoursePointCount();
+    els.clearCourse.disabled = count === 0;
+  }
+  if (els.courseKeyboardModal) {
+    const open = els.courseKeyboardModal.getAttribute("aria-hidden") === "false";
+    if (open) {
+      renderCourseSequence();
+    }
+  }
+}
+
+function bumpCourseVersion() {
+  if (!state.course) return;
+  state.course.version = Date.now();
 }
 
 function updateLineNameDisplay() {
@@ -175,6 +398,414 @@ function syncLineNameWithSavedLines() {
 
 function saveSavedLines() {
   localStorage.setItem(LINES_KEY, JSON.stringify(state.savedLines));
+}
+
+function loadSavedCourses() {
+  try {
+    const raw = localStorage.getItem(COURSES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    state.savedCourses = Array.isArray(parsed)
+      ? parsed.map((course) => ({
+          ...course,
+          course: {
+            enabled: Boolean(course?.course?.enabled),
+            marks: normalizeCourseMarks(course?.course?.marks),
+            finish: course?.course?.finish ? { ...course.course.finish } : null,
+          },
+        }))
+      : [];
+    syncMarksFromSavedCourses();
+  } catch (err) {
+    console.warn("Failed to load saved courses", err);
+    state.savedCourses = [];
+  }
+}
+
+function saveSavedCourses() {
+  localStorage.setItem(COURSES_KEY, JSON.stringify(state.savedCourses));
+}
+
+function findSavedMarkIndexByName(name) {
+  const target = normalizeMarkName(name, "").toLowerCase();
+  if (!target) return -1;
+  return state.savedMarks.findIndex(
+    (mark) => (mark?.name || "").toLowerCase() === target
+  );
+}
+
+function upsertSavedMark(mark) {
+  if (!mark) return false;
+  const name = normalizeMarkName(mark.name, "");
+  if (!name) return false;
+  const lat = Number.parseFloat(mark.lat);
+  const lon = Number.parseFloat(mark.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  const description = normalizeMarkDescription(mark.description);
+  const index = findSavedMarkIndexByName(name);
+  if (index >= 0) {
+    const current = state.savedMarks[index];
+    state.savedMarks[index] = {
+      ...current,
+      name,
+      description: description || current.description || "",
+      lat,
+      lon,
+    };
+    return true;
+  }
+  state.savedMarks.push({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    description,
+    lat,
+    lon,
+  });
+  return true;
+}
+
+function syncCourseMarksToLibrary() {
+  let changed = false;
+  const marks = getCourseMarks();
+  marks.forEach((mark, index) => {
+    const normalized = normalizeCourseMark(mark, index);
+    if (!normalized) return;
+    changed = upsertSavedMark(normalized) || changed;
+  });
+  if (changed) {
+    saveSavedMarks();
+  }
+}
+
+function syncMarksFromSavedCourses() {
+  if (!state.savedCourses.length) return;
+  let changed = false;
+  state.savedCourses.forEach((entry) => {
+    const marks = normalizeCourseMarks(entry?.course?.marks);
+    marks.forEach((mark) => {
+      changed = upsertSavedMark(mark) || changed;
+    });
+  });
+  if (changed) {
+    saveSavedMarks();
+  }
+}
+
+function openMarksModal() {
+  if (!els.savedMarksList) return;
+  syncCourseMarksToLibrary();
+  state.selectedMarkId = null;
+  renderSavedMarksList();
+  document.body.classList.add("modal-open");
+  if (els.savedMarksModal) {
+    els.savedMarksModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeMarksModal() {
+  document.body.classList.remove("modal-open");
+  if (els.savedMarksModal) {
+    els.savedMarksModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function renderSavedMarksList() {
+  if (!els.savedMarksList) return;
+  els.savedMarksList.innerHTML = "";
+  if (!state.savedMarks.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No saved marks yet.";
+    els.savedMarksList.appendChild(empty);
+    updateMarksModalButtons();
+    return;
+  }
+  state.savedMarks.forEach((mark) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = mark.description
+      ? `${mark.name} - ${mark.description}`
+      : mark.name;
+    if (state.selectedMarkId === mark.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      state.selectedMarkId = mark.id;
+      renderSavedMarksList();
+    });
+    row.appendChild(button);
+    els.savedMarksList.appendChild(row);
+  });
+  updateMarksModalButtons();
+}
+
+function updateMarksModalButtons() {
+  const hasSelection = Boolean(state.selectedMarkId);
+  if (els.confirmMarkAdd) {
+    els.confirmMarkAdd.disabled = !hasSelection;
+  }
+  if (els.confirmMarkDelete) {
+    els.confirmMarkDelete.disabled = !hasSelection;
+  }
+}
+
+function openCourseModal() {
+  if (!els.savedCoursesList) return;
+  state.selectedCourseId = null;
+  renderSavedCoursesList();
+  document.body.classList.add("modal-open");
+  if (els.loadCourseModal) {
+    els.loadCourseModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeCourseModal() {
+  document.body.classList.remove("modal-open");
+  if (els.loadCourseModal) {
+    els.loadCourseModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function renderSavedCoursesList() {
+  if (!els.savedCoursesList) return;
+  els.savedCoursesList.innerHTML = "";
+  if (!state.savedCourses.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No saved courses yet.";
+    els.savedCoursesList.appendChild(empty);
+    updateCourseModalButtons();
+    return;
+  }
+  state.savedCourses.forEach((course) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = course.name;
+    if (state.selectedCourseId === course.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      state.selectedCourseId = course.id;
+      renderSavedCoursesList();
+    });
+    row.appendChild(button);
+    els.savedCoursesList.appendChild(row);
+  });
+  updateCourseModalButtons();
+}
+
+function updateCourseModalButtons() {
+  const hasSelection = Boolean(state.selectedCourseId);
+  if (els.confirmCourseLoad) {
+    els.confirmCourseLoad.disabled = !hasSelection;
+  }
+  if (els.confirmCourseDelete) {
+    els.confirmCourseDelete.disabled = !hasSelection;
+  }
+}
+
+function formatRoundingSide(side) {
+  return side === "starboard" ? "Starboard" : "Port";
+}
+
+function renderCourseMarksList() {
+  if (!els.courseMarksList) return;
+  els.courseMarksList.innerHTML = "";
+  syncCourseRoundingDefaults();
+  const marks = getCourseMarks();
+  if (!marks.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No marks yet.";
+    els.courseMarksList.appendChild(empty);
+    return;
+  }
+  marks.forEach((mark, index) => {
+    const row = document.createElement("div");
+    row.className = "modal-item mark-row";
+    const button = document.createElement("button");
+    button.type = "button";
+    const side = mark.rounding || "port";
+    const name = normalizeMarkName(mark.name, `Mark ${index + 1}`);
+    button.className = `course-mark-btn ${side}`;
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "mark-name";
+    nameSpan.textContent = name;
+    const sideSpan = document.createElement("span");
+    sideSpan.className = "mark-side";
+    sideSpan.textContent = formatRoundingSide(side);
+    button.appendChild(nameSpan);
+    button.appendChild(sideSpan);
+    button.addEventListener("click", () => {
+      mark.rounding = side === "port" ? "starboard" : "port";
+      mark.manual = true;
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      renderCourseMarksList();
+    });
+    row.appendChild(button);
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "ghost";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      const currentName = normalizeMarkName(mark.name, `Mark ${index + 1}`);
+      const nextName = window.prompt("Mark name:", currentName);
+      if (nextName === null) return;
+      const trimmedName = normalizeMarkName(nextName, currentName);
+      const nextDescription = window.prompt(
+        "Mark description (optional):",
+        mark.description || ""
+      );
+      if (nextDescription !== null) {
+        mark.description = normalizeMarkDescription(nextDescription);
+      }
+      mark.name = trimmedName;
+      bumpCourseVersion();
+      syncCourseMarksToLibrary();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      renderCourseMarksList();
+    });
+    row.appendChild(edit);
+    if (mark.description) {
+      const desc = document.createElement("div");
+      desc.className = "mark-desc";
+      desc.textContent = mark.description;
+      row.appendChild(desc);
+    }
+    els.courseMarksList.appendChild(row);
+  });
+}
+
+function openCourseMarksModal() {
+  renderCourseMarksList();
+  document.body.classList.add("modal-open");
+  if (els.courseMarksModal) {
+    els.courseMarksModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeCourseMarksModal() {
+  document.body.classList.remove("modal-open");
+  if (els.courseMarksModal) {
+    els.courseMarksModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function isSingleLetterName(name) {
+  const trimmed = normalizeMarkName(name, "").trim();
+  return trimmed.length === 1;
+}
+
+function getSingleLetterMarks() {
+  const seen = new Set();
+  return state.savedMarks
+    .filter((mark) => mark && isSingleLetterName(mark.name))
+    .filter((mark) => {
+      const key = mark.name.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+function renderCourseSequence() {
+  if (!els.courseSequence) return;
+  els.courseSequence.innerHTML = "";
+  syncCourseRoundingDefaults();
+  const marks = getCourseMarks();
+  if (!marks.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No marks yet.";
+    els.courseSequence.appendChild(empty);
+    return;
+  }
+  marks.forEach((mark, index) => {
+    const chip = document.createElement("span");
+    const side = mark.rounding || "port";
+    chip.className = `course-chip ${side}`;
+    chip.textContent = normalizeMarkName(mark.name, `Mark ${index + 1}`);
+    els.courseSequence.appendChild(chip);
+  });
+}
+
+function renderCourseKeyboard() {
+  if (!els.courseKeyboard) return;
+  els.courseKeyboard.innerHTML = "";
+  const letters = getSingleLetterMarks();
+  if (!letters.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No single-letter marks yet.";
+    els.courseKeyboard.appendChild(empty);
+    return;
+  }
+  letters.forEach((mark) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "course-key";
+    button.textContent = mark.name.trim();
+    if (mark.description) {
+      button.title = mark.description;
+    }
+    button.addEventListener("click", () => {
+      if (!state.course) {
+        state.course = {
+          enabled: false,
+          marks: [],
+          finish: {
+            useStartLine: true,
+            reverse: false,
+            a: { lat: null, lon: null },
+            b: { lat: null, lon: null },
+          },
+          version: Date.now(),
+        };
+      }
+      state.course.marks.push({
+        lat: mark.lat,
+        lon: mark.lon,
+        name: mark.name,
+        description: mark.description || "",
+        rounding: null,
+        manual: false,
+      });
+      syncCourseRoundingDefaults();
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+      renderCourseSequence();
+    });
+    els.courseKeyboard.appendChild(button);
+  });
+}
+
+function openCourseKeyboardModal() {
+  syncCourseMarksToLibrary();
+  renderCourseKeyboard();
+  renderCourseSequence();
+  document.body.classList.add("modal-open");
+  if (els.courseKeyboardModal) {
+    els.courseKeyboardModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeCourseKeyboardModal() {
+  document.body.classList.remove("modal-open");
+  if (els.courseKeyboardModal) {
+    els.courseKeyboardModal.setAttribute("aria-hidden", "true");
+  }
 }
 
 function openLoadModal() {
@@ -775,6 +1406,7 @@ function updateStartDisplay() {
   setRaceTimingControlsEnabled(canAdjustStart);
 
   if (!state.start.startTs) {
+    state.courseTrackActive = false;
     setCountdownPickerLive(false);
     if (els.statusTime) {
       els.statusTime.textContent = "NO TIME";
@@ -790,7 +1422,25 @@ function updateStartDisplay() {
     return;
   }
   const now = Date.now();
-  const delta = Math.max(0, (state.start.startTs - now) / 1000);
+  const rawDelta = (state.start.startTs - now) / 1000;
+  const delta = Math.max(0, rawDelta);
+  const courseEnabled = Boolean(state.course?.enabled);
+  const courseReady =
+    courseEnabled && (getCoursePointCount() === 0 || hasFinishLine());
+  if (courseReady) {
+    if (rawDelta > 0) {
+      state.courseTrackActive = false;
+    } else if (!state.courseTrackActive) {
+      state.courseTrackActive = true;
+      state.courseTrack = [];
+      setTrackMode("course");
+      if (starterDeps.setView && !document.body.classList.contains("track-mode")) {
+        starterDeps.setView("track");
+      }
+    }
+  } else if (state.courseTrackActive) {
+    state.courseTrackActive = false;
+  }
   if (state.start.mode === "countdown" && countdownPickerLive) {
     syncCountdownPicker(Math.max(0, Math.round(delta)));
     if (delta <= 0) {
@@ -851,6 +1501,7 @@ function syncStarterInputs() {
   syncCountdownPicker();
   updateStartModeToggle();
   updateRaceHintUnits();
+  updateCourseUi();
   if (els.absoluteTime) {
     els.absoluteTime.value = state.start.absoluteTime || "";
   }
@@ -1360,6 +2011,349 @@ function bindStarterEvents() {
     });
   }
 
+  if (els.courseToggle) {
+    els.courseToggle.addEventListener("click", () => {
+      const next = !state.course?.enabled;
+      if (next && getCoursePointCount() > 0 && !hasFinishLine()) {
+        window.alert("Set a finish line or use the start line as finish.");
+        return;
+      }
+      if (!state.course) {
+        state.course = {
+          enabled: next,
+          marks: [],
+          finish: {
+            useStartLine: true,
+            reverse: false,
+            a: { lat: null, lon: null },
+            b: { lat: null, lon: null },
+          },
+          version: Date.now(),
+        };
+      } else {
+        state.course.enabled = next;
+        if (!state.course.finish) {
+          state.course.finish = {
+            useStartLine: true,
+            reverse: false,
+            a: { lat: null, lon: null },
+            b: { lat: null, lon: null },
+          };
+        }
+      }
+      if (!next) {
+        state.courseTrackActive = false;
+      }
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+    });
+  }
+
+  if (els.openCourseMap) {
+    els.openCourseMap.addEventListener("click", () => {
+      const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
+      const joiner = suffix ? "&" : "?";
+      window.location.href = `map.html${suffix}${joiner}mode=course`;
+    });
+  }
+
+  if (els.openCourseMarks) {
+    els.openCourseMarks.addEventListener("click", () => {
+      openCourseMarksModal();
+    });
+  }
+
+  if (els.openSavedMarks) {
+    els.openSavedMarks.addEventListener("click", () => {
+      openMarksModal();
+    });
+  }
+
+  if (els.openCourseKeyboard) {
+    els.openCourseKeyboard.addEventListener("click", () => {
+      openCourseKeyboardModal();
+    });
+  }
+
+  if (els.finishUseStart) {
+    els.finishUseStart.addEventListener("click", () => {
+      if (!state.course) return;
+      const next = !state.course.finish?.useStartLine;
+      if (!state.course.finish) {
+        state.course.finish = {
+          useStartLine: next,
+          reverse: false,
+          a: { lat: null, lon: null },
+          b: { lat: null, lon: null },
+        };
+      } else {
+        state.course.finish.useStartLine = next;
+      }
+      if (state.course.enabled && getCoursePointCount() > 0 && !hasFinishLine()) {
+        window.alert("Set a finish line or use the start line as finish.");
+      }
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+    });
+  }
+
+  if (els.openFinishMap) {
+    els.openFinishMap.addEventListener("click", () => {
+      const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
+      const joiner = suffix ? "&" : "?";
+      window.location.href = `map.html${suffix}${joiner}mode=finish`;
+    });
+  }
+
+  if (els.swapFinish) {
+    els.swapFinish.addEventListener("click", () => {
+      if (!state.course || !state.course.finish) return;
+      if (state.course.finish.useStartLine) {
+        state.course.finish.reverse = !state.course.finish.reverse;
+      } else {
+        const hasFinish = hasFinishLine();
+        if (!hasFinish) return;
+        const nextA = { ...state.course.finish.b };
+        const nextB = { ...state.course.finish.a };
+        state.course.finish.a = nextA;
+        state.course.finish.b = nextB;
+      }
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+    });
+  }
+
+  if (els.clearCourse) {
+    els.clearCourse.addEventListener("click", () => {
+      if (!state.course || !getCoursePointCount()) return;
+      const confirmed = window.confirm("Clear course marks?");
+      if (!confirmed) return;
+      state.course.marks = [];
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+    });
+  }
+
+  if (els.saveCourse) {
+    els.saveCourse.addEventListener("click", () => {
+      if (!hasStartLine()) {
+        window.alert("No start line defined. Set port and starboard marks first.");
+        return;
+      }
+      if (getCoursePointCount() > 0 && !hasFinishLine()) {
+        window.alert("Set a finish line or use the start line as finish.");
+        return;
+      }
+      syncCourseRoundingDefaults();
+      syncCourseMarksToLibrary();
+      const nameInput = window.prompt("Name this course:");
+      const timestamp = new Date().toLocaleString("en-GB", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      const name =
+        (nameInput || "").trim() ||
+        `Course ${state.savedCourses.length + 1} (${timestamp})`;
+      const entry = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name,
+        line: {
+          a: { ...state.line.a },
+          b: { ...state.line.b },
+        },
+        course: {
+          enabled: Boolean(state.course?.enabled),
+          marks: getCourseMarks().map((mark) => ({ ...mark })),
+          finish: state.course?.finish ? { ...state.course.finish } : null,
+        },
+      };
+      state.savedCourses.unshift(entry);
+      saveSavedCourses();
+    });
+  }
+
+  if (els.loadCourse) {
+    els.loadCourse.addEventListener("click", () => {
+      openCourseModal();
+    });
+  }
+
+  if (els.confirmCourseLoad) {
+    els.confirmCourseLoad.addEventListener("click", () => {
+      if (!state.selectedCourseId) return;
+      const entry = state.savedCourses.find((course) => course.id === state.selectedCourseId);
+      if (!entry) return;
+      state.line = {
+        a: { ...entry.line.a },
+        b: { ...entry.line.b },
+      };
+      state.lineName = null;
+      state.lineSourceId = null;
+      state.course = {
+        enabled: Boolean(entry.course?.enabled),
+        marks: normalizeCourseMarks(entry.course?.marks),
+        finish: entry.course?.finish
+          ? { ...entry.course.finish }
+          : {
+              useStartLine: true,
+              reverse: false,
+              a: { lat: null, lon: null },
+              b: { lat: null, lon: null },
+            },
+        version: Date.now(),
+      };
+      state.courseTrackActive = false;
+      state.courseTrack = [];
+      bumpCourseVersion();
+      if (starterDeps.updateInputs) {
+        starterDeps.updateInputs();
+      }
+      updateLineProjection();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateLineNameDisplay();
+      updateCourseUi();
+      syncCourseMarksToLibrary();
+      closeCourseModal();
+    });
+  }
+
+  if (els.confirmMarkAdd) {
+    els.confirmMarkAdd.addEventListener("click", () => {
+      if (!state.selectedMarkId) return;
+      const mark = state.savedMarks.find((entry) => entry.id === state.selectedMarkId);
+      if (!mark) return;
+      if (!state.course) {
+        state.course = {
+          enabled: false,
+          marks: [],
+          finish: {
+            useStartLine: true,
+            reverse: false,
+            a: { lat: null, lon: null },
+            b: { lat: null, lon: null },
+          },
+          version: Date.now(),
+        };
+      }
+      state.course.marks.push({
+        lat: mark.lat,
+        lon: mark.lon,
+        name: mark.name,
+        description: mark.description || "",
+        rounding: null,
+        manual: false,
+      });
+      syncCourseRoundingDefaults();
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+      renderCourseSequence();
+      state.selectedMarkId = null;
+      renderSavedMarksList();
+    });
+  }
+
+  if (els.confirmMarkDelete) {
+    els.confirmMarkDelete.addEventListener("click", () => {
+      if (!state.selectedMarkId) return;
+      const mark = state.savedMarks.find((entry) => entry.id === state.selectedMarkId);
+      if (!mark) return;
+      const confirmed = window.confirm(`Delete "${mark.name}"?`);
+      if (!confirmed) return;
+      state.savedMarks = state.savedMarks.filter((entry) => entry.id !== mark.id);
+      saveSavedMarks();
+      state.selectedMarkId = null;
+      renderSavedMarksList();
+      updateCourseUi();
+    });
+  }
+
+  if (els.closeMarks) {
+    els.closeMarks.addEventListener("click", () => {
+      closeMarksModal();
+    });
+  }
+
+  if (els.courseKeyboardUndo) {
+    els.courseKeyboardUndo.addEventListener("click", () => {
+      if (!state.course || !state.course.marks.length) return;
+      state.course.marks.pop();
+      syncCourseRoundingDefaults();
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+      renderCourseSequence();
+    });
+  }
+
+  if (els.courseKeyboardClear) {
+    els.courseKeyboardClear.addEventListener("click", () => {
+      if (!state.course || !state.course.marks.length) return;
+      const confirmed = window.confirm("Clear course marks?");
+      if (!confirmed) return;
+      state.course.marks = [];
+      bumpCourseVersion();
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      updateCourseUi();
+      renderCourseSequence();
+    });
+  }
+
+  if (els.courseKeyboardClose) {
+    els.courseKeyboardClose.addEventListener("click", () => {
+      closeCourseKeyboardModal();
+    });
+  }
+
+  if (els.confirmCourseDelete) {
+    els.confirmCourseDelete.addEventListener("click", () => {
+      if (!state.selectedCourseId) return;
+      const entry = state.savedCourses.find((course) => course.id === state.selectedCourseId);
+      if (!entry) return;
+      const confirmed = window.confirm(`Delete "${entry.name}"?`);
+      if (!confirmed) return;
+      state.savedCourses = state.savedCourses.filter((course) => course.id !== entry.id);
+      saveSavedCourses();
+      state.selectedCourseId = null;
+      renderSavedCoursesList();
+    });
+  }
+
+  if (els.closeCourseLoad) {
+    els.closeCourseLoad.addEventListener("click", () => {
+      closeCourseModal();
+    });
+  }
+
+  if (els.closeCourseMarks) {
+    els.closeCourseMarks.addEventListener("click", () => {
+      closeCourseMarksModal();
+    });
+  }
+
 }
 
 export {
@@ -1368,6 +2362,8 @@ export {
   bindStarterEvents,
   syncStarterInputs,
   loadSavedLines,
+  loadSavedMarks,
+  loadSavedCourses,
   syncLineNameWithSavedLines,
   updateStartDisplay,
 };

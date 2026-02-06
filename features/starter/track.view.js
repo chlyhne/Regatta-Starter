@@ -1,7 +1,7 @@
 export const trackView = `
 <section id="track-view" class="track-view" aria-hidden="true">
   <div class="track-controls">
-    <div class="track-title">RaceTrack</div>
+    <div id="track-title" class="track-title">RaceTrack</div>
     <button id="record-toggle" type="button">Record data</button>
     <div id="record-status" class="hint">Recording off</div>
   </div>

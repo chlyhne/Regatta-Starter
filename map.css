@@ -61,6 +61,11 @@ body {
   white-space: nowrap;
 }
 
+.map-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .map-btn.set {
   background: #0f6bff;
   color: #ffffff;

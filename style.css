@@ -8,6 +8,8 @@
   --accent-2: #000000;
   --danger: #000000;
   --shadow: rgba(0, 0, 0, 0.12);
+  --port-color: #d62828;
+  --starboard-color: #1b7f3a;
   --start-control-height: 3.2rem;
   --mode-edge-padding: 14px;
   --mode-section-padding: 16px;
@@ -244,6 +246,91 @@ body {
   background: #000000;
   color: #ffffff;
   border: 2px solid #000000;
+}
+
+.modal-item.mark-row {
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+}
+
+.course-mark-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 14px;
+  border-left: 8px solid var(--port-color);
+}
+
+.course-mark-btn.starboard {
+  border-left-color: var(--starboard-color);
+}
+
+.course-mark-btn .mark-name {
+  font-weight: 700;
+}
+
+.course-mark-btn .mark-side {
+  font-size: 0.85rem;
+}
+
+.mark-desc {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.course-sequence {
+  min-height: 44px;
+  padding: 8px;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  background: var(--surface-alt);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.course-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 2px solid #000000;
+  background: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.course-chip.port {
+  background: var(--port-color);
+  border-color: var(--port-color);
+  color: #ffffff;
+}
+
+.course-chip.starboard {
+  background: var(--starboard-color);
+  border-color: var(--starboard-color);
+  color: #ffffff;
+}
+
+.course-keyboard {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+}
+
+.course-key {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 12px 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .modal-actions {

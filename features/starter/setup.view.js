@@ -65,6 +65,39 @@ export const setupView = `
   </section>
 
   <section class="panel">
+    <h2>Course</h2>
+    <button id="course-toggle" class="check-toggle" type="button" aria-pressed="false">
+      <span class="check-label">Track course after start</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
+    <div class="hint">Marks</div>
+    <div id="course-marks" class="value">NO COURSE</div>
+    <div class="hint">Finish line</div>
+    <div id="finish-status" class="value">OFF</div>
+    <button id="finish-use-start" class="check-toggle" type="button" aria-pressed="true">
+      <span class="check-label">Finish uses start line</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
+    <div class="row stack">
+      <button id="open-course-map" class="ghost">Select on map</button>
+      <button id="open-course-marks" class="ghost">Edit marks</button>
+      <button id="open-saved-marks" class="ghost">Saved marks</button>
+      <button id="open-course-keyboard" class="ghost">Course keyboard</button>
+      <button id="open-finish-map" class="ghost">Set finish line</button>
+      <button id="swap-finish" class="ghost">Swap finish marks</button>
+      <button id="clear-course" class="ghost">Clear course</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Saved Course</h2>
+    <div class="row stack">
+      <button id="load-course" class="ghost">Saved courses</button>
+      <button id="save-course" class="ghost">Save course…</button>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Set Start Time</h2>
     <div class="row setting-row">
       <div class="race-toggle horizontal start-toggle" role="group" aria-label="Start mode">

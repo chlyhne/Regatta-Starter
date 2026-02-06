@@ -67,6 +67,8 @@ import {
   bindStarterEvents,
   syncStarterInputs,
   loadSavedLines,
+  loadSavedMarks,
+  loadSavedCourses,
   syncLineNameWithSavedLines,
   updateStartDisplay,
 } from "./features/starter/starter.js";
@@ -197,6 +199,13 @@ function getSettingsSnapshot() {
     lineMeta: {
       name: state.lineName,
       sourceId: state.lineSourceId,
+    },
+    course: {
+      enabled: Boolean(state.course?.enabled),
+      marks: Array.isArray(state.course?.marks)
+        ? state.course.marks.map((mark) => ({ ...mark }))
+        : [],
+      finish: state.course?.finish ? { ...state.course.finish } : null,
     },
     coordsFormat: state.coordsFormat,
     headingSourceByMode: state.headingSourceByMode,
@@ -877,6 +886,28 @@ function loadSettings() {
   state.coordsFormat = settings.coordsFormat;
   state.lineName = settings.lineMeta?.name || null;
   state.lineSourceId = settings.lineMeta?.sourceId || null;
+  state.course = {
+    enabled: Boolean(settings.course?.enabled),
+    marks: Array.isArray(settings.course?.marks)
+      ? settings.course.marks.map((mark) => ({ ...mark }))
+      : [],
+    finish: settings.course?.finish
+      ? {
+          useStartLine: Boolean(settings.course.finish.useStartLine),
+          reverse: Boolean(settings.course.finish.reverse),
+          a: { ...settings.course.finish.a },
+          b: { ...settings.course.finish.b },
+        }
+      : {
+          useStartLine: true,
+          reverse: false,
+          a: { lat: null, lon: null },
+          b: { lat: null, lon: null },
+        },
+    version: Date.now(),
+  };
+  state.courseTrack = [];
+  state.courseTrackActive = false;
   state.useKalman = true;
   state.headingSourceByMode = settings.headingSourceByMode;
   state.bowOffsetMeters = settings.bowOffsetMeters;
@@ -915,6 +946,11 @@ function saveSettings() {
     lineMeta: {
       name: state.lineName,
       sourceId: state.lineSourceId,
+    },
+    course: {
+      enabled: Boolean(state.course?.enabled),
+      marks: Array.isArray(state.course?.marks) ? state.course.marks : [],
+      ...(state.course?.finish ? { finish: { ...state.course.finish } } : {}),
     },
     coordsFormat: state.coordsFormat,
     useKalman: true,
@@ -977,6 +1013,8 @@ function resetPositionState() {
   state.gpsTrackRaw = [];
   state.gpsTrackDevice = [];
   state.gpsTrackFiltered = [];
+  state.courseTrack = [];
+  state.courseTrackActive = false;
   state.lastGpsFixAt = null;
   updateGPSDisplay();
   updateLineProjection();
@@ -1236,6 +1274,8 @@ applyDebugFlagFromUrl();
 syncNoCacheToken();
 initStarterUi();
 loadSavedLines();
+loadSavedMarks();
+loadSavedCourses();
 syncLineNameWithSavedLines();
 updateInputs();
 updateRaceMetricLabels();
@@ -1271,6 +1311,7 @@ initStarter({
   openImuCalibrationModal,
   startImuCalibration,
   closeImuCalibrationModal,
+  getNoCacheQuery,
 });
 initNavigation({
   updateInputs,

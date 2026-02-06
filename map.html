@@ -18,13 +18,18 @@
         <button id="set-map-a" class="map-btn">Set P</button>
         <button id="set-map-b" class="map-btn">Set SB</button>
         <button id="swap-map" class="map-btn">Swap</button>
+        <button id="add-course-mark" class="map-btn" hidden>Add mark</button>
+        <button id="undo-course-mark" class="map-btn" hidden>Undo</button>
+        <button id="clear-course-marks" class="map-btn" hidden>Clear</button>
         <button id="close-map" class="map-btn">Done</button>
       </div>
     </header>
     <main class="map-wrap">
       <div id="map" class="map"></div>
       <div class="map-crosshair" aria-hidden="true"></div>
-      <div class="map-caption">Drag the map. The crosshair is the exact point.</div>
+      <div id="map-caption" class="map-caption">
+        Drag the map. The crosshair is the exact point.
+      </div>
       <div id="map-status" class="map-status">Loading map...</div>
     </main>
 
