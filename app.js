@@ -28,9 +28,9 @@ import {
   createRace,
   getVenueById,
   getRaceById,
-  MARK_ROLES,
   getStartLineFromVenue,
   getFinishLineFromVenue,
+  migrateLineSelections,
   buildCourseMarksFromRace,
 } from "./core/venues.js";
 import { KALMAN_TUNING } from "./core/tuning.js";
@@ -926,12 +926,47 @@ function loadSettings() {
   state.timeFormat = settings.timeFormat;
   state.speedUnit = settings.speedUnit;
   state.distanceUnit = settings.distanceUnit;
-  state.start = { ...state.start, ...settings.start };
+  const startDefaults = { ...settings.start };
+  startDefaults.startTs = null;
+  startDefaults.crossedEarly = false;
+  state.startDefaults = { ...state.startDefaults, ...startDefaults };
+  state.start = { ...state.start, ...startDefaults };
   applyVmgSettings(settings.vmg || {});
   delete state.start.preStartSign;
 }
 
+function getStartSnapshot() {
+  return {
+    mode: state.start.mode,
+    countdownSeconds: state.start.countdownSeconds,
+    absoluteTime: state.start.absoluteTime,
+    startTs: state.start.startTs,
+    crossedEarly: state.start.crossedEarly,
+  };
+}
+
+function updateRaceStartFromState() {
+  if (!state.race) return;
+  state.race.start = getStartSnapshot();
+  state.race.updatedAt = Date.now();
+  saveRaces(state.races);
+}
+
+function updateStartDefaultsFromState() {
+  state.startDefaults = {
+    mode: state.start.mode,
+    countdownSeconds: state.start.countdownSeconds,
+    absoluteTime: state.start.absoluteTime,
+    startTs: null,
+    crossedEarly: false,
+  };
+}
+
 function saveSettings() {
+  if (state.race && Array.isArray(state.races)) {
+    updateRaceStartFromState();
+    updateStartDefaultsFromState();
+  }
   saveSettingsToStorage({
     activeVenueId: state.activeVenueId,
     activeRaceId: state.activeRaceId,
@@ -966,19 +1001,18 @@ function saveSettings() {
     speedUnit: state.speedUnit,
     distanceUnit: state.distanceUnit,
     vmg: getVmgPersistedSettings(),
-    start: {
-      mode: state.start.mode,
-      countdownSeconds: state.start.countdownSeconds,
-      absoluteTime: state.start.absoluteTime,
-      startTs: state.start.startTs,
-      crossedEarly: state.start.crossedEarly,
-    },
+    start: { ...(state.startDefaults || {}) },
   });
 }
 
 function ensureVenueAndRace() {
   const venues = loadVenues();
   const races = loadRaces();
+  const migrated = migrateLineSelections(venues, races);
+  if (migrated) {
+    saveVenues(venues);
+    saveRaces(races);
+  }
 
   if (!venues.length) {
     venues.push(createVenue("Local venue"));
@@ -1017,10 +1051,6 @@ function applyVenueRaceToState() {
   const startLine = getStartLineFromVenue(venue, race);
   const finishLine = getFinishLineFromVenue(venue, race);
   const courseMarks = buildCourseMarksFromRace(venue, race);
-  const finishUseStartLine = Boolean(race?.finishUseStartLine) &&
-    race?.finishEnabled !== false;
-  const finishReverse = Boolean(race?.finishReverse);
-  const finishEnabled = race?.finishEnabled !== false;
 
   state.line = startLine
     ? { a: { ...startLine.a }, b: { ...startLine.b } }
@@ -1029,35 +1059,43 @@ function applyVenueRaceToState() {
   state.course = {
     enabled: Boolean(race?.routeEnabled),
     marks: courseMarks,
-    finish: finishEnabled
-      ? finishUseStartLine
-        ? {
-            useStartLine: true,
-            reverse: finishReverse,
-            a: { lat: null, lon: null },
-            b: { lat: null, lon: null },
-          }
-        : finishLine
-          ? {
-              useStartLine: false,
-              reverse: false,
-              a: { ...finishLine.a },
-              b: { ...finishLine.b },
-            }
-          : {
-              useStartLine: false,
-              reverse: false,
-              a: { lat: null, lon: null },
-              b: { lat: null, lon: null },
-            }
+    finish: finishLine
+      ? {
+          useStartLine: false,
+          reverse: false,
+          a: { ...finishLine.a },
+          b: { ...finishLine.b },
+        }
       : {
           useStartLine: false,
           reverse: false,
           a: { lat: null, lon: null },
           b: { lat: null, lon: null },
-        },
+    },
     version: Date.now(),
   };
+
+  const raceStart = race?.start;
+  if (!raceStart || typeof raceStart !== "object") {
+    const defaults = {
+      mode: state.startDefaults?.mode || "countdown",
+      countdownSeconds:
+        Number.isFinite(state.startDefaults?.countdownSeconds)
+          ? state.startDefaults.countdownSeconds
+          : 300,
+      absoluteTime: state.startDefaults?.absoluteTime || "",
+      startTs: null,
+      crossedEarly: false,
+    };
+    if (race) {
+      race.start = { ...defaults };
+      saveRaces(state.races);
+    }
+    state.start = { ...state.start, ...defaults };
+  } else {
+    state.start = { ...state.start, ...raceStart };
+  }
+  state.start.freeze = null;
 }
 
 function updateInputs() {

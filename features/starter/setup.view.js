@@ -66,17 +66,27 @@ export const setupView = `
   </section>
 
   <section class="panel">
-    <h2>Marks and Start</h2>
+    <h2>Venue</h2>
     <div class="hint">Marks</div>
     <div id="mark-count" class="value">0</div>
+    <div class="row stack">
+      <button id="open-venue-marks" class="ghost">Edit marks</button>
+      <button id="open-start-lines" class="ghost">Edit start lines</button>
+      <button id="open-finish-lines" class="ghost">Edit finish lines</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Lines</h2>
     <div class="hint">Start line</div>
     <div id="start-line-status" class="value">NO LINE</div>
-    <button id="start-line-toggle" class="check-toggle" type="button" aria-pressed="true">
-      <span class="check-label">Use start line</span>
-      <span class="check-box" aria-hidden="true"></span>
-    </button>
     <div class="row stack">
-      <button id="open-map" class="ghost">Select on map</button>
+      <button id="select-start-line" class="ghost">Select start line</button>
+    </div>
+    <div class="hint">Finish line</div>
+    <div id="finish-status" class="value">NO LINE</div>
+    <div class="row stack">
+      <button id="select-finish-line" class="ghost">Select finish line</button>
     </div>
   </section>
 
@@ -86,22 +96,14 @@ export const setupView = `
       <span class="check-label">Use course route</span>
       <span class="check-box" aria-hidden="true"></span>
     </button>
-    <div class="hint">Finish line</div>
-    <div id="finish-status" class="value">NO LINE</div>
-    <button id="finish-toggle" class="check-toggle" type="button" aria-pressed="true">
-      <span class="check-label">Use finish line</span>
-      <span class="check-box" aria-hidden="true"></span>
-    </button>
-    <button id="finish-use-start" class="check-toggle" type="button" aria-pressed="false">
-      <span class="check-label">Finish = start line</span>
-      <span class="check-box" aria-hidden="true"></span>
-    </button>
     <div class="hint">Route</div>
     <div id="route-count" class="value">NO ROUTE</div>
     <div class="row stack">
       <button id="open-route" class="ghost">Edit route</button>
       <button id="open-rounding" class="ghost">Rounding sides</button>
       <button id="clear-route" class="ghost">Clear route</button>
+      <button id="open-route-map" class="ghost">Edit route on map</button>
+      <button id="open-race-map" class="ghost">View race map</button>
     </div>
   </section>
 

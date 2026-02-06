@@ -40,31 +40,6 @@ body {
   letter-spacing: 0.12em;
 }
 
-.map-mode-toggle {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: 100%;
-  border: 2px solid #000000;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.map-tab {
-  border: 0;
-  background: #ffffff;
-  color: #000000;
-  padding: 6px 10px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-}
-
-.map-tab[aria-pressed="true"] {
-  background: #000000;
-  color: #ffffff;
-}
-
 .map-actions {
   display: flex;
   gap: 8px;
@@ -72,34 +47,6 @@ body {
   align-items: center;
   flex-wrap: wrap;
   width: 100%;
-}
-
-.map-role-row {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-}
-
-.map-role {
-  border: 2px solid #000000;
-  background: #ffffff;
-  color: #000000;
-  border-radius: 999px;
-  padding: 6px 8px;
-  font-weight: 600;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-}
-
-.map-role.selected {
-  background: #000000;
-  color: #ffffff;
-}
-
-.map-role:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .map-field {
@@ -134,6 +81,18 @@ body {
   background: #ffffff;
 }
 
+.map-line-list {
+  min-height: 48px;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 6px 8px;
+  display: grid;
+  gap: 6px;
+  background: #ffffff;
+}
+
 .map-mark-item {
   display: flex;
   align-items: center;
@@ -146,6 +105,30 @@ body {
   cursor: pointer;
   font-weight: 600;
   font-size: 0.85rem;
+}
+
+.map-line-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 6px 10px;
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.map-line-item.selected {
+  background: #000000;
+  color: #ffffff;
+}
+
+.map-line-meta {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  font-weight: 500;
 }
 
 .map-mark-item.selected {
@@ -263,30 +246,6 @@ body {
   overflow: hidden;
 }
 
-body[data-map-mode="race"] .map-panel-venue {
-  display: none;
-}
-
-body[data-map-mode="venue"] .map-panel-race {
-  display: none;
-}
-
-body[data-map-mode="race"] #add-course-mark,
-body[data-map-mode="race"] #undo-course-mark,
-body[data-map-mode="race"] #clear-course-marks {
-  display: none !important;
-}
-
-body[data-map-mode="race"] .map-crosshair {
-  display: none;
-}
-
-body[data-map-mode="venue"] #undo-route-mark,
-body[data-map-mode="venue"] #clear-route,
-body[data-map-mode="venue"] #mark-add-route {
-  display: none !important;
-}
-
 .map {
   height: 100%;
   width: 100%;
@@ -314,6 +273,27 @@ body[data-map-mode="venue"] #mark-add-route {
   box-sizing: border-box;
   width: auto !important;
   height: auto !important;
+}
+
+.map-line-arrow {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.map-line-arrow span {
+  display: inline-block;
+}
+
+.map-line-arrow.selected {
+  border-color: #0f6bff;
+  color: #0f6bff;
 }
 
 .map-crosshair {
@@ -360,6 +340,11 @@ body[data-map-mode="venue"] #mark-add-route {
   border-radius: 8px;
   text-align: center;
   pointer-events: none;
+}
+
+.map-line-details {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
 }
 
 .mark-label {

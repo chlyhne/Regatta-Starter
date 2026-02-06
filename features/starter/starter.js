@@ -16,10 +16,12 @@ import {
   createRace,
   getVenueById,
   getRaceById,
-  MARK_ROLES,
   normalizeRouteEntry,
+  getLineById,
+  getLineDisplayName,
   getStartLineFromVenue,
   getFinishLineFromVenue,
+  migrateLineSelections,
   buildCourseMarksFromRace,
 } from "../../core/venues.js";
 import { unlockAudio, playBeep, handleCountdownBeeps, resetBeepState } from "../../core/audio.js";
@@ -82,6 +84,15 @@ function syncCountdownPicker(secondsOverride) {
 
 function setCountdownPickerLive(active) {
   countdownPickerLive = Boolean(active);
+}
+
+function getMapHref(mode) {
+  const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
+  const encoded = encodeURIComponent(mode);
+  if (suffix) {
+    return `map.html${suffix}&mode=${encoded}`;
+  }
+  return `map.html?mode=${encoded}`;
 }
 
 function cancelActiveCountdown(options = {}) {
@@ -178,6 +189,33 @@ function normalizeCourseMarks(marks) {
     .filter(Boolean);
 }
 
+function getDefaultStartState() {
+  const defaults = state.startDefaults || {};
+  return {
+    mode: defaults.mode === "absolute" ? "absolute" : "countdown",
+    countdownSeconds: Number.isFinite(defaults.countdownSeconds)
+      ? defaults.countdownSeconds
+      : 300,
+    absoluteTime: typeof defaults.absoluteTime === "string" ? defaults.absoluteTime : "",
+    startTs: null,
+    crossedEarly: false,
+  };
+}
+
+function syncStartFromRace() {
+  if (!state.race) return;
+  const raceStart = state.race.start;
+  if (!raceStart || typeof raceStart !== "object") {
+    const defaults = getDefaultStartState();
+    state.start = { ...state.start, ...defaults, freeze: null };
+    state.race.start = { ...defaults };
+    state.race.updatedAt = Date.now();
+    saveRaces(state.races);
+    return;
+  }
+  state.start = { ...state.start, ...raceStart, freeze: null };
+}
+
 function persistVenueAndRace(options = {}) {
   if (!state.venue || !state.race) return;
   state.venue.updatedAt = Date.now();
@@ -239,56 +277,55 @@ function getRouteMarks() {
     .filter(Boolean);
 }
 
-function createMarkWithRole(role, name, lat, lon) {
-  return {
-    id: `mark-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: normalizeMarkName(name, "Mark"),
-    description: "",
-    lat,
-    lon,
-    role,
-  };
-}
-
-function setRoleMarkPosition(role, coords, fallbackName) {
-  if (!state.venue || !coords) return;
-  const lat = Number.parseFloat(coords.lat);
-  const lon = Number.parseFloat(coords.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-  let mark =
-    state.venue.marks.find((entry) => entry.role === role) || null;
-  if (!mark) {
-    mark = createMarkWithRole(role, fallbackName, lat, lon);
-    state.venue.marks.push(mark);
-  } else {
-    mark.lat = lat;
-    mark.lon = lon;
-  }
-  state.venue.marks.forEach((entry) => {
-    if (entry.id !== mark.id && entry.role === role) {
-      entry.role = MARK_ROLES.NONE;
-    }
-  });
+function getSelectedStartLine() {
+  if (!state.venue || !state.race) return null;
+  const lineId = state.race.startLineId || state.venue.defaultStartLineId;
+  if (!lineId) return null;
+  return getLineById(state.venue.startLines, lineId);
 }
 
 function syncStartLineMarksFromState() {
   if (!state.venue) return;
+  const line = getSelectedStartLine();
+  if (!line) return;
+  const portMark = state.venue.marks.find((mark) => mark.id === line.portMarkId);
+  const starboardMark = state.venue.marks.find(
+    (mark) => mark.id === line.starboardMarkId
+  );
+  let changed = false;
   const hasA = Number.isFinite(state.line.a.lat) && Number.isFinite(state.line.a.lon);
   const hasB = Number.isFinite(state.line.b.lat) && Number.isFinite(state.line.b.lon);
-  if (!hasA && !hasB) return;
-  if (hasA) {
-    setRoleMarkPosition(MARK_ROLES.START_PORT, state.line.a, "Start P");
+  if (portMark && hasA) {
+    if (portMark.lat !== state.line.a.lat || portMark.lon !== state.line.a.lon) {
+      portMark.lat = state.line.a.lat;
+      portMark.lon = state.line.a.lon;
+      changed = true;
+    }
   }
-  if (hasB) {
-    setRoleMarkPosition(MARK_ROLES.START_STARBOARD, state.line.b, "Start SB");
+  if (starboardMark && hasB) {
+    if (
+      starboardMark.lat !== state.line.b.lat ||
+      starboardMark.lon !== state.line.b.lon
+    ) {
+      starboardMark.lat = state.line.b.lat;
+      starboardMark.lon = state.line.b.lon;
+      changed = true;
+    }
   }
-  persistVenueAndRace();
-  syncDerivedRaceState();
+  if (changed) {
+    persistVenueAndRace();
+    syncDerivedRaceState();
+  }
 }
 
 function refreshVenueRaceState() {
   const venues = loadVenues();
   const races = loadRaces();
+  const migrated = migrateLineSelections(venues, races);
+  if (migrated) {
+    saveVenues(venues);
+    saveRaces(races);
+  }
   if (!venues.length) {
     venues.push(createVenue("Local venue"));
     saveVenues(venues);
@@ -316,45 +353,34 @@ function refreshVenueRaceState() {
   state.activeRaceId = race.id;
   pruneRouteEntries();
   syncDerivedRaceState();
+  syncStartFromRace();
 }
 
 function syncDerivedRaceState() {
   const startLine = getStartLineFromVenue(state.venue, state.race);
   const finishLine = getFinishLineFromVenue(state.venue, state.race);
   const courseMarks = buildCourseMarksFromRace(state.venue, state.race);
-  const finishUseStartLine = Boolean(state.race?.finishUseStartLine) &&
-    state.race?.finishEnabled !== false;
-  const finishReverse = Boolean(state.race?.finishReverse);
-  const finishEnabled = state.race?.finishEnabled !== false;
+  let routeEnabled = Boolean(state.race?.routeEnabled);
+  if (routeEnabled && !finishLine && state.race) {
+    state.race.routeEnabled = false;
+    routeEnabled = false;
+    persistVenueAndRace();
+  }
 
   state.line = startLine
     ? { a: { ...startLine.a }, b: { ...startLine.b } }
     : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
 
   state.course = {
-    enabled: Boolean(state.race?.routeEnabled),
+    enabled: routeEnabled,
     marks: courseMarks,
-    finish: finishEnabled
-      ? finishUseStartLine
-        ? {
-            useStartLine: true,
-            reverse: finishReverse,
-            a: { lat: null, lon: null },
-            b: { lat: null, lon: null },
-          }
-        : finishLine
-          ? {
-              useStartLine: false,
-              reverse: false,
-              a: { ...finishLine.a },
-              b: { ...finishLine.b },
-            }
-          : {
-              useStartLine: false,
-              reverse: false,
-              a: { lat: null, lon: null },
-              b: { lat: null, lon: null },
-            }
+    finish: finishLine
+      ? {
+          useStartLine: false,
+          reverse: false,
+          a: { ...finishLine.a },
+          b: { ...finishLine.b },
+        }
       : {
           useStartLine: false,
           reverse: false,
@@ -424,24 +450,34 @@ function hasFinishLine() {
   return Boolean(getFinishLine());
 }
 
+function getStartLineDisplayName() {
+  const venue = state.venue;
+  if (!venue) return null;
+  const lines = Array.isArray(venue.startLines) ? venue.startLines : [];
+  const lineId = state.race?.startLineId || venue.defaultStartLineId;
+  const line = getLineById(lines, lineId);
+  if (!line) return null;
+  return getLineDisplayName(line, lines, "Start line");
+}
+
+function getFinishLineDisplayName() {
+  const venue = state.venue;
+  if (!venue) return null;
+  const lines = Array.isArray(venue.finishLines) ? venue.finishLines : [];
+  const lineId = state.race?.finishLineId || venue.defaultFinishLineId;
+  const line = getLineById(lines, lineId);
+  if (!line) return null;
+  return getLineDisplayName(line, lines, "Finish line");
+}
+
 function getStartLineStatusText() {
-  const enabled = state.race?.startEnabled !== false;
-  if (!enabled) return "OFF";
-  return hasStartLine() ? "Set" : "NO LINE";
+  const name = getStartLineDisplayName();
+  return name || "NO LINE";
 }
 
 function getFinishLineStatusText() {
-  const finishEnabled = state.race?.finishEnabled !== false;
-  const routeCount = getRouteEntries().length;
-  if (!finishEnabled) return "OFF";
-  if (state.race?.finishUseStartLine) {
-    if (!hasStartLine()) return "NO LINE";
-    return state.race.finishReverse ? "Start line (reverse)" : "Start line";
-  }
-  if (routeCount === 0) {
-    return hasFinishLine() ? "Set" : "OPTIONAL";
-  }
-  return hasFinishLine() ? "Set" : "NO LINE";
+  const name = getFinishLineDisplayName();
+  return name || "NO LINE";
 }
 
 function computeTurnSide(prev, current, next) {
@@ -497,7 +533,7 @@ function updateCourseUi() {
   const routeEnabled = Boolean(state.race?.routeEnabled);
   const markCount = state.venue?.marks?.length || 0;
   const routeCount = getRouteEntries().length;
-  const finishEnabled = state.race?.finishEnabled !== false;
+  const finishReady = hasFinishLine();
 
   if (els.courseToggle) {
     els.courseToggle.setAttribute("aria-pressed", routeEnabled ? "true" : "false");
@@ -520,26 +556,20 @@ function updateCourseUi() {
   if (els.finishStatus) {
     els.finishStatus.textContent = getFinishLineStatusText();
   }
-  if (els.startLineToggle) {
-    const enabled = state.race?.startEnabled !== false;
-    els.startLineToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
-  }
-  if (els.finishToggle) {
-    els.finishToggle.setAttribute("aria-pressed", finishEnabled ? "true" : "false");
-  }
-  if (els.finishUseStart) {
-    const enabled = Boolean(state.race?.finishUseStartLine);
-    els.finishUseStart.setAttribute("aria-pressed", enabled ? "true" : "false");
-    els.finishUseStart.disabled = !finishEnabled;
-  }
   if (els.openRoute) {
-    els.openRoute.disabled = markCount === 0;
+    els.openRoute.disabled = markCount === 0 || !finishReady;
+  }
+  if (els.openRouteMap) {
+    els.openRouteMap.disabled = markCount === 0 || !finishReady;
+  }
+  if (els.openRaceMap) {
+    els.openRaceMap.disabled = !hasStartLine();
   }
   if (els.openRounding) {
-    els.openRounding.disabled = routeCount === 0;
+    els.openRounding.disabled = routeCount === 0 || !finishReady;
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = routeCount === 0;
+    els.clearRoute.disabled = routeCount === 0 || !finishReady;
   }
   if (els.courseKeyboardModal) {
     const open = els.courseKeyboardModal.getAttribute("aria-hidden") === "false";
@@ -556,7 +586,7 @@ function bumpCourseVersion() {
 
 function updateLineNameDisplay() {
   if (!els.statusLineName) return;
-  els.statusLineName.textContent = state.venue?.name || "--";
+  els.statusLineName.textContent = getStartLineDisplayName() || "--";
 }
 
 function formatRoundingSide(side) {
@@ -939,23 +969,20 @@ function syncCoordinateFormatUI() {
 }
 
 function swapStartLineMarks() {
-  if (state.venue) {
-    const port = state.venue.marks.find((mark) => mark.role === MARK_ROLES.START_PORT);
-    const starboard = state.venue.marks.find(
-      (mark) => mark.role === MARK_ROLES.START_STARBOARD
-    );
-    if (port && starboard) {
-      port.role = MARK_ROLES.START_STARBOARD;
-      starboard.role = MARK_ROLES.START_PORT;
-      persistVenueAndRace();
-      syncDerivedRaceState();
-      updateLineNameDisplay();
-      if (starterDeps.updateInputs) {
-        starterDeps.updateInputs();
-      }
-      updateLineProjection();
-      return;
+  const line = getSelectedStartLine();
+  if (state.venue && line) {
+    const nextStarboard = line.portMarkId;
+    const nextPort = line.starboardMarkId;
+    line.starboardMarkId = nextStarboard;
+    line.portMarkId = nextPort;
+    persistVenueAndRace();
+    syncDerivedRaceState();
+    updateLineNameDisplay();
+    if (starterDeps.updateInputs) {
+      starterDeps.updateInputs();
     }
+    updateLineProjection();
+    return;
   }
 
   const nextA = { ...state.line.b };
@@ -964,7 +991,6 @@ function swapStartLineMarks() {
   state.line.b = nextB;
   state.lineName = null;
   state.lineSourceId = null;
-  syncStartLineMarksFromState();
   if (starterDeps.saveSettings) {
     starterDeps.saveSettings();
   }
@@ -1566,17 +1592,21 @@ function updateStartDisplay() {
   fitRaceText();
 }
 
+function syncStartUi() {
+  syncCountdownPicker();
+  updateStartModeToggle();
+  if (els.absoluteTime) {
+    els.absoluteTime.value = state.start.absoluteTime || "";
+  }
+  updateStartDisplay();
+}
 
 function syncStarterInputs() {
   refreshVenueRaceState();
   syncCoordinateInputs();
-  syncCountdownPicker();
-  updateStartModeToggle();
+  syncStartUi();
   updateRaceHintUnits();
   updateCourseUi();
-  if (els.absoluteTime) {
-    els.absoluteTime.value = state.start.absoluteTime || "";
-  }
 }
 
 function initStarterUi() {
@@ -1783,16 +1813,16 @@ function bindStarterEvents() {
       if (nameInput === null) return;
       const name = normalizeMarkName(nameInput, fallback);
       const race = createRace(name, state.venue, {
-        startEnabled: state.race?.startEnabled !== false,
-        finishEnabled: state.race?.finishEnabled !== false,
-        finishUseStartLine: Boolean(state.race?.finishUseStartLine),
-        finishReverse: Boolean(state.race?.finishReverse),
+        startLineId: state.race?.startLineId,
+        finishLineId: state.race?.finishLineId,
       });
       state.races.unshift(race);
       state.race = race;
       state.activeRaceId = race.id;
       state.activeVenueId = state.venue.id;
       syncDerivedRaceState();
+      syncStartFromRace();
+      syncStartUi();
       syncVenueDefaultRoute();
       persistVenueAndRace();
       updateCourseUi();
@@ -1823,6 +1853,8 @@ function bindStarterEvents() {
       state.activeRaceId = race.id;
       state.activeVenueId = venue.id;
       syncDerivedRaceState();
+      syncStartFromRace();
+      syncStartUi();
       persistVenueAndRace();
       updateCourseUi();
       closeRaceModal();
@@ -1859,6 +1891,8 @@ function bindStarterEvents() {
         }
       }
       syncDerivedRaceState();
+      syncStartFromRace();
+      syncStartUi();
       persistVenueAndRace();
       updateCourseUi();
       closeRaceModal();
@@ -1888,6 +1922,8 @@ function bindStarterEvents() {
       state.activeVenueId = venue.id;
       state.activeRaceId = race.id;
       syncDerivedRaceState();
+      syncStartFromRace();
+      syncStartUi();
       persistVenueAndRace();
       updateCourseUi();
       closeVenueModal();
@@ -1924,6 +1960,8 @@ function bindStarterEvents() {
       if (nextVenue) state.activeVenueId = nextVenue.id;
       if (nextRace) state.activeRaceId = nextRace.id;
       syncDerivedRaceState();
+      syncStartFromRace();
+      syncStartUi();
       persistVenueAndRace();
       updateCourseUi();
       closeVenueModal();
@@ -1936,10 +1974,45 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.openMap) {
-    els.openMap.addEventListener("click", () => {
-      const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
-      window.location.href = `map.html${suffix}`;
+  if (els.openVenueMarks) {
+    els.openVenueMarks.addEventListener("click", () => {
+      window.location.href = getMapHref("venue-marks");
+    });
+  }
+
+  if (els.openStartLines) {
+    els.openStartLines.addEventListener("click", () => {
+      window.location.href = getMapHref("venue-start-lines");
+    });
+  }
+
+  if (els.openFinishLines) {
+    els.openFinishLines.addEventListener("click", () => {
+      window.location.href = getMapHref("venue-finish-lines");
+    });
+  }
+
+  if (els.selectStartLine) {
+    els.selectStartLine.addEventListener("click", () => {
+      window.location.href = getMapHref("race-start-line");
+    });
+  }
+
+  if (els.selectFinishLine) {
+    els.selectFinishLine.addEventListener("click", () => {
+      window.location.href = getMapHref("race-finish-line");
+    });
+  }
+
+  if (els.openRouteMap) {
+    els.openRouteMap.addEventListener("click", () => {
+      window.location.href = getMapHref("race-route");
+    });
+  }
+
+  if (els.openRaceMap) {
+    els.openRaceMap.addEventListener("click", () => {
+      window.location.href = getMapHref("race-view");
     });
   }
 
@@ -2153,60 +2226,12 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.startLineToggle) {
-    els.startLineToggle.addEventListener("click", () => {
-      if (!state.race) return;
-      const next = state.race.startEnabled === false;
-      state.race.startEnabled = next;
-      if (!next && state.race.finishUseStartLine) {
-        state.race.finishUseStartLine = false;
-      }
-      persistVenueAndRace();
-      syncDerivedRaceState();
-      updateCourseUi();
-    });
-  }
-
-  if (els.finishToggle) {
-    els.finishToggle.addEventListener("click", () => {
-      if (!state.race) return;
-      const routeCount = getRouteEntries().length;
-      const next = state.race.finishEnabled === false;
-      if (!next && state.race.routeEnabled && routeCount > 0) {
-        window.alert("Finish line required when a route is enabled.");
-        return;
-      }
-      state.race.finishEnabled = next;
-      if (!next) {
-        state.race.finishUseStartLine = false;
-      }
-      persistVenueAndRace();
-      syncDerivedRaceState();
-      updateCourseUi();
-    });
-  }
-
-  if (els.finishUseStart) {
-    els.finishUseStart.addEventListener("click", () => {
-      if (!state.race) return;
-      const next = !state.race.finishUseStartLine;
-      if (next && !hasStartLine()) {
-        window.alert("Set the start line first.");
-        return;
-      }
-      state.race.finishUseStartLine = next;
-      persistVenueAndRace();
-      syncDerivedRaceState();
-      updateCourseUi();
-    });
-  }
-
   if (els.courseToggle) {
     els.courseToggle.addEventListener("click", () => {
       if (!state.race) return;
       const next = !state.race.routeEnabled;
-      if (next && getRouteEntries().length > 0 && !hasFinishLine()) {
-        window.alert("Set a finish line or use the start line as finish.");
+      if (next && !hasFinishLine()) {
+        window.alert("Select a finish line first.");
         return;
       }
       state.race.routeEnabled = next;
