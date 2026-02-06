@@ -10,8 +10,6 @@ import {
   getRaceById,
   getLineById,
   getLineDisplayName,
-  getStartLineFromVenue,
-  getFinishLineFromVenue,
   migrateLineSelections,
 } from "./core/venues.js";
 
@@ -20,8 +18,7 @@ const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 
 const MODES = {
   VENUE_MARKS: "venue-marks",
-  VENUE_START_LINES: "venue-start-lines",
-  VENUE_FINISH_LINES: "venue-finish-lines",
+  VENUE_LINES: "venue-lines",
   RACE_ROUTE: "race-route",
   RACE_START_LINE: "race-start-line",
   RACE_FINISH_LINE: "race-finish-line",
@@ -120,10 +117,8 @@ function getModeTitle(mode) {
   switch (mode) {
     case MODES.VENUE_MARKS:
       return "Venue marks";
-    case MODES.VENUE_START_LINES:
-      return "Start lines";
-    case MODES.VENUE_FINISH_LINES:
-      return "Finish lines";
+    case MODES.VENUE_LINES:
+      return "Lines";
     case MODES.RACE_ROUTE:
       return "Race route";
     case MODES.RACE_START_LINE:
@@ -141,13 +136,11 @@ function getModeCaption(mode) {
   switch (mode) {
     case MODES.VENUE_MARKS:
       return "Drag the map. Add marks on the crosshair, then tap a mark to edit.";
-    case MODES.VENUE_START_LINES:
-      return "Tap starboard mark, then port mark to define a start line.";
-    case MODES.VENUE_FINISH_LINES:
-      return "Tap starboard mark, then port mark to define a finish line.";
+    case MODES.VENUE_LINES:
+      return "Tap starboard mark, then port mark to define a line.";
     case MODES.RACE_ROUTE:
-      if (!hasFinishLine()) {
-        return "Select a finish line first.";
+      if (!hasRouteLines()) {
+        return "Select start and finish lines first.";
       }
       return "Tap a mark, then add it to the route.";
     case MODES.RACE_START_LINE:
@@ -174,7 +167,7 @@ function isRaceViewMode(mode = state.mode) {
 }
 
 function isLineEditMode(mode = state.mode) {
-  return mode === MODES.VENUE_START_LINES || mode === MODES.VENUE_FINISH_LINES;
+  return mode === MODES.VENUE_LINES;
 }
 
 function isLineSelectMode(mode = state.mode) {
@@ -186,10 +179,10 @@ function isLineMode(mode = state.mode) {
 }
 
 function getLineTypeForMode(mode = state.mode) {
-  if (mode === MODES.VENUE_START_LINES || mode === MODES.RACE_START_LINE) {
+  if (mode === MODES.RACE_START_LINE) {
     return LINE_TYPES.START;
   }
-  if (mode === MODES.VENUE_FINISH_LINES || mode === MODES.RACE_FINISH_LINE) {
+  if (mode === MODES.RACE_FINISH_LINE) {
     return LINE_TYPES.FINISH;
   }
   return null;
@@ -245,6 +238,10 @@ function loadData() {
   state.venue = venue;
   state.race = race;
   state.mode = mode;
+  const synced = syncRaceLineState();
+  if (synced) {
+    saveRaces(state.races);
+  }
   const lineType = getLineTypeForMode(mode);
   if (lineType === LINE_TYPES.START) {
     state.selectedLineId =
@@ -266,10 +263,75 @@ function saveData() {
   saveRaces(state.races);
 }
 
+function syncRaceLineState() {
+  if (!state.race || !state.venue) return false;
+  const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  let startLineId = state.race.startLineId || state.venue.defaultStartLineId || null;
+  let finishLineId = state.race.finishLineId || state.venue.defaultFinishLineId || null;
+  let routeStartLineId =
+    state.race.routeStartLineId || state.venue.defaultRouteStartLineId || null;
+  let routeFinishLineId =
+    state.race.routeFinishLineId || state.venue.defaultRouteFinishLineId || null;
+
+  if (startLineId && !hasLine(startLineId)) startLineId = null;
+  if (finishLineId && !hasLine(finishLineId)) finishLineId = null;
+  if (routeStartLineId && !hasLine(routeStartLineId)) routeStartLineId = null;
+  if (routeFinishLineId && !hasLine(routeFinishLineId)) routeFinishLineId = null;
+
+  let routeEnabled = Boolean(state.race.routeEnabled);
+  if (routeEnabled) {
+    if (!routeStartLineId && startLineId) {
+      routeStartLineId = startLineId;
+    }
+    if (!routeFinishLineId && finishLineId) {
+      routeFinishLineId = finishLineId;
+    }
+    if (!routeStartLineId || !routeFinishLineId) {
+      routeEnabled = false;
+    } else {
+      startLineId = routeStartLineId;
+      finishLineId = routeFinishLineId;
+    }
+  }
+
+  let changed = false;
+  if (state.race.routeEnabled !== routeEnabled) {
+    state.race.routeEnabled = routeEnabled;
+    changed = true;
+  }
+  if (state.race.startLineId !== startLineId) {
+    state.race.startLineId = startLineId;
+    changed = true;
+  }
+  if (state.race.finishLineId !== finishLineId) {
+    state.race.finishLineId = finishLineId;
+    changed = true;
+  }
+  if (state.race.routeStartLineId !== routeStartLineId) {
+    state.race.routeStartLineId = routeStartLineId;
+    changed = true;
+  }
+  if (state.race.routeFinishLineId !== routeFinishLineId) {
+    state.race.routeFinishLineId = routeFinishLineId;
+    changed = true;
+  }
+
+  return changed;
+}
+
 function syncVenueDefaultRoute() {
   if (!state.venue || !state.race) return;
   const route = Array.isArray(state.race.route) ? state.race.route : [];
   state.venue.defaultRoute = route.map((entry) => ({ ...entry }));
+  const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  state.venue.defaultRouteStartLineId = hasLine(state.race.routeStartLineId)
+    ? state.race.routeStartLineId
+    : null;
+  state.venue.defaultRouteFinishLineId = hasLine(state.race.routeFinishLineId)
+    ? state.race.routeFinishLineId
+    : null;
 }
 
 function getSelectedMark() {
@@ -280,19 +342,18 @@ function getSelectedMark() {
 function getSelectedLine() {
   const type = getLineTypeForMode();
   const lines = getLinesForType(type);
-  if (!type || !lines.length || !state.selectedLineId) return null;
+  if (!lines.length || !state.selectedLineId) return null;
   return getLineById(lines, state.selectedLineId);
 }
 
 function getLinesForType(type) {
   if (!state.venue) return [];
-  if (type === LINE_TYPES.START) {
-    return Array.isArray(state.venue.startLines) ? state.venue.startLines : [];
-  }
-  if (type === LINE_TYPES.FINISH) {
-    return Array.isArray(state.venue.finishLines) ? state.venue.finishLines : [];
-  }
-  return [];
+  return Array.isArray(state.venue.lines) ? state.venue.lines : [];
+}
+
+function getActiveStartLineId() {
+  if (!state.race || !state.venue) return null;
+  return state.race.startLineId || state.venue.defaultStartLineId || null;
 }
 
 function getActiveFinishLineId() {
@@ -300,10 +361,20 @@ function getActiveFinishLineId() {
   return state.race.finishLineId || state.venue.defaultFinishLineId || null;
 }
 
+function hasStartLine() {
+  const lineId = getActiveStartLineId();
+  if (!lineId) return false;
+  return Boolean(getLineById(getLinesForType(), lineId));
+}
+
 function hasFinishLine() {
   const lineId = getActiveFinishLineId();
   if (!lineId) return false;
-  return Boolean(getLineById(getLinesForType(LINE_TYPES.FINISH), lineId));
+  return Boolean(getLineById(getLinesForType(), lineId));
+}
+
+function hasRouteLines() {
+  return hasStartLine() && hasFinishLine();
 }
 
 function getLineName(line, type) {
@@ -491,10 +562,10 @@ function updateMarkEditUi() {
 function updateLineEditUi() {
   const line = getSelectedLine();
   const type = getLineTypeForMode();
-  if (!line || !type) {
+  if (!line) {
     if (els.lineName) {
       els.lineName.value = "";
-      els.lineName.placeholder = type === LINE_TYPES.START ? "Start line" : "Finish line";
+      els.lineName.placeholder = "Line";
       els.lineName.disabled = true;
     }
     if (els.lineDetails) {
@@ -635,16 +706,16 @@ function swapLineDirection() {
 function syncRouteButtons() {
   const mark = getSelectedMark();
   if (els.markAddRoute) {
-    const finishReady = hasFinishLine();
-    const canAdd = isRouteMode() && finishReady && Boolean(mark);
+    const routeReady = hasRouteLines();
+    const canAdd = isRouteMode() && routeReady && Boolean(mark);
     els.markAddRoute.disabled = !canAdd;
   }
   const routeLength = state.race?.route?.length || 0;
   if (els.undoRoute) {
-    els.undoRoute.disabled = !isRouteMode() || routeLength === 0 || !hasFinishLine();
+    els.undoRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteLines();
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = !isRouteMode() || routeLength === 0 || !hasFinishLine();
+    els.clearRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteLines();
   }
 }
 
@@ -667,48 +738,51 @@ function pruneRoutesForVenue(venueId, removedIds = new Set()) {
 function pruneLinesForVenue(venueId, removedMarkIds = new Set()) {
   const venue = state.venues.find((entry) => entry.id === venueId);
   if (!venue) return;
-  const removedStartIds = new Set();
-  const removedFinishIds = new Set();
-
-  if (Array.isArray(venue.startLines)) {
-    venue.startLines = venue.startLines.filter((line) => {
+  const removedLineIds = new Set();
+  if (Array.isArray(venue.lines)) {
+    venue.lines = venue.lines.filter((line) => {
       const remove =
         removedMarkIds.has(line.starboardMarkId) || removedMarkIds.has(line.portMarkId);
-      if (remove) removedStartIds.add(line.id);
+      if (remove) removedLineIds.add(line.id);
       return !remove;
     });
+  } else {
+    venue.lines = [];
   }
 
-  if (Array.isArray(venue.finishLines)) {
-    venue.finishLines = venue.finishLines.filter((line) => {
-      const remove =
-        removedMarkIds.has(line.starboardMarkId) || removedMarkIds.has(line.portMarkId);
-      if (remove) removedFinishIds.add(line.id);
-      return !remove;
-    });
+  if (removedLineIds.has(venue.defaultStartLineId)) {
+    venue.defaultStartLineId = venue.lines?.[0]?.id || null;
   }
-
-  if (removedStartIds.has(venue.defaultStartLineId)) {
-    venue.defaultStartLineId = venue.startLines?.[0]?.id || null;
+  if (removedLineIds.has(venue.defaultFinishLineId)) {
+    venue.defaultFinishLineId = venue.lines?.[0]?.id || null;
   }
-  if (removedFinishIds.has(venue.defaultFinishLineId)) {
-    venue.defaultFinishLineId = venue.finishLines?.[0]?.id || null;
+  if (removedLineIds.has(venue.defaultRouteStartLineId)) {
+    venue.defaultRouteStartLineId = null;
+  }
+  if (removedLineIds.has(venue.defaultRouteFinishLineId)) {
+    venue.defaultRouteFinishLineId = null;
   }
 
   state.races.forEach((race) => {
     if (race.venueId !== venueId) return;
-    if (removedStartIds.has(race.startLineId)) {
+    if (removedLineIds.has(race.startLineId)) {
       race.startLineId = venue.defaultStartLineId || null;
     }
-    if (removedFinishIds.has(race.finishLineId)) {
+    if (removedLineIds.has(race.finishLineId)) {
       race.finishLineId = venue.defaultFinishLineId || null;
+    }
+    if (removedLineIds.has(race.routeStartLineId)) {
+      race.routeStartLineId = null;
+    }
+    if (removedLineIds.has(race.routeFinishLineId)) {
+      race.routeFinishLineId = null;
+    }
+    if (race.routeEnabled && (!race.routeStartLineId || !race.routeFinishLineId)) {
+      race.routeEnabled = false;
     }
   });
 
-  if (
-    removedStartIds.has(state.selectedLineId) ||
-    removedFinishIds.has(state.selectedLineId)
-  ) {
+  if (removedLineIds.has(state.selectedLineId)) {
     state.selectedLineId = null;
   }
 
@@ -717,8 +791,7 @@ function pruneLinesForVenue(venueId, removedMarkIds = new Set()) {
       removedMarkIds.has(state.trimContext.trimMarkId) ||
       removedMarkIds.has(state.trimContext.originalPortId) ||
       removedMarkIds.has(state.trimContext.originalStarboardId) ||
-      removedStartIds.has(state.trimContext.lineId) ||
-      removedFinishIds.has(state.trimContext.lineId);
+      removedLineIds.has(state.trimContext.lineId);
     if (trimHitsRemoved) {
       state.trimContext = null;
       state.trimMode = false;
@@ -757,7 +830,7 @@ function renderLineList() {
   els.mapLineList.innerHTML = "";
   const type = getLineTypeForMode();
   const lines = getLinesForType(type);
-  const title = type === LINE_TYPES.START ? "Start lines" : "Finish lines";
+  const title = "Lines";
   if (els.lineListTitle) {
     els.lineListTitle.textContent = title;
   }
@@ -857,10 +930,19 @@ function applyLineSelection(lineId) {
   if (type === LINE_TYPES.START) {
     state.race.startLineId = lineId;
     state.venue.defaultStartLineId = lineId;
+    if (state.race.routeEnabled) {
+      state.race.routeStartLineId = lineId;
+      state.venue.defaultRouteStartLineId = lineId;
+    }
   } else {
     state.race.finishLineId = lineId;
     state.venue.defaultFinishLineId = lineId;
+    if (state.race.routeEnabled) {
+      state.race.routeFinishLineId = lineId;
+      state.venue.defaultRouteFinishLineId = lineId;
+    }
   }
+  syncRaceLineState();
   state.selectedLineId = lineId;
   saveData();
   updateMapOverlays();
@@ -873,7 +955,7 @@ function generateLineId() {
 
 function finalizeLineSelection() {
   const type = getLineTypeForMode();
-  if (!type || !state.venue) return;
+  if (!state.venue) return;
   const { starboardMarkId, portMarkId } = state.lineSelection;
   if (!starboardMarkId || !portMarkId) return;
 
@@ -892,12 +974,6 @@ function finalizeLineSelection() {
         portMarkId,
       };
       lines.push(line);
-      if (type === LINE_TYPES.START && !state.venue.defaultStartLineId) {
-        state.venue.defaultStartLineId = line.id;
-      }
-      if (type === LINE_TYPES.FINISH && !state.venue.defaultFinishLineId) {
-        state.venue.defaultFinishLineId = line.id;
-      }
     }
     state.selectedLineId = line.id;
     saveData();
@@ -946,36 +1022,42 @@ function handleLineMarkSelection(mark) {
 }
 
 function deleteSelectedLine() {
-  const type = getLineTypeForMode();
-  if (!type || !state.venue) return;
+  if (!state.venue) return;
   const line = getSelectedLine();
   if (!line) return;
-  const confirmed = window.confirm(`Delete \"${getLineName(line, type)}\"?`);
+  const confirmed = window.confirm(`Delete \"${getLineName(line)}\"?`);
   if (!confirmed) return;
 
-  if (type === LINE_TYPES.START) {
-    state.venue.startLines = getLinesForType(type).filter(
-      (entry) => entry.id !== line.id
-    );
-    if (state.venue.defaultStartLineId === line.id) {
-      state.venue.defaultStartLineId = state.venue.startLines[0]?.id || null;
-    }
-  } else {
-    state.venue.finishLines = getLinesForType(type).filter(
-      (entry) => entry.id !== line.id
-    );
-    if (state.venue.defaultFinishLineId === line.id) {
-      state.venue.defaultFinishLineId = state.venue.finishLines[0]?.id || null;
-    }
+  state.venue.lines = getLinesForType().filter((entry) => entry.id !== line.id);
+  if (state.venue.defaultStartLineId === line.id) {
+    state.venue.defaultStartLineId = state.venue.lines[0]?.id || null;
+  }
+  if (state.venue.defaultFinishLineId === line.id) {
+    state.venue.defaultFinishLineId = state.venue.lines[0]?.id || null;
+  }
+  if (state.venue.defaultRouteStartLineId === line.id) {
+    state.venue.defaultRouteStartLineId = null;
+  }
+  if (state.venue.defaultRouteFinishLineId === line.id) {
+    state.venue.defaultRouteFinishLineId = null;
   }
 
   state.races.forEach((race) => {
     if (race.venueId !== state.venue.id) return;
-    if (type === LINE_TYPES.START && race.startLineId === line.id) {
+    if (race.startLineId === line.id) {
       race.startLineId = state.venue.defaultStartLineId || null;
     }
-    if (type === LINE_TYPES.FINISH && race.finishLineId === line.id) {
+    if (race.finishLineId === line.id) {
       race.finishLineId = state.venue.defaultFinishLineId || null;
+    }
+    if (race.routeStartLineId === line.id) {
+      race.routeStartLineId = null;
+    }
+    if (race.routeFinishLineId === line.id) {
+      race.routeFinishLineId = null;
+    }
+    if (race.routeEnabled && (!race.routeStartLineId || !race.routeFinishLineId)) {
+      race.routeEnabled = false;
     }
   });
 
@@ -1059,42 +1141,51 @@ function updateMapOverlays() {
     state.labelMarkers.push(label);
   });
 
-  const drawLines = (lines, type) => {
-    lines.forEach((line) => {
-      const coords = resolveLineLatLng(line);
-      if (!coords) return;
-      const activeLineId = isLineMode()
-        ? state.selectedLineId
-        : type === LINE_TYPES.START
-          ? state.race?.startLineId
-          : state.race?.finishLineId;
-      const isSelected = line.id === activeLineId;
-      const color = isSelected ? "#0f6bff" : "#000000";
-      const weight = isSelected ? 5 : type === LINE_TYPES.START ? 4 : 3;
-      const dashArray = type === LINE_TYPES.FINISH ? "8 6" : null;
-      const polyline = L.polyline(
-        [
-          [coords.a.lat, coords.a.lon],
-          [coords.b.lat, coords.b.lon],
-        ],
-        {
-          color,
-          weight,
-          opacity: 1,
-          dashArray,
-          interactive: isLineMode(),
-        }
-      ).addTo(state.map);
-      if (isLineMode()) {
-        polyline.on("click", () => handleLineClick(line.id));
+  const lines = getLinesForType();
+  const startLineId = state.race?.startLineId || null;
+  const finishLineId = state.race?.finishLineId || null;
+  const showRaceLines = isRaceViewMode();
+  lines.forEach((line) => {
+    const coords = resolveLineLatLng(line);
+    if (!coords) return;
+    const isSelected = isLineMode() && line.id === state.selectedLineId;
+    const isStart = line.id === startLineId;
+    const isFinish = line.id === finishLineId;
+    let color = "#000000";
+    let weight = 3;
+    let dashArray = null;
+    if (showRaceLines) {
+      if (isFinish && !isStart) {
+        dashArray = "8 6";
       }
-      const arrow = createLineArrow(coords, isSelected);
-      state.lineOverlays.push({ id: line.id, type, polyline, arrow });
-    });
-  };
-
-  drawLines(getLinesForType(LINE_TYPES.START), LINE_TYPES.START);
-  drawLines(getLinesForType(LINE_TYPES.FINISH), LINE_TYPES.FINISH);
+      if (isStart) {
+        weight = 4;
+      }
+    }
+    if (isSelected) {
+      color = "#0f6bff";
+      weight = 5;
+      dashArray = null;
+    }
+    const polyline = L.polyline(
+      [
+        [coords.a.lat, coords.a.lon],
+        [coords.b.lat, coords.b.lon],
+      ],
+      {
+        color,
+        weight,
+        opacity: 1,
+        dashArray,
+        interactive: isLineMode(),
+      }
+    ).addTo(state.map);
+    if (isLineMode()) {
+      polyline.on("click", () => handleLineClick(line.id));
+    }
+    const arrow = createLineArrow(coords, isSelected);
+    state.lineOverlays.push({ id: line.id, type: "line", polyline, arrow });
+  });
 
   const route = getRouteLatLngs();
   const showRoute = !isRaceViewMode() || Boolean(state.race?.routeEnabled);
@@ -1268,8 +1359,6 @@ function bindEvents() {
       state.venue.marks = [];
       pruneRoutesForVenue(state.venue.id, removedIds);
       pruneLinesForVenue(state.venue.id, removedIds);
-      state.venue.defaultStartLineId = state.venue.startLines?.[0]?.id || null;
-      state.venue.defaultFinishLineId = state.venue.finishLines?.[0]?.id || null;
       saveData();
       state.selectedMarkId = null;
       state.selectedLineId = null;
@@ -1330,8 +1419,8 @@ function bindEvents() {
     els.markAddRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
       if (!state.race) return;
-      if (!hasFinishLine()) {
-        window.alert("Select a finish line first.");
+      if (!hasRouteLines()) {
+        window.alert("Select start and finish lines first.");
         return;
       }
       const mark = getSelectedMark();

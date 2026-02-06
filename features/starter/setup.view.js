@@ -71,8 +71,7 @@ export const setupView = `
     <div id="mark-count" class="value">0</div>
     <div class="row stack">
       <button id="open-venue-marks" class="ghost">Edit marks</button>
-      <button id="open-start-lines" class="ghost">Edit start lines</button>
-      <button id="open-finish-lines" class="ghost">Edit finish lines</button>
+      <button id="open-lines" class="ghost">Edit lines</button>
     </div>
   </section>
 

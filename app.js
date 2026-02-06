@@ -28,6 +28,7 @@ import {
   createRace,
   getVenueById,
   getRaceById,
+  getLineById,
   getStartLineFromVenue,
   getFinishLineFromVenue,
   migrateLineSelections,
@@ -1048,6 +1049,61 @@ function ensureVenueAndRace() {
 function applyVenueRaceToState() {
   const venue = state.venue;
   const race = state.race;
+  if (venue && race) {
+    const lines = Array.isArray(venue.lines) ? venue.lines : [];
+    const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+    let startLineId = race.startLineId || venue.defaultStartLineId || null;
+    if (startLineId && !hasLine(startLineId)) startLineId = null;
+    let finishLineId = race.finishLineId || venue.defaultFinishLineId || null;
+    if (finishLineId && !hasLine(finishLineId)) finishLineId = null;
+    let routeStartLineId =
+      race.routeStartLineId || venue.defaultRouteStartLineId || null;
+    if (routeStartLineId && !hasLine(routeStartLineId)) routeStartLineId = null;
+    let routeFinishLineId =
+      race.routeFinishLineId || venue.defaultRouteFinishLineId || null;
+    if (routeFinishLineId && !hasLine(routeFinishLineId)) routeFinishLineId = null;
+
+    let routeEnabled = Boolean(race.routeEnabled);
+    if (routeEnabled) {
+      if (!routeStartLineId && startLineId) {
+        routeStartLineId = startLineId;
+      }
+      if (!routeFinishLineId && finishLineId) {
+        routeFinishLineId = finishLineId;
+      }
+      if (!routeStartLineId || !routeFinishLineId) {
+        routeEnabled = false;
+      } else {
+        startLineId = routeStartLineId;
+        finishLineId = routeFinishLineId;
+      }
+    }
+
+    let changed = false;
+    if (race.routeEnabled !== routeEnabled) {
+      race.routeEnabled = routeEnabled;
+      changed = true;
+    }
+    if (race.startLineId !== startLineId) {
+      race.startLineId = startLineId;
+      changed = true;
+    }
+    if (race.finishLineId !== finishLineId) {
+      race.finishLineId = finishLineId;
+      changed = true;
+    }
+    if (race.routeStartLineId !== routeStartLineId) {
+      race.routeStartLineId = routeStartLineId;
+      changed = true;
+    }
+    if (race.routeFinishLineId !== routeFinishLineId) {
+      race.routeFinishLineId = routeFinishLineId;
+      changed = true;
+    }
+    if (changed) {
+      saveRaces(state.races);
+    }
+  }
   const startLine = getStartLineFromVenue(venue, race);
   const finishLine = getFinishLineFromVenue(venue, race);
   const courseMarks = buildCourseMarksFromRace(venue, race);

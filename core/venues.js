@@ -2,13 +2,6 @@ const VENUES_KEY = "racetimer-venues";
 const RACES_KEY = "racetimer-races";
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 
-const LEGACY_ROLES = {
-  START_PORT: "start-port",
-  START_STARBOARD: "start-starboard",
-  FINISH_PORT: "finish-port",
-  FINISH_STARBOARD: "finish-starboard",
-};
-
 function generateId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -138,69 +131,37 @@ function getLineDisplayName(line, lines, fallback) {
 function normalizeVenue(venue) {
   if (!venue || typeof venue !== "object") return null;
   const marks = [];
-  const legacyRoles = new Map();
   if (Array.isArray(venue.marks)) {
     venue.marks.forEach((mark, index) => {
       const normalized = normalizeMark(mark, index);
       if (!normalized) return;
       marks.push(normalized);
-      const rawRole = typeof mark.role === "string" ? mark.role : "";
-      if (Object.values(LEGACY_ROLES).includes(rawRole)) {
-        legacyRoles.set(normalized.id, rawRole);
-      }
     });
   }
   const marksById = new Map(marks.map((mark) => [mark.id, mark]));
-
-  let startLines = normalizeLineList(venue.startLines, marksById);
-  let finishLines = normalizeLineList(venue.finishLines, marksById);
-
-  if (!startLines.length && legacyRoles.size) {
-    const portId = Array.from(legacyRoles.entries()).find(
-      ([, role]) => role === LEGACY_ROLES.START_PORT
-    )?.[0];
-    const starboardId = Array.from(legacyRoles.entries()).find(
-      ([, role]) => role === LEGACY_ROLES.START_STARBOARD
-    )?.[0];
-    if (portId && starboardId) {
-      startLines = [
-        {
-          id: generateId("line"),
-          name: "",
-          starboardMarkId: starboardId,
-          portMarkId: portId,
-        },
-      ];
-    }
-  }
-
-  if (!finishLines.length && legacyRoles.size) {
-    const portId = Array.from(legacyRoles.entries()).find(
-      ([, role]) => role === LEGACY_ROLES.FINISH_PORT
-    )?.[0];
-    const starboardId = Array.from(legacyRoles.entries()).find(
-      ([, role]) => role === LEGACY_ROLES.FINISH_STARBOARD
-    )?.[0];
-    if (portId && starboardId) {
-      finishLines = [
-        {
-          id: generateId("line"),
-          name: "",
-          starboardMarkId: starboardId,
-          portMarkId: portId,
-        },
-      ];
-    }
-  }
+  const lines = normalizeLineList(venue.lines, marksById);
 
   let defaultStartLineId = normalizeId(venue.defaultStartLineId);
-  if (!defaultStartLineId || !startLines.some((line) => line.id === defaultStartLineId)) {
-    defaultStartLineId = startLines[0]?.id || null;
+  if (!defaultStartLineId || !lines.some((line) => line.id === defaultStartLineId)) {
+    defaultStartLineId = null;
   }
 
   let defaultFinishLineId = normalizeId(venue.defaultFinishLineId);
-  if (!defaultFinishLineId || !finishLines.some((line) => line.id === defaultFinishLineId)) {
-    defaultFinishLineId = finishLines[0]?.id || null;
+  if (!defaultFinishLineId || !lines.some((line) => line.id === defaultFinishLineId)) {
+    defaultFinishLineId = null;
+  }
+
+  let defaultRouteStartLineId = normalizeId(venue.defaultRouteStartLineId);
+  if (!defaultRouteStartLineId || !lines.some((line) => line.id === defaultRouteStartLineId)) {
+    defaultRouteStartLineId = null;
+  }
+
+  let defaultRouteFinishLineId = normalizeId(venue.defaultRouteFinishLineId);
+  if (
+    !defaultRouteFinishLineId ||
+    !lines.some((line) => line.id === defaultRouteFinishLineId)
+  ) {
+    defaultRouteFinishLineId = null;
   }
 
   const defaultRoute = Array.isArray(venue.defaultRoute)
@@ -211,10 +172,11 @@ function normalizeVenue(venue) {
     id: normalizeId(venue.id) || generateId("venue"),
     name: normalizeName(venue.name, "Local venue"),
     marks,
-    startLines,
-    finishLines,
+    lines,
     defaultStartLineId,
     defaultFinishLineId,
+    defaultRouteStartLineId,
+    defaultRouteFinishLineId,
     defaultRoute,
     updatedAt: Number.isFinite(venue.updatedAt) ? venue.updatedAt : Date.now(),
   };
@@ -238,6 +200,8 @@ function normalizeRace(race) {
     venueId: normalizeId(race.venueId),
     startLineId: normalizeId(race.startLineId),
     finishLineId: normalizeId(race.finishLineId),
+    routeStartLineId: normalizeId(race.routeStartLineId),
+    routeFinishLineId: normalizeId(race.routeFinishLineId),
     start: normalizeRaceStart(race.start),
     routeEnabled: race.routeEnabled !== undefined ? Boolean(race.routeEnabled) : true,
     route,
@@ -288,10 +252,11 @@ function createVenue(name) {
     id: generateId("venue"),
     name: normalizeName(name, "Local venue"),
     marks: [],
-    startLines: [],
-    finishLines: [],
+    lines: [],
     defaultStartLineId: null,
     defaultFinishLineId: null,
+    defaultRouteStartLineId: null,
+    defaultRouteFinishLineId: null,
     defaultRoute: [],
     updatedAt: Date.now(),
   });
@@ -301,30 +266,42 @@ function createRace(name, venue, options = {}) {
   const routeFromVenue = Array.isArray(venue?.defaultRoute)
     ? venue.defaultRoute.map(normalizeRouteEntry).filter(Boolean)
     : [];
+  const venueLines = Array.isArray(venue?.lines) ? venue.lines : [];
   const startLineId =
     normalizeId(options.startLineId) ||
     normalizeId(venue?.defaultStartLineId) ||
-    normalizeId(venue?.startLines?.[0]?.id) ||
+    normalizeId(venueLines[0]?.id) ||
     null;
   const finishLineId =
     normalizeId(options.finishLineId) ||
     normalizeId(venue?.defaultFinishLineId) ||
-    normalizeId(venue?.finishLines?.[0]?.id) ||
+    normalizeId(venueLines[0]?.id) ||
+    null;
+  const routeStartLineId =
+    normalizeId(options.routeStartLineId) ||
+    normalizeId(venue?.defaultRouteStartLineId) ||
+    null;
+  const routeFinishLineId =
+    normalizeId(options.routeFinishLineId) ||
+    normalizeId(venue?.defaultRouteFinishLineId) ||
     null;
   const start = normalizeRaceStart(options.start);
   start.startTs = null;
   start.crossedEarly = false;
+  const routeReady = Boolean(routeStartLineId && routeFinishLineId && routeFromVenue.length);
   return normalizeRace({
     id: generateId("race"),
     name: normalizeName(name, "Race"),
     venueId: normalizeId(venue?.id),
     startLineId,
     finishLineId,
+    routeStartLineId,
+    routeFinishLineId,
     start,
     routeEnabled:
       options.routeEnabled !== undefined
         ? options.routeEnabled
-        : routeFromVenue.length > 0,
+        : routeReady,
     route: routeFromVenue,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -344,10 +321,9 @@ function getLineById(lines, id) {
   return lines.find((line) => line.id === id) || null;
 }
 
-function resolveLineFromVenue(venue, lineId, type) {
+function resolveLineFromVenue(venue, lineId) {
   if (!venue || !lineId) return null;
-  const lines = type === "finish" ? venue.finishLines : venue.startLines;
-  const line = getLineById(lines, lineId);
+  const line = getLineById(venue.lines, lineId);
   if (!line) return null;
   const marksById = new Map(
     Array.isArray(venue.marks)
@@ -370,55 +346,13 @@ function resolveLineFromVenue(venue, lineId, type) {
 function getStartLineFromVenue(venue, race) {
   if (!venue) return null;
   const lineId = normalizeId(race?.startLineId) || normalizeId(venue.defaultStartLineId);
-  return resolveLineFromVenue(venue, lineId, "start");
+  return resolveLineFromVenue(venue, lineId);
 }
 
 function getFinishLineFromVenue(venue, race) {
   if (!venue) return null;
   const lineId = normalizeId(race?.finishLineId) || normalizeId(venue.defaultFinishLineId);
-  return resolveLineFromVenue(venue, lineId, "finish");
-}
-
-function findOrCreateReversedFinishLine(venue, baseLine) {
-  if (!venue || !baseLine) return null;
-  if (!Array.isArray(venue.finishLines)) {
-    venue.finishLines = [];
-  }
-  const existing = venue.finishLines.find(
-    (line) =>
-      line.starboardMarkId === baseLine.portMarkId &&
-      line.portMarkId === baseLine.starboardMarkId
-  );
-  if (existing) return existing;
-  const reversed = {
-    id: generateId("line"),
-    name: "",
-    starboardMarkId: baseLine.portMarkId,
-    portMarkId: baseLine.starboardMarkId,
-  };
-  venue.finishLines.push(reversed);
-  return reversed;
-}
-
-function findOrCreateFinishLineFromStart(venue, baseLine) {
-  if (!venue || !baseLine) return null;
-  if (!Array.isArray(venue.finishLines)) {
-    venue.finishLines = [];
-  }
-  const existing = venue.finishLines.find(
-    (line) =>
-      line.starboardMarkId === baseLine.starboardMarkId &&
-      line.portMarkId === baseLine.portMarkId
-  );
-  if (existing) return existing;
-  const line = {
-    id: generateId("line"),
-    name: "",
-    starboardMarkId: baseLine.starboardMarkId,
-    portMarkId: baseLine.portMarkId,
-  };
-  venue.finishLines.push(line);
-  return line;
+  return resolveLineFromVenue(venue, lineId);
 }
 
 function migrateLineSelections(venues, races) {
@@ -427,47 +361,57 @@ function migrateLineSelections(venues, races) {
   races.forEach((race) => {
     const venue = venuesById.get(race.venueId);
     if (!venue) return;
+    if (!Array.isArray(venue.lines)) {
+      venue.lines = [];
+      changed = true;
+    }
+    if (Array.isArray(venue.startLines) || Array.isArray(venue.finishLines)) {
+      venue.lines = [];
+      delete venue.startLines;
+      delete venue.finishLines;
+      changed = true;
+    }
     const legacy = race._legacy || {};
     let startLineId = normalizeId(race.startLineId);
     let finishLineId = normalizeId(race.finishLineId);
+    let routeStartLineId = normalizeId(race.routeStartLineId);
+    let routeFinishLineId = normalizeId(race.routeFinishLineId);
 
     if (legacy.startEnabled === false) {
       startLineId = null;
-    } else if (!startLineId) {
-      startLineId = normalizeId(venue.defaultStartLineId) || venue.startLines?.[0]?.id || null;
     }
 
     if (legacy.finishEnabled === false) {
       finishLineId = null;
-    } else if (!finishLineId) {
-      if (legacy.finishUseStartLine) {
-        const baseLine = getLineById(venue.startLines, startLineId);
-        if (baseLine) {
-          if (legacy.finishReverse) {
-            const reversed = findOrCreateReversedFinishLine(venue, baseLine);
-            if (reversed) {
-              finishLineId = reversed.id;
-              changed = true;
-            }
-          } else {
-            const same = findOrCreateFinishLineFromStart(venue, baseLine);
-            if (same) {
-              finishLineId = same.id;
-              changed = true;
-            }
-          }
-        }
-      } else {
-        finishLineId =
-          normalizeId(venue.defaultFinishLineId) || venue.finishLines?.[0]?.id || null;
-      }
     }
 
-    if (startLineId && !getLineById(venue.startLines, startLineId)) {
+    if (startLineId && !getLineById(venue.lines, startLineId)) {
       startLineId = null;
     }
-    if (finishLineId && !getLineById(venue.finishLines, finishLineId)) {
+    if (finishLineId && !getLineById(venue.lines, finishLineId)) {
       finishLineId = null;
+    }
+    if (routeStartLineId && !getLineById(venue.lines, routeStartLineId)) {
+      routeStartLineId = null;
+    }
+    if (routeFinishLineId && !getLineById(venue.lines, routeFinishLineId)) {
+      routeFinishLineId = null;
+    }
+
+    if (race.routeEnabled) {
+      if (!routeStartLineId && startLineId) {
+        routeStartLineId = startLineId;
+      }
+      if (!routeFinishLineId && finishLineId) {
+        routeFinishLineId = finishLineId;
+      }
+      if (!routeStartLineId || !routeFinishLineId) {
+        race.routeEnabled = false;
+        changed = true;
+      } else {
+        startLineId = routeStartLineId;
+        finishLineId = routeFinishLineId;
+      }
     }
 
     if (race.startLineId !== startLineId) {
@@ -478,13 +422,35 @@ function migrateLineSelections(venues, races) {
       race.finishLineId = finishLineId;
       changed = true;
     }
-
-    if (!venue.defaultStartLineId && venue.startLines?.length) {
-      venue.defaultStartLineId = venue.startLines[0].id;
+    if (race.routeStartLineId !== routeStartLineId) {
+      race.routeStartLineId = routeStartLineId;
       changed = true;
     }
-    if (!venue.defaultFinishLineId && venue.finishLines?.length) {
-      venue.defaultFinishLineId = venue.finishLines[0].id;
+    if (race.routeFinishLineId !== routeFinishLineId) {
+      race.routeFinishLineId = routeFinishLineId;
+      changed = true;
+    }
+
+    if (venue.defaultStartLineId && !getLineById(venue.lines, venue.defaultStartLineId)) {
+      venue.defaultStartLineId = null;
+      changed = true;
+    }
+    if (venue.defaultFinishLineId && !getLineById(venue.lines, venue.defaultFinishLineId)) {
+      venue.defaultFinishLineId = null;
+      changed = true;
+    }
+    if (
+      venue.defaultRouteStartLineId &&
+      !getLineById(venue.lines, venue.defaultRouteStartLineId)
+    ) {
+      venue.defaultRouteStartLineId = null;
+      changed = true;
+    }
+    if (
+      venue.defaultRouteFinishLineId &&
+      !getLineById(venue.lines, venue.defaultRouteFinishLineId)
+    ) {
+      venue.defaultRouteFinishLineId = null;
       changed = true;
     }
 

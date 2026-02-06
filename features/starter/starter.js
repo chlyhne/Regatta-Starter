@@ -231,6 +231,14 @@ function syncVenueDefaultRoute() {
   if (!state.venue || !state.race) return;
   const route = Array.isArray(state.race.route) ? state.race.route : [];
   state.venue.defaultRoute = route.map((entry) => ({ ...entry }));
+  const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  state.venue.defaultRouteStartLineId = hasLine(state.race.routeStartLineId)
+    ? state.race.routeStartLineId
+    : null;
+  state.venue.defaultRouteFinishLineId = hasLine(state.race.routeFinishLineId)
+    ? state.race.routeFinishLineId
+    : null;
 }
 
 function pruneRouteEntries() {
@@ -281,7 +289,7 @@ function getSelectedStartLine() {
   if (!state.venue || !state.race) return null;
   const lineId = state.race.startLineId || state.venue.defaultStartLineId;
   if (!lineId) return null;
-  return getLineById(state.venue.startLines, lineId);
+  return getLineById(state.venue.lines, lineId);
 }
 
 function syncStartLineMarksFromState() {
@@ -357,15 +365,65 @@ function refreshVenueRaceState() {
 }
 
 function syncDerivedRaceState() {
+  if (!state.venue || !state.race) return;
+  const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+
+  let startLineId = state.race.startLineId || state.venue.defaultStartLineId || null;
+  if (startLineId && !hasLine(startLineId)) startLineId = null;
+  let finishLineId = state.race.finishLineId || state.venue.defaultFinishLineId || null;
+  if (finishLineId && !hasLine(finishLineId)) finishLineId = null;
+  let routeStartLineId =
+    state.race.routeStartLineId || state.venue.defaultRouteStartLineId || null;
+  if (routeStartLineId && !hasLine(routeStartLineId)) routeStartLineId = null;
+  let routeFinishLineId =
+    state.race.routeFinishLineId || state.venue.defaultRouteFinishLineId || null;
+  if (routeFinishLineId && !hasLine(routeFinishLineId)) routeFinishLineId = null;
+
+  let routeEnabled = Boolean(state.race.routeEnabled);
+  if (routeEnabled) {
+    if (!routeStartLineId && startLineId) {
+      routeStartLineId = startLineId;
+    }
+    if (!routeFinishLineId && finishLineId) {
+      routeFinishLineId = finishLineId;
+    }
+    if (!routeStartLineId || !routeFinishLineId) {
+      routeEnabled = false;
+    } else {
+      startLineId = routeStartLineId;
+      finishLineId = routeFinishLineId;
+    }
+  }
+
+  let changed = false;
+  if (state.race.routeEnabled !== routeEnabled) {
+    state.race.routeEnabled = routeEnabled;
+    changed = true;
+  }
+  if (state.race.startLineId !== startLineId) {
+    state.race.startLineId = startLineId;
+    changed = true;
+  }
+  if (state.race.finishLineId !== finishLineId) {
+    state.race.finishLineId = finishLineId;
+    changed = true;
+  }
+  if (state.race.routeStartLineId !== routeStartLineId) {
+    state.race.routeStartLineId = routeStartLineId;
+    changed = true;
+  }
+  if (state.race.routeFinishLineId !== routeFinishLineId) {
+    state.race.routeFinishLineId = routeFinishLineId;
+    changed = true;
+  }
+  if (changed) {
+    persistVenueAndRace();
+  }
+
   const startLine = getStartLineFromVenue(state.venue, state.race);
   const finishLine = getFinishLineFromVenue(state.venue, state.race);
   const courseMarks = buildCourseMarksFromRace(state.venue, state.race);
-  let routeEnabled = Boolean(state.race?.routeEnabled);
-  if (routeEnabled && !finishLine && state.race) {
-    state.race.routeEnabled = false;
-    routeEnabled = false;
-    persistVenueAndRace();
-  }
 
   state.line = startLine
     ? { a: { ...startLine.a }, b: { ...startLine.b } }
@@ -450,30 +508,47 @@ function hasFinishLine() {
   return Boolean(getFinishLine());
 }
 
-function ensureFinishLineForRoute() {
-  if (hasFinishLine()) return true;
-  window.alert("Select a finish line first.");
+function ensureRouteLinesForRoute() {
+  if (hasStartLine() && hasFinishLine()) {
+    if (state.race) {
+      let changed = false;
+      if (!state.race.routeStartLineId && state.race.startLineId) {
+        state.race.routeStartLineId = state.race.startLineId;
+        changed = true;
+      }
+      if (!state.race.routeFinishLineId && state.race.finishLineId) {
+        state.race.routeFinishLineId = state.race.finishLineId;
+        changed = true;
+      }
+      if (changed) {
+        syncVenueDefaultRoute();
+        persistVenueAndRace();
+      }
+    }
+    return true;
+  }
+  window.alert("Select start and finish lines first.");
   return false;
 }
 
 function getStartLineDisplayName() {
   const venue = state.venue;
   if (!venue) return null;
-  const lines = Array.isArray(venue.startLines) ? venue.startLines : [];
+  const lines = Array.isArray(venue.lines) ? venue.lines : [];
   const lineId = state.race?.startLineId || venue.defaultStartLineId;
   const line = getLineById(lines, lineId);
   if (!line) return null;
-  return getLineDisplayName(line, lines, "Start line");
+  return getLineDisplayName(line, lines, "Line");
 }
 
 function getFinishLineDisplayName() {
   const venue = state.venue;
   if (!venue) return null;
-  const lines = Array.isArray(venue.finishLines) ? venue.finishLines : [];
+  const lines = Array.isArray(venue.lines) ? venue.lines : [];
   const lineId = state.race?.finishLineId || venue.defaultFinishLineId;
   const line = getLineById(lines, lineId);
   if (!line) return null;
-  return getLineDisplayName(line, lines, "Finish line");
+  return getLineDisplayName(line, lines, "Line");
 }
 
 function getStartLineStatusText() {
@@ -539,6 +614,7 @@ function updateCourseUi() {
   const routeEnabled = Boolean(state.race?.routeEnabled);
   const markCount = state.venue?.marks?.length || 0;
   const routeCount = getRouteEntries().length;
+  const routeLinesReady = hasStartLine() && hasFinishLine();
 
   if (els.courseToggle) {
     els.courseToggle.setAttribute("aria-pressed", routeEnabled ? "true" : "false");
@@ -562,19 +638,19 @@ function updateCourseUi() {
     els.finishStatus.textContent = getFinishLineStatusText();
   }
   if (els.openRoute) {
-    els.openRoute.disabled = markCount === 0;
+    els.openRoute.disabled = markCount === 0 || !routeLinesReady;
   }
   if (els.openRouteMap) {
-    els.openRouteMap.disabled = markCount === 0;
+    els.openRouteMap.disabled = markCount === 0 || !routeLinesReady;
   }
   if (els.openRaceMap) {
     els.openRaceMap.disabled = !hasStartLine();
   }
   if (els.openRounding) {
-    els.openRounding.disabled = routeCount === 0;
+    els.openRounding.disabled = routeCount === 0 || !routeLinesReady;
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = routeCount === 0;
+    els.clearRoute.disabled = routeCount === 0 || !routeLinesReady;
   }
   if (els.courseKeyboardModal) {
     const open = els.courseKeyboardModal.getAttribute("aria-hidden") === "false";
@@ -1985,15 +2061,9 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.openStartLines) {
-    els.openStartLines.addEventListener("click", () => {
-      window.location.href = getMapHref("venue-start-lines");
-    });
-  }
-
-  if (els.openFinishLines) {
-    els.openFinishLines.addEventListener("click", () => {
-      window.location.href = getMapHref("venue-finish-lines");
+  if (els.openLines) {
+    els.openLines.addEventListener("click", () => {
+      window.location.href = getMapHref("venue-lines");
     });
   }
 
@@ -2011,7 +2081,7 @@ function bindStarterEvents() {
 
   if (els.openRouteMap) {
     els.openRouteMap.addEventListener("click", () => {
-      if (!ensureFinishLineForRoute()) return;
+      if (!ensureRouteLinesForRoute()) return;
       window.location.href = getMapHref("race-route");
     });
   }
@@ -2236,10 +2306,7 @@ function bindStarterEvents() {
     els.courseToggle.addEventListener("click", () => {
       if (!state.race) return;
       const next = !state.race.routeEnabled;
-      if (next && !hasFinishLine()) {
-        window.alert("Select a finish line first.");
-        return;
-      }
+      if (next && !ensureRouteLinesForRoute()) return;
       state.race.routeEnabled = next;
       if (!next) {
         state.courseTrackActive = false;
@@ -2252,21 +2319,21 @@ function bindStarterEvents() {
 
   if (els.openRoute) {
     els.openRoute.addEventListener("click", () => {
-      if (!ensureFinishLineForRoute()) return;
+      if (!ensureRouteLinesForRoute()) return;
       openCourseKeyboardModal();
     });
   }
 
   if (els.openRounding) {
     els.openRounding.addEventListener("click", () => {
-      if (!ensureFinishLineForRoute()) return;
+      if (!ensureRouteLinesForRoute()) return;
       openCourseMarksModal();
     });
   }
 
   if (els.clearRoute) {
     els.clearRoute.addEventListener("click", () => {
-      if (!ensureFinishLineForRoute()) return;
+      if (!ensureRouteLinesForRoute()) return;
       if (!state.race || !getRouteEntries().length) return;
       const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
