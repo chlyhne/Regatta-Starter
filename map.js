@@ -21,23 +21,26 @@ const els = {
   mapModeVenue: document.getElementById("map-mode-venue"),
   mapModeRace: document.getElementById("map-mode-race"),
   mapToVenue: document.getElementById("map-to-venue"),
+  openMarkList: document.getElementById("open-mark-list"),
+  markListModal: document.getElementById("mark-list-modal"),
+  closeMarkList: document.getElementById("close-mark-list"),
+  markEditModal: document.getElementById("mark-edit-modal"),
+  closeMarkEdit: document.getElementById("close-mark-edit"),
+  markEditTitle: document.getElementById("mark-edit-title"),
   addMark: document.getElementById("add-course-mark"),
   undoMark: document.getElementById("undo-course-mark"),
   clearMarks: document.getElementById("clear-course-marks"),
+  markAddRoute: document.getElementById("mark-add-route"),
   closeMap: document.getElementById("close-map"),
   mapStatus: document.getElementById("map-status"),
   mapCaption: document.getElementById("map-caption"),
-  courseMeta: document.getElementById("course-meta"),
   mapMarkName: document.getElementById("map-mark-name"),
   mapMarkDesc: document.getElementById("map-mark-desc"),
   mapRoleButtons: Array.from(document.querySelectorAll(".map-role")),
-  newMark: document.getElementById("new-mark"),
   deleteMark: document.getElementById("delete-mark"),
   mapMarkList: document.getElementById("map-mark-list"),
-  addRoute: document.getElementById("add-route-mark"),
   undoRoute: document.getElementById("undo-route-mark"),
   clearRoute: document.getElementById("clear-route"),
-  mapCourseList: document.getElementById("map-course-list"),
 };
 
 const state = {
@@ -146,6 +149,33 @@ function roleLabel(role) {
   }
 }
 
+function setModalOpen(modal, isOpen) {
+  if (!modal) return;
+  modal.setAttribute("aria-hidden", isOpen ? "false" : "true");
+}
+
+function openMarkListModal() {
+  renderMarkList();
+  setModalOpen(els.markListModal, true);
+}
+
+function closeMarkListModal() {
+  setModalOpen(els.markListModal, false);
+}
+
+function openMarkEditModal(markId) {
+  if (markId) {
+    setSelectedMark(markId);
+  }
+  if (!getSelectedMark()) return;
+  updateMarkEditUi();
+  setModalOpen(els.markEditModal, true);
+}
+
+function closeMarkEditModal() {
+  setModalOpen(els.markEditModal, false);
+}
+
 function setEditMode(mode) {
   const normalized = normalizeEditMode(mode);
   state.editMode = normalized;
@@ -168,21 +198,12 @@ function setEditMode(mode) {
   if (els.mapCaption) {
     els.mapCaption.textContent =
       normalized === "race"
-        ? "Select a mark, then add it to the route."
-        : "Drag the map. Add marks on the crosshair.";
-  }
-  const inputsDisabled = normalized !== "venue";
-  if (els.mapMarkName) {
-    els.mapMarkName.disabled = inputsDisabled;
-  }
-  if (els.mapMarkDesc) {
-    els.mapMarkDesc.disabled = inputsDisabled;
-  }
-  if (els.newMark) {
-    els.newMark.disabled = inputsDisabled;
+        ? "Tap a mark, then add it to the route."
+        : "Drag the map. Add marks on the crosshair, then tap a mark to edit.";
   }
   syncRoleButtons();
   syncRouteButtons();
+  updateMarkEditUi();
 }
 
 function setSelectedMark(markId) {
@@ -195,6 +216,7 @@ function setSelectedMark(markId) {
     els.mapMarkDesc.value = mark ? mark.description || "" : "";
   }
   syncRoleButtons();
+  updateMarkEditUi();
   renderMarkList();
   syncRouteButtons();
 }
@@ -209,6 +231,7 @@ function clearSelection() {
     els.mapMarkDesc.value = "";
   }
   syncRoleButtons();
+  updateMarkEditUi();
   renderMarkList();
   syncRouteButtons();
 }
@@ -230,12 +253,12 @@ function syncRoleButtons() {
 
 function syncRouteButtons() {
   const mark = getSelectedMark();
-  if (els.addRoute) {
+  if (els.markAddRoute) {
     const canAdd =
       state.editMode === "race" &&
       Boolean(mark) &&
       (!mark.role || mark.role === MARK_ROLES.NONE);
-    els.addRoute.disabled = !canAdd;
+    els.markAddRoute.disabled = !canAdd;
   }
   const routeLength = state.race?.route?.length || 0;
   if (els.undoRoute) {
@@ -243,6 +266,29 @@ function syncRouteButtons() {
   }
   if (els.clearRoute) {
     els.clearRoute.disabled = state.editMode !== "race" || routeLength === 0;
+  }
+}
+
+function updateMarkEditUi() {
+  const mark = getSelectedMark();
+  const isVenueMode = state.editMode === "venue";
+  if (els.mapMarkName) {
+    els.mapMarkName.disabled = !isVenueMode || !mark;
+  }
+  if (els.mapMarkDesc) {
+    els.mapMarkDesc.disabled = !isVenueMode || !mark;
+  }
+  if (els.markEditTitle) {
+    els.markEditTitle.textContent = mark ? `Edit ${mark.name}` : "Edit mark";
+  }
+  if (els.mapToVenue) {
+    els.mapToVenue.hidden = isVenueMode;
+  }
+  if (els.markAddRoute) {
+    els.markAddRoute.hidden = isVenueMode;
+  }
+  if (els.deleteMark) {
+    els.deleteMark.hidden = !isVenueMode;
   }
 }
 
@@ -292,6 +338,7 @@ function updateSelectedMarkFromInputs() {
     mark.description = els.mapMarkDesc.value.trim();
   }
   saveData();
+  updateMarkEditUi();
   renderMarkList();
   renderCourseList();
   updateMapOverlays();
@@ -331,7 +378,8 @@ function renderMarkList() {
     item.appendChild(nameSpan);
     item.appendChild(roleSpan);
     item.addEventListener("click", () => {
-      setSelectedMark(mark.id);
+      closeMarkListModal();
+      openMarkEditModal(mark.id);
     });
     els.mapMarkList.appendChild(item);
   });
@@ -398,9 +446,12 @@ function updateMapOverlays() {
       weight: 2,
       fillColor: fill,
       fillOpacity: 1,
-      interactive: false,
+      interactive: true,
       pane: "markPane",
     }).addTo(state.map);
+    marker.on("click", () => {
+      openMarkEditModal(mark.id);
+    });
     state.markMarkers.push(marker);
 
     const label = L.marker([mark.lat, mark.lon], {
@@ -409,7 +460,7 @@ function updateMapOverlays() {
         html: `<span>${mark.name}</span>`,
       }),
       interactive: false,
-      pane: "markPane",
+      pane: "labelPane",
     }).addTo(state.map);
     state.labelMarkers.push(label);
   });
@@ -449,10 +500,6 @@ function updateMapOverlays() {
 
 function updateUi() {
   setEditMode(state.editMode);
-  if (els.courseMeta) {
-    els.courseMeta.hidden = false;
-    els.courseMeta.setAttribute("aria-hidden", "false");
-  }
   if (els.addMark) {
     els.addMark.hidden = false;
   }
@@ -487,8 +534,16 @@ function initMap() {
   state.map.on("zoomend", () => updateMapOverlays());
 
   state.map.createPane("markPane");
-  state.map.getPane("markPane").style.zIndex = "400";
-  state.map.getPane("markPane").style.pointerEvents = "none";
+  const markPane = state.map.getPane("markPane");
+  if (markPane) {
+    markPane.style.zIndex = "350";
+  }
+  state.map.createPane("labelPane");
+  const labelPane = state.map.getPane("labelPane");
+  if (labelPane) {
+    labelPane.style.zIndex = "360";
+    labelPane.style.pointerEvents = "none";
+  }
 
   const tiles = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -549,19 +604,46 @@ function bindEvents() {
       setEditMode("venue");
     });
   }
+  if (els.openMarkList) {
+    els.openMarkList.addEventListener("click", () => {
+      openMarkListModal();
+    });
+  }
+  if (els.closeMarkList) {
+    els.closeMarkList.addEventListener("click", () => {
+      closeMarkListModal();
+    });
+  }
+  if (els.closeMarkEdit) {
+    els.closeMarkEdit.addEventListener("click", () => {
+      closeMarkEditModal();
+    });
+  }
+  if (els.markListModal) {
+    els.markListModal.addEventListener("click", (event) => {
+      if (event.target === els.markListModal) {
+        closeMarkListModal();
+      }
+    });
+  }
+  if (els.markEditModal) {
+    els.markEditModal.addEventListener("click", (event) => {
+      if (event.target === els.markEditModal) {
+        closeMarkEditModal();
+      }
+    });
+  }
 
   if (els.addMark) {
     els.addMark.addEventListener("click", () => {
       if (!state.map || !state.venue) return;
       if (state.editMode !== "venue") return;
       const center = state.map.getCenter();
-      const nameInput = els.mapMarkName ? els.mapMarkName.value.trim() : "";
-      const descInput = els.mapMarkDesc ? els.mapMarkDesc.value.trim() : "";
-      const name = nameInput || `Mark ${state.venue.marks.length + 1}`;
+      const name = `Mark ${state.venue.marks.length + 1}`;
       const mark = {
         id: `mark-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         name,
-        description: descInput,
+        description: "",
         lat: center.lat,
         lon: center.lng,
         role: MARK_ROLES.NONE,
@@ -600,6 +682,8 @@ function bindEvents() {
       pruneRoutesForVenue(state.venue.id, removedIds);
       saveData();
       clearSelection();
+      closeMarkEditModal();
+      closeMarkListModal();
       renderCourseList();
       updateMapOverlays();
     });
@@ -635,12 +719,6 @@ function bindEvents() {
     });
   }
 
-  if (els.newMark) {
-    els.newMark.addEventListener("click", () => {
-      clearSelection();
-    });
-  }
-
   if (els.deleteMark) {
     els.deleteMark.addEventListener("click", () => {
       if (state.editMode !== "venue") return;
@@ -652,13 +730,14 @@ function bindEvents() {
       pruneRoutesForVenue(state.venue.id, new Set([mark.id]));
       saveData();
       clearSelection();
+      closeMarkEditModal();
       renderCourseList();
       updateMapOverlays();
     });
   }
 
-  if (els.addRoute) {
-    els.addRoute.addEventListener("click", () => {
+  if (els.markAddRoute) {
+    els.markAddRoute.addEventListener("click", () => {
       if (state.editMode !== "race") return;
       if (!state.race) return;
       const mark = getSelectedMark();
