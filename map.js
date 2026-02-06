@@ -308,7 +308,7 @@ function hasFinishLine() {
 
 function getLineName(line, type) {
   const lines = getLinesForType(type);
-  const fallback = type === LINE_TYPES.START ? "Start line" : "Finish line";
+  const fallback = "Line";
   return getLineDisplayName(line, lines, fallback);
 }
 

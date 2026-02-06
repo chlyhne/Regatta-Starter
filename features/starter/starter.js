@@ -450,6 +450,12 @@ function hasFinishLine() {
   return Boolean(getFinishLine());
 }
 
+function ensureFinishLineForRoute() {
+  if (hasFinishLine()) return true;
+  window.alert("Select a finish line first.");
+  return false;
+}
+
 function getStartLineDisplayName() {
   const venue = state.venue;
   if (!venue) return null;
@@ -533,7 +539,6 @@ function updateCourseUi() {
   const routeEnabled = Boolean(state.race?.routeEnabled);
   const markCount = state.venue?.marks?.length || 0;
   const routeCount = getRouteEntries().length;
-  const finishReady = hasFinishLine();
 
   if (els.courseToggle) {
     els.courseToggle.setAttribute("aria-pressed", routeEnabled ? "true" : "false");
@@ -557,19 +562,19 @@ function updateCourseUi() {
     els.finishStatus.textContent = getFinishLineStatusText();
   }
   if (els.openRoute) {
-    els.openRoute.disabled = markCount === 0 || !finishReady;
+    els.openRoute.disabled = markCount === 0;
   }
   if (els.openRouteMap) {
-    els.openRouteMap.disabled = markCount === 0 || !finishReady;
+    els.openRouteMap.disabled = markCount === 0;
   }
   if (els.openRaceMap) {
     els.openRaceMap.disabled = !hasStartLine();
   }
   if (els.openRounding) {
-    els.openRounding.disabled = routeCount === 0 || !finishReady;
+    els.openRounding.disabled = routeCount === 0;
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = routeCount === 0 || !finishReady;
+    els.clearRoute.disabled = routeCount === 0;
   }
   if (els.courseKeyboardModal) {
     const open = els.courseKeyboardModal.getAttribute("aria-hidden") === "false";
@@ -2006,6 +2011,7 @@ function bindStarterEvents() {
 
   if (els.openRouteMap) {
     els.openRouteMap.addEventListener("click", () => {
+      if (!ensureFinishLineForRoute()) return;
       window.location.href = getMapHref("race-route");
     });
   }
@@ -2246,18 +2252,21 @@ function bindStarterEvents() {
 
   if (els.openRoute) {
     els.openRoute.addEventListener("click", () => {
+      if (!ensureFinishLineForRoute()) return;
       openCourseKeyboardModal();
     });
   }
 
   if (els.openRounding) {
     els.openRounding.addEventListener("click", () => {
+      if (!ensureFinishLineForRoute()) return;
       openCourseMarksModal();
     });
   }
 
   if (els.clearRoute) {
     els.clearRoute.addEventListener("click", () => {
+      if (!ensureFinishLineForRoute()) return;
       if (!state.race || !getRouteEntries().length) return;
       const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
