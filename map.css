@@ -1,5 +1,7 @@
 :root {
   font-size: 16px;
+  --port-color: #d62828;
+  --starboard-color: #1b7f3a;
 }
 
 * {
@@ -43,6 +45,68 @@ body {
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;
+}
+
+.map-meta {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.map-field {
+  display: grid;
+  gap: 4px;
+}
+
+.map-field label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.map-input {
+  width: 100%;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  background: #ffffff;
+  color: #000000;
+}
+
+.map-course-list {
+  min-height: 40px;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 6px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.8rem;
+  background: #ffffff;
+}
+
+.map-course-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 2px solid #000000;
+  font-weight: 700;
+  background: #ffffff;
+  color: #000000;
+}
+
+.map-course-chip.port {
+  background: var(--port-color);
+  border-color: var(--port-color);
+  color: #ffffff;
+}
+
+.map-course-chip.starboard {
+  background: var(--starboard-color);
+  border-color: var(--starboard-color);
+  color: #ffffff;
 }
 
 .map-btn {

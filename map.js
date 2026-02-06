@@ -26,6 +26,10 @@ const els = {
   closeMap: document.getElementById("close-map"),
   mapStatus: document.getElementById("map-status"),
   mapCaption: document.getElementById("map-caption"),
+  courseMeta: document.getElementById("course-meta"),
+  mapMarkName: document.getElementById("map-mark-name"),
+  mapMarkDesc: document.getElementById("map-mark-desc"),
+  mapCourseList: document.getElementById("map-course-list"),
 };
 
 const state = {
@@ -239,6 +243,7 @@ function setModeUi() {
   toggle(els.addCourse, isCourse);
   toggle(els.undoCourse, isCourse);
   toggle(els.clearCourse, isCourse);
+  toggle(els.courseMeta, isCourse);
   if (els.mapTitle) {
     if (isCourse) {
       els.mapTitle.textContent = "Select course";
@@ -289,6 +294,35 @@ function updateCourseButtons() {
       ? `Marks: ${count}`
       : "Add the first mark, then press Done.";
   }
+  updateCourseMeta();
+}
+
+function getDefaultMarkName() {
+  return `Mark ${state.course.marks.length + 1}`;
+}
+
+function updateCourseMeta() {
+  if (els.mapMarkName) {
+    if (!els.mapMarkName.value) {
+      els.mapMarkName.placeholder = getDefaultMarkName();
+    }
+  }
+  if (!els.mapCourseList) return;
+  els.mapCourseList.innerHTML = "";
+  if (!state.course.marks.length) {
+    els.mapCourseList.textContent = "No marks yet.";
+    return;
+  }
+  state.course.marks.forEach((mark, index) => {
+    const chip = document.createElement("span");
+    const name = typeof mark.name === "string" && mark.name.trim()
+      ? mark.name.trim()
+      : `Mark ${index + 1}`;
+    const side = mark.rounding === "starboard" ? "starboard" : "port";
+    chip.className = `map-course-chip ${side}`;
+    chip.textContent = name;
+    els.mapCourseList.appendChild(chip);
+  });
 }
 
 function computeTurnSide(prev, current, next) {
@@ -606,15 +640,25 @@ function bindEvents() {
       els.addCourse.addEventListener("click", () => {
         if (!state.map) return;
         const center = state.map.getCenter();
-        const defaultName = `Mark ${state.course.marks.length + 1}`;
+        const nameInput = els.mapMarkName ? els.mapMarkName.value : "";
+        const descInput = els.mapMarkDesc ? els.mapMarkDesc.value : "";
+        const name = (nameInput || "").trim() || getDefaultMarkName();
+        const description = (descInput || "").trim();
         state.course.marks.push({
           lat: center.lat,
           lon: center.lng,
-          name: defaultName,
-          description: "",
+          name,
+          description,
           rounding: null,
           manual: false,
         });
+        if (els.mapMarkName) {
+          els.mapMarkName.value = "";
+          els.mapMarkName.placeholder = getDefaultMarkName();
+        }
+        if (els.mapMarkDesc) {
+          els.mapMarkDesc.value = "";
+        }
         applyCourseRoundingDefaults();
         saveSettings();
         updateSetButtons();

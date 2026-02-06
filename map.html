@@ -23,6 +23,31 @@
         <button id="clear-course-marks" class="map-btn" hidden>Clear</button>
         <button id="close-map" class="map-btn">Done</button>
       </div>
+      <div id="course-meta" class="map-meta" hidden aria-hidden="true">
+        <div class="map-field">
+          <label for="map-mark-name">Mark name</label>
+          <input
+            id="map-mark-name"
+            class="map-input"
+            type="text"
+            placeholder="Mark 1"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div class="map-field">
+          <label for="map-mark-desc">Description</label>
+          <input
+            id="map-mark-desc"
+            class="map-input"
+            type="text"
+            placeholder="Optional"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div id="map-course-list" class="map-course-list"></div>
+      </div>
     </header>
     <main class="map-wrap">
       <div id="map" class="map"></div>
