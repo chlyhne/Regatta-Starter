@@ -1071,11 +1071,11 @@ function applyVenueRaceToState() {
       if (!routeFinishLineId && finishLineId) {
         routeFinishLineId = finishLineId;
       }
-      if (!routeStartLineId || !routeFinishLineId) {
+      if (!routeStartLineId) {
         routeEnabled = false;
       } else {
         startLineId = routeStartLineId;
-        finishLineId = routeFinishLineId;
+        finishLineId = routeFinishLineId || null;
       }
     }
 

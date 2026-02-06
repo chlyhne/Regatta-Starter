@@ -139,8 +139,8 @@ function getModeCaption(mode) {
     case MODES.VENUE_LINES:
       return "Tap starboard mark, then port mark to define a line.";
     case MODES.RACE_ROUTE:
-      if (!hasRouteLines()) {
-        return "Select start and finish lines first.";
+      if (!hasRouteStartLine()) {
+        return "Select a start line first.";
       }
       return "Tap a mark, then add it to the route.";
     case MODES.RACE_START_LINE:
@@ -148,7 +148,7 @@ function getModeCaption(mode) {
     case MODES.RACE_FINISH_LINE:
       return "Tap starboard mark, then port mark to select a finish line.";
     case MODES.RACE_VIEW:
-      return "Read-only race view: start line, finish line, and route.";
+      return "Read-only race view: start line, finish line, route.";
     default:
       return "";
   }
@@ -287,11 +287,11 @@ function syncRaceLineState() {
     if (!routeFinishLineId && finishLineId) {
       routeFinishLineId = finishLineId;
     }
-    if (!routeStartLineId || !routeFinishLineId) {
+    if (!routeStartLineId) {
       routeEnabled = false;
     } else {
       startLineId = routeStartLineId;
-      finishLineId = routeFinishLineId;
+      finishLineId = routeFinishLineId || null;
     }
   }
 
@@ -353,11 +353,17 @@ function getLinesForType(type) {
 
 function getActiveStartLineId() {
   if (!state.race || !state.venue) return null;
+  if (state.race.routeEnabled) {
+    return state.race.startLineId || null;
+  }
   return state.race.startLineId || state.venue.defaultStartLineId || null;
 }
 
 function getActiveFinishLineId() {
   if (!state.race || !state.venue) return null;
+  if (state.race.routeEnabled) {
+    return state.race.finishLineId || null;
+  }
   return state.race.finishLineId || state.venue.defaultFinishLineId || null;
 }
 
@@ -373,8 +379,8 @@ function hasFinishLine() {
   return Boolean(getLineById(getLinesForType(), lineId));
 }
 
-function hasRouteLines() {
-  return hasStartLine() && hasFinishLine();
+function hasRouteStartLine() {
+  return hasStartLine();
 }
 
 function getLineName(line, type) {
@@ -706,16 +712,16 @@ function swapLineDirection() {
 function syncRouteButtons() {
   const mark = getSelectedMark();
   if (els.markAddRoute) {
-    const routeReady = hasRouteLines();
+    const routeReady = hasRouteStartLine();
     const canAdd = isRouteMode() && routeReady && Boolean(mark);
     els.markAddRoute.disabled = !canAdd;
   }
   const routeLength = state.race?.route?.length || 0;
   if (els.undoRoute) {
-    els.undoRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteLines();
+    els.undoRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteStartLine();
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteLines();
+    els.clearRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteStartLine();
   }
 }
 
@@ -777,8 +783,13 @@ function pruneLinesForVenue(venueId, removedMarkIds = new Set()) {
     if (removedLineIds.has(race.routeFinishLineId)) {
       race.routeFinishLineId = null;
     }
-    if (race.routeEnabled && (!race.routeStartLineId || !race.routeFinishLineId)) {
-      race.routeEnabled = false;
+    if (race.routeEnabled) {
+      if (!race.routeStartLineId) {
+        race.routeEnabled = false;
+      } else {
+        race.startLineId = race.routeStartLineId;
+        race.finishLineId = race.routeFinishLineId || null;
+      }
     }
   });
 
@@ -1056,8 +1067,13 @@ function deleteSelectedLine() {
     if (race.routeFinishLineId === line.id) {
       race.routeFinishLineId = null;
     }
-    if (race.routeEnabled && (!race.routeStartLineId || !race.routeFinishLineId)) {
-      race.routeEnabled = false;
+    if (race.routeEnabled) {
+      if (!race.routeStartLineId) {
+        race.routeEnabled = false;
+      } else {
+        race.startLineId = race.routeStartLineId;
+        race.finishLineId = race.routeFinishLineId || null;
+      }
     }
   });
 
@@ -1419,8 +1435,8 @@ function bindEvents() {
     els.markAddRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
       if (!state.race) return;
-      if (!hasRouteLines()) {
-        window.alert("Select start and finish lines first.");
+      if (!hasRouteStartLine()) {
+        window.alert("Select a start line first.");
         return;
       }
       const mark = getSelectedMark();

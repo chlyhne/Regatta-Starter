@@ -288,7 +288,7 @@ function createRace(name, venue, options = {}) {
   const start = normalizeRaceStart(options.start);
   start.startTs = null;
   start.crossedEarly = false;
-  const routeReady = Boolean(routeStartLineId && routeFinishLineId && routeFromVenue.length);
+  const routeReady = Boolean(routeStartLineId && routeFromVenue.length);
   return normalizeRace({
     id: generateId("race"),
     name: normalizeName(name, "Race"),
@@ -345,13 +345,19 @@ function resolveLineFromVenue(venue, lineId) {
 
 function getStartLineFromVenue(venue, race) {
   if (!venue) return null;
-  const lineId = normalizeId(race?.startLineId) || normalizeId(venue.defaultStartLineId);
+  const useRaceOnly = Boolean(race?.routeEnabled);
+  const lineId = useRaceOnly
+    ? normalizeId(race?.startLineId)
+    : normalizeId(race?.startLineId) || normalizeId(venue.defaultStartLineId);
   return resolveLineFromVenue(venue, lineId);
 }
 
 function getFinishLineFromVenue(venue, race) {
   if (!venue) return null;
-  const lineId = normalizeId(race?.finishLineId) || normalizeId(venue.defaultFinishLineId);
+  const useRaceOnly = Boolean(race?.routeEnabled);
+  const lineId = useRaceOnly
+    ? normalizeId(race?.finishLineId)
+    : normalizeId(race?.finishLineId) || normalizeId(venue.defaultFinishLineId);
   return resolveLineFromVenue(venue, lineId);
 }
 
@@ -405,12 +411,12 @@ function migrateLineSelections(venues, races) {
       if (!routeFinishLineId && finishLineId) {
         routeFinishLineId = finishLineId;
       }
-      if (!routeStartLineId || !routeFinishLineId) {
+      if (!routeStartLineId) {
         race.routeEnabled = false;
         changed = true;
       } else {
         startLineId = routeStartLineId;
-        finishLineId = routeFinishLineId;
+        finishLineId = routeFinishLineId || null;
       }
     }
 

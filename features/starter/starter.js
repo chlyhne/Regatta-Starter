@@ -388,11 +388,11 @@ function syncDerivedRaceState() {
     if (!routeFinishLineId && finishLineId) {
       routeFinishLineId = finishLineId;
     }
-    if (!routeStartLineId || !routeFinishLineId) {
+    if (!routeStartLineId) {
       routeEnabled = false;
     } else {
       startLineId = routeStartLineId;
-      finishLineId = routeFinishLineId;
+      finishLineId = routeFinishLineId || null;
     }
   }
 
@@ -509,7 +509,7 @@ function hasFinishLine() {
 }
 
 function ensureRouteLinesForRoute() {
-  if (hasStartLine() && hasFinishLine()) {
+  if (hasStartLine()) {
     if (state.race) {
       let changed = false;
       if (!state.race.routeStartLineId && state.race.startLineId) {
@@ -527,7 +527,7 @@ function ensureRouteLinesForRoute() {
     }
     return true;
   }
-  window.alert("Select start and finish lines first.");
+  window.alert("Select a start line first.");
   return false;
 }
 
@@ -614,7 +614,7 @@ function updateCourseUi() {
   const routeEnabled = Boolean(state.race?.routeEnabled);
   const markCount = state.venue?.marks?.length || 0;
   const routeCount = getRouteEntries().length;
-  const routeLinesReady = hasStartLine() && hasFinishLine();
+  const routeLinesReady = hasStartLine();
 
   if (els.courseToggle) {
     els.courseToggle.setAttribute("aria-pressed", routeEnabled ? "true" : "false");

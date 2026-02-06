@@ -76,7 +76,7 @@ export const setupView = `
   </section>
 
   <section class="panel">
-    <h2>Lines</h2>
+    <h2>Course</h2>
     <div class="hint">Start line</div>
     <div id="start-line-status" class="value">NO LINE</div>
     <div class="row stack">
@@ -87,10 +87,6 @@ export const setupView = `
     <div class="row stack">
       <button id="select-finish-line" class="ghost">Select finish line</button>
     </div>
-  </section>
-
-  <section class="panel">
-    <h2>Course</h2>
     <button id="course-toggle" class="check-toggle" type="button" aria-pressed="false">
       <span class="check-label">Use course route</span>
       <span class="check-box" aria-hidden="true"></span>
