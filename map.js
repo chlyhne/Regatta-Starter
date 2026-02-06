@@ -66,6 +66,7 @@ const els = {
   lineEditTitle: document.getElementById("line-edit-title"),
   lineName: document.getElementById("line-name"),
   lineDetails: document.getElementById("line-details"),
+  swapLineDirection: document.getElementById("swap-line-direction"),
   trimLine: document.getElementById("trim-line"),
   swapTrimSide: document.getElementById("swap-trim-side"),
   deleteLine: document.getElementById("delete-line"),
@@ -346,22 +347,20 @@ function updateSelectionStatus() {
 }
 
 function clearLineSelection() {
-  const wasTrimMode = state.trimMode;
   state.trimMode = false;
   state.lineSelection.starboardMarkId = null;
   state.lineSelection.portMarkId = null;
   updateSelectionStatus();
   updateMapOverlays();
   updateSelectionStatus();
-  if (wasTrimMode) {
-    updateModeUi();
-  }
 }
 
 function setTrimMode(active) {
   state.trimMode = Boolean(active);
   if (state.trimMode) {
-    clearLineSelection();
+    state.lineSelection.starboardMarkId = null;
+    state.lineSelection.portMarkId = null;
+    updateSelectionStatus();
   }
   updateModeUi();
 }
@@ -501,6 +500,10 @@ function updateLineEditUi() {
     if (els.lineDetails) {
       els.lineDetails.textContent = "";
     }
+    if (els.swapLineDirection) {
+      els.swapLineDirection.hidden = true;
+      els.swapLineDirection.disabled = true;
+    }
     if (els.trimLine) {
       els.trimLine.hidden = true;
       els.trimLine.setAttribute("aria-pressed", "false");
@@ -523,6 +526,10 @@ function updateLineEditUi() {
     const starboard = getMarkName(line.starboardMarkId);
     const port = getMarkName(line.portMarkId);
     els.lineDetails.textContent = `Starboard: ${starboard} / Port: ${port}`;
+  }
+  if (els.swapLineDirection) {
+    els.swapLineDirection.hidden = !isLineEditMode();
+    els.swapLineDirection.disabled = !isLineEditMode();
   }
   if (els.trimLine) {
     els.trimLine.hidden = !isLineEditMode();
@@ -606,6 +613,23 @@ function swapTrimSide() {
   saveData();
   updateMapOverlays();
   updateLineEditUi();
+}
+
+function swapLineDirection() {
+  if (!state.venue) return;
+  const line = getSelectedLine();
+  if (!line) return;
+  const nextPort = line.starboardMarkId;
+  const nextStarboard = line.portMarkId;
+  line.portMarkId = nextPort;
+  line.starboardMarkId = nextStarboard;
+  if (state.trimContext && state.trimContext.lineId === line.id) {
+    state.trimContext = null;
+  }
+  saveData();
+  updateMapOverlays();
+  updateLineEditUi();
+  renderLineList();
 }
 
 function syncRouteButtons() {
@@ -1405,6 +1429,13 @@ function bindEvents() {
       updateLineEditUi();
       renderLineList();
       updateMapOverlays();
+    });
+  }
+
+  if (els.swapLineDirection) {
+    els.swapLineDirection.addEventListener("click", () => {
+      if (!isLineEditMode()) return;
+      swapLineDirection();
     });
   }
 
