@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 18;
+const SETTINGS_VERSION = 19;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -22,6 +22,8 @@ const VMG_BASELINE_TAU_MAX_SEC = 75;
 
 const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
+  activeVenueId: null,
+  activeRaceId: null,
   line: {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
@@ -157,6 +159,10 @@ function normalizeLineMeta(meta) {
   };
 }
 
+function normalizeId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function normalizeCoordsFormat(format) {
   if (format === "dd" || format === "ddm" || format === "dms") return format;
   return DEFAULT_SETTINGS.coordsFormat;
@@ -280,6 +286,8 @@ function normalizeStart(start) {
 function normalizeSettings(raw) {
   return {
     version: SETTINGS_VERSION,
+    activeVenueId: normalizeId(raw?.activeVenueId),
+    activeRaceId: normalizeId(raw?.activeRaceId),
     line: normalizeLine(raw?.line),
     lineMeta: normalizeLineMeta(raw?.lineMeta),
     coordsFormat: normalizeCoordsFormat(raw?.coordsFormat),
@@ -483,6 +491,11 @@ function migrateSettings(raw) {
       migrated.course = { ...DEFAULT_SETTINGS.course };
     }
     migrated.version = 18;
+  }
+  if (version < 19) {
+    migrated.activeVenueId = null;
+    migrated.activeRaceId = null;
+    migrated.version = 19;
   }
   return migrated;
 }

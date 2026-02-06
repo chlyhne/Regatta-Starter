@@ -53,6 +53,46 @@ body {
   width: 100%;
 }
 
+.map-role-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.map-role {
+  border: 2px solid #000000;
+  background: #ffffff;
+  color: #000000;
+  border-radius: 999px;
+  padding: 6px 8px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.map-role.selected {
+  background: #000000;
+  color: #ffffff;
+}
+
+.map-role:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.map-edit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-route-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .map-field {
   display: grid;
   gap: 4px;
@@ -83,6 +123,40 @@ body {
   gap: 6px;
   font-size: 0.8rem;
   background: #ffffff;
+}
+
+.map-mark-list {
+  min-height: 48px;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 6px 8px;
+  display: grid;
+  gap: 6px;
+  background: #ffffff;
+}
+
+.map-mark-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 6px 10px;
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.map-mark-item.selected {
+  background: #000000;
+  color: #ffffff;
+}
+
+.map-mark-role {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
 }
 
 .map-course-chip {
@@ -216,4 +290,17 @@ body {
   border-radius: 8px;
   text-align: center;
   pointer-events: none;
+}
+
+.mark-label {
+  background: rgba(255, 255, 255, 0.9);
+  color: #000000;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transform: translate(8px, -10px);
 }

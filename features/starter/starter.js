@@ -2,14 +2,26 @@ import { els } from "../../ui/dom.js";
 import {
   state,
   hemisphereGroups,
-  LINES_KEY,
-  COURSES_KEY,
-  MARKS_KEY,
   COORD_DECIMAL_DIGITS,
   COORD_DD_DIGITS,
   START_BEEP_DURATION_MS,
   START_BEEP_FREQUENCY,
 } from "../../core/state.js";
+import {
+  loadVenues,
+  saveVenues,
+  loadRaces,
+  saveRaces,
+  createVenue,
+  createRace,
+  getVenueById,
+  getRaceById,
+  MARK_ROLES,
+  normalizeRouteEntry,
+  getStartLineFromVenue,
+  getFinishLineFromVenue,
+  buildCourseMarksFromRace,
+} from "../../core/venues.js";
 import { unlockAudio, playBeep, handleCountdownBeeps, resetBeepState } from "../../core/audio.js";
 import { requestHighPrecisionPosition } from "../../core/gps-watch.js";
 import { toMeters } from "../../core/geo.js";
@@ -134,16 +146,6 @@ function updateStartModeToggle() {
   }
 }
 
-function loadSavedLines() {
-  try {
-    const raw = localStorage.getItem(LINES_KEY);
-    state.savedLines = raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    console.warn("Failed to load saved lines", err);
-    state.savedLines = [];
-  }
-}
-
 function normalizeMarkName(name, fallback) {
   const trimmed = typeof name === "string" ? name.trim() : "";
   if (trimmed) return trimmed;
@@ -176,45 +178,191 @@ function normalizeCourseMarks(marks) {
     .filter(Boolean);
 }
 
-function normalizeSavedMark(mark, index) {
-  if (!mark) return null;
-  const lat = Number.parseFloat(mark.lat);
-  const lon = Number.parseFloat(mark.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  const name = normalizeMarkName(mark.name, `Mark ${index + 1}`);
-  return {
-    id: typeof mark.id === "string" ? mark.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name,
-    description: normalizeMarkDescription(mark.description),
-    lat,
-    lon,
-  };
-}
-
-function loadSavedMarks() {
-  try {
-    const raw = localStorage.getItem(MARKS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    state.savedMarks = Array.isArray(parsed)
-      ? parsed.map((mark, index) => normalizeSavedMark(mark, index)).filter(Boolean)
-      : [];
-    if (state.savedMarks.length) {
-      const seen = new Set();
-      state.savedMarks = state.savedMarks.filter((mark) => {
-        const key = mark.name.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-  } catch (err) {
-    console.warn("Failed to load saved marks", err);
-    state.savedMarks = [];
+function persistVenueAndRace(options = {}) {
+  if (!state.venue || !state.race) return;
+  state.venue.updatedAt = Date.now();
+  state.race.updatedAt = Date.now();
+  saveVenues(state.venues);
+  saveRaces(state.races);
+  if (options.saveSettings !== false && starterDeps.saveSettings) {
+    starterDeps.saveSettings();
   }
 }
 
-function saveSavedMarks() {
-  localStorage.setItem(MARKS_KEY, JSON.stringify(state.savedMarks));
+function syncVenueDefaultRoute() {
+  if (!state.venue || !state.race) return;
+  const route = Array.isArray(state.race.route) ? state.race.route : [];
+  state.venue.defaultRoute = route.map((entry) => ({ ...entry }));
+}
+
+function pruneRouteEntries() {
+  if (!state.race || !state.venue) return false;
+  const marks = Array.isArray(state.venue.marks) ? state.venue.marks : [];
+  const markIds = new Set(marks.map((mark) => mark.id));
+  const original = Array.isArray(state.race.route) ? state.race.route : [];
+  const normalized = original.map(normalizeRouteEntry).filter(Boolean);
+  const filtered = normalized.filter((entry) => markIds.has(entry.markId));
+  const changed =
+    filtered.length !== original.length ||
+    filtered.some((entry, index) => {
+      const prev = original[index];
+      return (
+        !prev ||
+        prev.markId !== entry.markId ||
+        prev.rounding !== entry.rounding ||
+        Boolean(prev.manual) !== Boolean(entry.manual)
+      );
+    });
+  if (changed) {
+    state.race.route = filtered;
+    if (!filtered.length) {
+      state.race.routeEnabled = false;
+    }
+  }
+  return changed;
+}
+
+function getRouteEntries() {
+  if (!state.race || !Array.isArray(state.race.route)) return [];
+  return state.race.route;
+}
+
+function getRouteMarks() {
+  if (!state.venue) return [];
+  const marksById = new Map(
+    Array.isArray(state.venue.marks)
+      ? state.venue.marks.map((mark) => [mark.id, mark])
+      : []
+  );
+  return getRouteEntries()
+    .map((entry) => marksById.get(entry.markId))
+    .filter(Boolean);
+}
+
+function createMarkWithRole(role, name, lat, lon) {
+  return {
+    id: `mark-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: normalizeMarkName(name, "Mark"),
+    description: "",
+    lat,
+    lon,
+    role,
+  };
+}
+
+function setRoleMarkPosition(role, coords, fallbackName) {
+  if (!state.venue || !coords) return;
+  const lat = Number.parseFloat(coords.lat);
+  const lon = Number.parseFloat(coords.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  let mark =
+    state.venue.marks.find((entry) => entry.role === role) || null;
+  if (!mark) {
+    mark = createMarkWithRole(role, fallbackName, lat, lon);
+    state.venue.marks.push(mark);
+  } else {
+    mark.lat = lat;
+    mark.lon = lon;
+  }
+  state.venue.marks.forEach((entry) => {
+    if (entry.id !== mark.id && entry.role === role) {
+      entry.role = MARK_ROLES.NONE;
+    }
+  });
+}
+
+function syncStartLineMarksFromState() {
+  if (!state.venue) return;
+  const hasA = Number.isFinite(state.line.a.lat) && Number.isFinite(state.line.a.lon);
+  const hasB = Number.isFinite(state.line.b.lat) && Number.isFinite(state.line.b.lon);
+  if (!hasA && !hasB) return;
+  if (hasA) {
+    setRoleMarkPosition(MARK_ROLES.START_PORT, state.line.a, "Start P");
+  }
+  if (hasB) {
+    setRoleMarkPosition(MARK_ROLES.START_STARBOARD, state.line.b, "Start SB");
+  }
+  persistVenueAndRace();
+  syncDerivedRaceState();
+}
+
+function refreshVenueRaceState() {
+  const venues = loadVenues();
+  const races = loadRaces();
+  if (!venues.length) {
+    venues.push(createVenue("Local venue"));
+    saveVenues(venues);
+  }
+  let venue = getVenueById(venues, state.activeVenueId) || null;
+  let race = getRaceById(races, state.activeRaceId) || null;
+
+  if (race && race.venueId) {
+    venue = getVenueById(venues, race.venueId) || venue;
+  }
+  if (!venue) {
+    venue = venues[0];
+  }
+  if (!race || race.venueId !== venue.id) {
+    race = createRace(`Race ${races.length + 1}`, venue);
+    races.unshift(race);
+    saveRaces(races);
+  }
+
+  state.venues = venues;
+  state.races = races;
+  state.venue = venue;
+  state.race = race;
+  state.activeVenueId = venue.id;
+  state.activeRaceId = race.id;
+  pruneRouteEntries();
+  syncDerivedRaceState();
+}
+
+function syncDerivedRaceState() {
+  const startLine = getStartLineFromVenue(state.venue, state.race);
+  const finishLine = getFinishLineFromVenue(state.venue, state.race);
+  const courseMarks = buildCourseMarksFromRace(state.venue, state.race);
+  const finishUseStartLine = Boolean(state.race?.finishUseStartLine) &&
+    state.race?.finishEnabled !== false;
+  const finishReverse = Boolean(state.race?.finishReverse);
+  const finishEnabled = state.race?.finishEnabled !== false;
+
+  state.line = startLine
+    ? { a: { ...startLine.a }, b: { ...startLine.b } }
+    : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+
+  state.course = {
+    enabled: Boolean(state.race?.routeEnabled),
+    marks: courseMarks,
+    finish: finishEnabled
+      ? finishUseStartLine
+        ? {
+            useStartLine: true,
+            reverse: finishReverse,
+            a: { lat: null, lon: null },
+            b: { lat: null, lon: null },
+          }
+        : finishLine
+          ? {
+              useStartLine: false,
+              reverse: false,
+              a: { ...finishLine.a },
+              b: { ...finishLine.b },
+            }
+          : {
+              useStartLine: false,
+              reverse: false,
+              a: { lat: null, lon: null },
+              b: { lat: null, lon: null },
+            }
+      : {
+          useStartLine: false,
+          reverse: false,
+          a: { lat: null, lon: null },
+          b: { lat: null, lon: null },
+        },
+    version: Date.now(),
+  };
 }
 
 function hasStartLine() {
@@ -276,16 +424,24 @@ function hasFinishLine() {
   return Boolean(getFinishLine());
 }
 
-function getFinishLineStatusText() {
-  const enabled = Boolean(state.course?.enabled);
-  const hasMarks = getCoursePointCount() > 0;
+function getStartLineStatusText() {
+  const enabled = state.race?.startEnabled !== false;
   if (!enabled) return "OFF";
-  if (!hasMarks) return "OPTIONAL";
-  if (state.course?.finish?.useStartLine) {
+  return hasStartLine() ? "Set" : "NO LINE";
+}
+
+function getFinishLineStatusText() {
+  const finishEnabled = state.race?.finishEnabled !== false;
+  const routeCount = getRouteEntries().length;
+  if (!finishEnabled) return "OFF";
+  if (state.race?.finishUseStartLine) {
     if (!hasStartLine()) return "NO LINE";
-    return state.course.finish.reverse ? "Start line (reverse)" : "Start line";
+    return state.race.finishReverse ? "Start line (reverse)" : "Start line";
   }
-  return hasFinishLine() ? "Set" : "NO FINISH";
+  if (routeCount === 0) {
+    return hasFinishLine() ? "Set" : "OPTIONAL";
+  }
+  return hasFinishLine() ? "Set" : "NO LINE";
 }
 
 function computeTurnSide(prev, current, next) {
@@ -300,9 +456,11 @@ function computeTurnSide(prev, current, next) {
   return cross > 0 ? "port" : "starboard";
 }
 
-function syncCourseRoundingDefaults() {
+function syncCourseRoundingDefaults(options = {}) {
+  const { persist = false } = options;
   const marks = getCourseMarks();
-  if (!marks.length) return;
+  const entries = getRouteEntries();
+  if (!marks.length || !entries.length) return false;
   const startMid = getStartLineMidpoint();
   const finishLine = getFinishLine();
   const finishMid = finishLine
@@ -311,57 +469,82 @@ function syncCourseRoundingDefaults() {
         lon: (finishLine.a.lon + finishLine.b.lon) / 2,
       }
     : null;
-  marks.forEach((mark, index) => {
-    if (!mark || mark.manual) return;
+  let changed = false;
+  entries.forEach((entry, index) => {
+    const mark = marks[index];
+    if (!entry || !mark || entry.manual) return;
     const prev = index === 0 ? startMid : marks[index - 1];
     const next = index === marks.length - 1 ? finishMid : marks[index + 1];
     const side = prev && next ? computeTurnSide(prev, mark, next) : null;
-    mark.rounding = side || mark.rounding || "port";
+    const nextSide = side || entry.rounding || "port";
+    if (entry.rounding !== nextSide) {
+      entry.rounding = nextSide;
+      changed = true;
+    }
+    if (mark.rounding !== nextSide) {
+      mark.rounding = nextSide;
+    }
   });
+  if (changed && persist) {
+    syncVenueDefaultRoute();
+    persistVenueAndRace();
+  }
+  return changed;
 }
 
 function updateCourseUi() {
   syncCourseRoundingDefaults();
-  const enabled = Boolean(state.course?.enabled);
+  const routeEnabled = Boolean(state.race?.routeEnabled);
+  const markCount = state.venue?.marks?.length || 0;
+  const routeCount = getRouteEntries().length;
+  const finishEnabled = state.race?.finishEnabled !== false;
+
   if (els.courseToggle) {
-    els.courseToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+    els.courseToggle.setAttribute("aria-pressed", routeEnabled ? "true" : "false");
   }
-  if (els.courseMarks) {
-    const count = getCoursePointCount();
-    els.courseMarks.textContent = count ? String(count) : "NO COURSE";
+  if (els.raceName) {
+    els.raceName.textContent = state.race?.name || "--";
   }
-  if (els.openCourseMap) {
-    const count = getCoursePointCount();
-    els.openCourseMap.textContent = count ? "Edit on map" : "Select on map";
+  if (els.venueName) {
+    els.venueName.textContent = state.venue?.name || "--";
   }
-  if (els.openCourseMarks) {
-    const count = getCoursePointCount();
-    els.openCourseMarks.disabled = count === 0;
+  if (els.markCount) {
+    els.markCount.textContent = String(markCount || 0);
+  }
+  if (els.routeCount) {
+    els.routeCount.textContent = routeCount ? String(routeCount) : "NO ROUTE";
+  }
+  if (els.startLineStatus) {
+    els.startLineStatus.textContent = getStartLineStatusText();
   }
   if (els.finishStatus) {
     els.finishStatus.textContent = getFinishLineStatusText();
   }
+  if (els.startLineToggle) {
+    const enabled = state.race?.startEnabled !== false;
+    els.startLineToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+  }
+  if (els.finishToggle) {
+    els.finishToggle.setAttribute("aria-pressed", finishEnabled ? "true" : "false");
+  }
   if (els.finishUseStart) {
-    const useStart = Boolean(state.course?.finish?.useStartLine);
-    els.finishUseStart.setAttribute("aria-pressed", useStart ? "true" : "false");
+    const enabled = Boolean(state.race?.finishUseStartLine);
+    els.finishUseStart.setAttribute("aria-pressed", enabled ? "true" : "false");
+    els.finishUseStart.disabled = !finishEnabled;
   }
-  if (els.openFinishMap) {
-    els.openFinishMap.disabled = false;
+  if (els.openRoute) {
+    els.openRoute.disabled = markCount === 0;
   }
-  if (els.swapFinish) {
-    const useStart = Boolean(state.course?.finish?.useStartLine);
-    const hasFinish = hasFinishLine();
-    els.swapFinish.textContent = useStart ? "Reverse finish" : "Swap finish marks";
-    els.swapFinish.disabled = useStart ? !hasStartLine() : !hasFinish;
+  if (els.openRounding) {
+    els.openRounding.disabled = routeCount === 0;
   }
-  if (els.clearCourse) {
-    const count = getCoursePointCount();
-    els.clearCourse.disabled = count === 0;
+  if (els.clearRoute) {
+    els.clearRoute.disabled = routeCount === 0;
   }
   if (els.courseKeyboardModal) {
     const open = els.courseKeyboardModal.getAttribute("aria-hidden") === "false";
     if (open) {
-      renderCourseSequence();
+      renderRouteSequence();
     }
   }
 }
@@ -373,238 +556,7 @@ function bumpCourseVersion() {
 
 function updateLineNameDisplay() {
   if (!els.statusLineName) return;
-  if (!hasStartLine()) {
-    els.statusLineName.textContent = "NO LINE";
-    return;
-  }
-  els.statusLineName.textContent = state.lineName || "--";
-}
-
-function syncLineNameWithSavedLines() {
-  if (!state.lineSourceId) {
-    updateLineNameDisplay();
-    return;
-  }
-  const exists = state.savedLines.some((line) => line.id === state.lineSourceId);
-  if (!exists) {
-    state.lineName = null;
-    state.lineSourceId = null;
-    if (starterDeps.saveSettings) {
-      starterDeps.saveSettings();
-    }
-  }
-  updateLineNameDisplay();
-}
-
-function saveSavedLines() {
-  localStorage.setItem(LINES_KEY, JSON.stringify(state.savedLines));
-}
-
-function loadSavedCourses() {
-  try {
-    const raw = localStorage.getItem(COURSES_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    state.savedCourses = Array.isArray(parsed)
-      ? parsed.map((course) => ({
-          ...course,
-          course: {
-            enabled: Boolean(course?.course?.enabled),
-            marks: normalizeCourseMarks(course?.course?.marks),
-            finish: course?.course?.finish ? { ...course.course.finish } : null,
-          },
-        }))
-      : [];
-    syncMarksFromSavedCourses();
-  } catch (err) {
-    console.warn("Failed to load saved courses", err);
-    state.savedCourses = [];
-  }
-}
-
-function saveSavedCourses() {
-  localStorage.setItem(COURSES_KEY, JSON.stringify(state.savedCourses));
-}
-
-function findSavedMarkIndexByName(name) {
-  const target = normalizeMarkName(name, "").toLowerCase();
-  if (!target) return -1;
-  return state.savedMarks.findIndex(
-    (mark) => (mark?.name || "").toLowerCase() === target
-  );
-}
-
-function upsertSavedMark(mark) {
-  if (!mark) return false;
-  const name = normalizeMarkName(mark.name, "");
-  if (!name) return false;
-  const lat = Number.parseFloat(mark.lat);
-  const lon = Number.parseFloat(mark.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
-  const description = normalizeMarkDescription(mark.description);
-  const index = findSavedMarkIndexByName(name);
-  if (index >= 0) {
-    const current = state.savedMarks[index];
-    state.savedMarks[index] = {
-      ...current,
-      name,
-      description: description || current.description || "",
-      lat,
-      lon,
-    };
-    return true;
-  }
-  state.savedMarks.push({
-    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name,
-    description,
-    lat,
-    lon,
-  });
-  return true;
-}
-
-function syncCourseMarksToLibrary() {
-  let changed = false;
-  const marks = getCourseMarks();
-  marks.forEach((mark, index) => {
-    const normalized = normalizeCourseMark(mark, index);
-    if (!normalized) return;
-    changed = upsertSavedMark(normalized) || changed;
-  });
-  if (changed) {
-    saveSavedMarks();
-  }
-}
-
-function syncMarksFromSavedCourses() {
-  if (!state.savedCourses.length) return;
-  let changed = false;
-  state.savedCourses.forEach((entry) => {
-    const marks = normalizeCourseMarks(entry?.course?.marks);
-    marks.forEach((mark) => {
-      changed = upsertSavedMark(mark) || changed;
-    });
-  });
-  if (changed) {
-    saveSavedMarks();
-  }
-}
-
-function openMarksModal() {
-  if (!els.savedMarksList) return;
-  syncCourseMarksToLibrary();
-  state.selectedMarkId = null;
-  renderSavedMarksList();
-  document.body.classList.add("modal-open");
-  if (els.savedMarksModal) {
-    els.savedMarksModal.setAttribute("aria-hidden", "false");
-  }
-}
-
-function closeMarksModal() {
-  document.body.classList.remove("modal-open");
-  if (els.savedMarksModal) {
-    els.savedMarksModal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function renderSavedMarksList() {
-  if (!els.savedMarksList) return;
-  els.savedMarksList.innerHTML = "";
-  if (!state.savedMarks.length) {
-    const empty = document.createElement("div");
-    empty.className = "hint";
-    empty.textContent = "No saved marks yet.";
-    els.savedMarksList.appendChild(empty);
-    updateMarksModalButtons();
-    return;
-  }
-  state.savedMarks.forEach((mark) => {
-    const row = document.createElement("div");
-    row.className = "modal-item";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = mark.description
-      ? `${mark.name} - ${mark.description}`
-      : mark.name;
-    if (state.selectedMarkId === mark.id) {
-      button.classList.add("selected");
-    }
-    button.addEventListener("click", () => {
-      state.selectedMarkId = mark.id;
-      renderSavedMarksList();
-    });
-    row.appendChild(button);
-    els.savedMarksList.appendChild(row);
-  });
-  updateMarksModalButtons();
-}
-
-function updateMarksModalButtons() {
-  const hasSelection = Boolean(state.selectedMarkId);
-  if (els.confirmMarkAdd) {
-    els.confirmMarkAdd.disabled = !hasSelection;
-  }
-  if (els.confirmMarkDelete) {
-    els.confirmMarkDelete.disabled = !hasSelection;
-  }
-}
-
-function openCourseModal() {
-  if (!els.savedCoursesList) return;
-  state.selectedCourseId = null;
-  renderSavedCoursesList();
-  document.body.classList.add("modal-open");
-  if (els.loadCourseModal) {
-    els.loadCourseModal.setAttribute("aria-hidden", "false");
-  }
-}
-
-function closeCourseModal() {
-  document.body.classList.remove("modal-open");
-  if (els.loadCourseModal) {
-    els.loadCourseModal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function renderSavedCoursesList() {
-  if (!els.savedCoursesList) return;
-  els.savedCoursesList.innerHTML = "";
-  if (!state.savedCourses.length) {
-    const empty = document.createElement("div");
-    empty.className = "hint";
-    empty.textContent = "No saved courses yet.";
-    els.savedCoursesList.appendChild(empty);
-    updateCourseModalButtons();
-    return;
-  }
-  state.savedCourses.forEach((course) => {
-    const row = document.createElement("div");
-    row.className = "modal-item";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = course.name;
-    if (state.selectedCourseId === course.id) {
-      button.classList.add("selected");
-    }
-    button.addEventListener("click", () => {
-      state.selectedCourseId = course.id;
-      renderSavedCoursesList();
-    });
-    row.appendChild(button);
-    els.savedCoursesList.appendChild(row);
-  });
-  updateCourseModalButtons();
-}
-
-function updateCourseModalButtons() {
-  const hasSelection = Boolean(state.selectedCourseId);
-  if (els.confirmCourseLoad) {
-    els.confirmCourseLoad.disabled = !hasSelection;
-  }
-  if (els.confirmCourseDelete) {
-    els.confirmCourseDelete.disabled = !hasSelection;
-  }
+  els.statusLineName.textContent = state.venue?.name || "--";
 }
 
 function formatRoundingSide(side) {
@@ -616,19 +568,22 @@ function renderCourseMarksList() {
   els.courseMarksList.innerHTML = "";
   syncCourseRoundingDefaults();
   const marks = getCourseMarks();
+  const entries = getRouteEntries();
   if (!marks.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No marks yet.";
+    empty.textContent = "No route yet.";
     els.courseMarksList.appendChild(empty);
     return;
   }
   marks.forEach((mark, index) => {
+    const entry = entries[index];
+    if (!entry) return;
     const row = document.createElement("div");
     row.className = "modal-item mark-row";
     const button = document.createElement("button");
     button.type = "button";
-    const side = mark.rounding || "port";
+    const side = entry.rounding || "port";
     const name = normalizeMarkName(mark.name, `Mark ${index + 1}`);
     button.className = `course-mark-btn ${side}`;
     const nameSpan = document.createElement("span");
@@ -640,40 +595,18 @@ function renderCourseMarksList() {
     button.appendChild(nameSpan);
     button.appendChild(sideSpan);
     button.addEventListener("click", () => {
-      mark.rounding = side === "port" ? "starboard" : "port";
+      const nextSide = side === "port" ? "starboard" : "port";
+      entry.rounding = nextSide;
+      entry.manual = true;
+      mark.rounding = nextSide;
       mark.manual = true;
       bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
+      syncVenueDefaultRoute();
+      persistVenueAndRace();
       renderCourseMarksList();
+      renderRouteSequence();
     });
     row.appendChild(button);
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.className = "ghost";
-    edit.textContent = "Edit";
-    edit.addEventListener("click", () => {
-      const currentName = normalizeMarkName(mark.name, `Mark ${index + 1}`);
-      const nextName = window.prompt("Mark name:", currentName);
-      if (nextName === null) return;
-      const trimmedName = normalizeMarkName(nextName, currentName);
-      const nextDescription = window.prompt(
-        "Mark description (optional):",
-        mark.description || ""
-      );
-      if (nextDescription !== null) {
-        mark.description = normalizeMarkDescription(nextDescription);
-      }
-      mark.name = trimmedName;
-      bumpCourseVersion();
-      syncCourseMarksToLibrary();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      renderCourseMarksList();
-    });
-    row.appendChild(edit);
     if (mark.description) {
       const desc = document.createElement("div");
       desc.className = "mark-desc";
@@ -706,7 +639,7 @@ function isSingleLetterName(name) {
 
 function getSingleLetterMarks() {
   const seen = new Set();
-  return state.savedMarks
+  return (state.venue?.marks || [])
     .filter((mark) => mark && isSingleLetterName(mark.name))
     .filter((mark) => {
       const key = mark.name.trim().toLowerCase();
@@ -717,7 +650,7 @@ function getSingleLetterMarks() {
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
-function renderCourseSequence() {
+function renderRouteSequence() {
   if (!els.courseSequence) return;
   els.courseSequence.innerHTML = "";
   syncCourseRoundingDefaults();
@@ -725,7 +658,7 @@ function renderCourseSequence() {
   if (!marks.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No marks yet.";
+    empty.textContent = "No route yet.";
     els.courseSequence.appendChild(empty);
     return;
   }
@@ -758,43 +691,30 @@ function renderCourseKeyboard() {
       button.title = mark.description;
     }
     button.addEventListener("click", () => {
-      if (!state.course) {
-        state.course = {
-          enabled: false,
-          marks: [],
-          finish: {
-            useStartLine: true,
-            reverse: false,
-            a: { lat: null, lon: null },
-            b: { lat: null, lon: null },
-          },
-          version: Date.now(),
-        };
+      if (!state.race) return;
+      if (!Array.isArray(state.race.route)) {
+        state.race.route = [];
       }
-      state.course.marks.push({
-        lat: mark.lat,
-        lon: mark.lon,
-        name: mark.name,
-        description: mark.description || "",
-        rounding: null,
+      state.race.route.push({
+        markId: mark.id,
+        rounding: "port",
         manual: false,
       });
+      syncVenueDefaultRoute();
+      persistVenueAndRace();
+      syncDerivedRaceState();
       syncCourseRoundingDefaults();
       bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
       updateCourseUi();
-      renderCourseSequence();
+      renderRouteSequence();
     });
     els.courseKeyboard.appendChild(button);
   });
 }
 
 function openCourseKeyboardModal() {
-  syncCourseMarksToLibrary();
   renderCourseKeyboard();
-  renderCourseSequence();
+  renderRouteSequence();
   document.body.classList.add("modal-open");
   if (els.courseKeyboardModal) {
     els.courseKeyboardModal.setAttribute("aria-hidden", "false");
@@ -806,6 +726,134 @@ function closeCourseKeyboardModal() {
   if (els.courseKeyboardModal) {
     els.courseKeyboardModal.setAttribute("aria-hidden", "true");
   }
+}
+
+function openRaceModal() {
+  state.selectedRaceId = state.activeRaceId;
+  renderRaceList();
+  document.body.classList.add("modal-open");
+  if (els.raceModal) {
+    els.raceModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeRaceModal() {
+  document.body.classList.remove("modal-open");
+  if (els.raceModal) {
+    els.raceModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openVenueModal() {
+  state.selectedVenueId = state.activeVenueId;
+  renderVenueList();
+  document.body.classList.add("modal-open");
+  if (els.venueModal) {
+    els.venueModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeVenueModal() {
+  document.body.classList.remove("modal-open");
+  if (els.venueModal) {
+    els.venueModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function renderRaceList() {
+  if (!els.raceList) return;
+  els.raceList.innerHTML = "";
+  const races = Array.isArray(state.races) ? [...state.races] : [];
+  if (!races.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No races yet.";
+    els.raceList.appendChild(empty);
+    if (els.confirmRace) els.confirmRace.disabled = true;
+    if (els.deleteRace) els.deleteRace.disabled = true;
+    return;
+  }
+  races.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  races.forEach((race) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    const venue = getVenueById(state.venues, race.venueId);
+    button.textContent = venue ? `${race.name} · ${venue.name}` : race.name;
+    if (state.selectedRaceId === race.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      state.selectedRaceId = race.id;
+      renderRaceList();
+    });
+    row.appendChild(button);
+    els.raceList.appendChild(row);
+  });
+  if (els.confirmRace) els.confirmRace.disabled = !state.selectedRaceId;
+  if (els.deleteRace) els.deleteRace.disabled = !state.selectedRaceId;
+}
+
+function renderVenueList() {
+  if (!els.venueList) return;
+  els.venueList.innerHTML = "";
+  const venues = Array.isArray(state.venues) ? [...state.venues] : [];
+  if (!venues.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No venues yet.";
+    els.venueList.appendChild(empty);
+    if (els.confirmVenue) els.confirmVenue.disabled = true;
+    if (els.deleteVenue) els.deleteVenue.disabled = true;
+    return;
+  }
+
+  const addNewRow = document.createElement("div");
+  addNewRow.className = "modal-item";
+  const addNewButton = document.createElement("button");
+  addNewButton.type = "button";
+  addNewButton.textContent = "New venue";
+  addNewButton.addEventListener("click", () => {
+    const nameInput = window.prompt("Venue name:");
+    if (nameInput === null) return;
+    const name = normalizeMarkName(nameInput, "New venue");
+    const venue = createVenue(name);
+    state.venues.unshift(venue);
+    const race = createRace(`Race ${state.races.length + 1}`, venue);
+    state.races.unshift(race);
+    state.venue = venue;
+    state.race = race;
+    state.activeVenueId = venue.id;
+    state.activeRaceId = race.id;
+    syncDerivedRaceState();
+    syncVenueDefaultRoute();
+    persistVenueAndRace();
+    updateCourseUi();
+    closeVenueModal();
+  });
+  addNewRow.appendChild(addNewButton);
+  els.venueList.appendChild(addNewRow);
+
+  venues.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  venues.forEach((venue) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = venue.name;
+    if (state.selectedVenueId === venue.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      state.selectedVenueId = venue.id;
+      renderVenueList();
+    });
+    row.appendChild(button);
+    els.venueList.appendChild(row);
+  });
+  if (els.confirmVenue) els.confirmVenue.disabled = !state.selectedVenueId;
+  if (els.deleteVenue) els.deleteVenue.disabled = !state.selectedVenueId;
 }
 
 function openLoadModal() {
@@ -891,12 +939,32 @@ function syncCoordinateFormatUI() {
 }
 
 function swapStartLineMarks() {
+  if (state.venue) {
+    const port = state.venue.marks.find((mark) => mark.role === MARK_ROLES.START_PORT);
+    const starboard = state.venue.marks.find(
+      (mark) => mark.role === MARK_ROLES.START_STARBOARD
+    );
+    if (port && starboard) {
+      port.role = MARK_ROLES.START_STARBOARD;
+      starboard.role = MARK_ROLES.START_PORT;
+      persistVenueAndRace();
+      syncDerivedRaceState();
+      updateLineNameDisplay();
+      if (starterDeps.updateInputs) {
+        starterDeps.updateInputs();
+      }
+      updateLineProjection();
+      return;
+    }
+  }
+
   const nextA = { ...state.line.b };
   const nextB = { ...state.line.a };
   state.line.a = nextA;
   state.line.b = nextB;
   state.lineName = null;
   state.lineSourceId = null;
+  syncStartLineMarksFromState();
   if (starterDeps.saveSettings) {
     starterDeps.saveSettings();
   }
@@ -1331,6 +1399,9 @@ function parseLineInputs(options = {}) {
     state.lineSourceId = null;
   }
 
+  if (changed) {
+    syncStartLineMarksFromState();
+  }
   if (starterDeps.saveSettings) {
     starterDeps.saveSettings();
   }
@@ -1497,6 +1568,7 @@ function updateStartDisplay() {
 
 
 function syncStarterInputs() {
+  refreshVenueRaceState();
   syncCoordinateInputs();
   syncCountdownPicker();
   updateStartModeToggle();
@@ -1607,9 +1679,7 @@ function bindStarterEvents() {
           };
           state.lineName = null;
           state.lineSourceId = null;
-          if (starterDeps.saveSettings) {
-            starterDeps.saveSettings();
-          }
+          syncStartLineMarksFromState();
           updateLineNameDisplay();
           if (starterDeps.updateInputs) {
             starterDeps.updateInputs();
@@ -1637,9 +1707,7 @@ function bindStarterEvents() {
           };
           state.lineName = null;
           state.lineSourceId = null;
-          if (starterDeps.saveSettings) {
-            starterDeps.saveSettings();
-          }
+          syncStartLineMarksFromState();
           updateLineNameDisplay();
           if (starterDeps.updateInputs) {
             starterDeps.updateInputs();
@@ -1707,97 +1775,166 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.saveLine) {
-    els.saveLine.addEventListener("click", () => {
-      if (!hasLine()) {
-        window.alert("No start line defined. Set port and starboard marks first.");
-        return;
-      }
-      const nameInput = window.prompt("Name this start line:");
-      const timestamp = new Date().toLocaleString("en-GB", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-      const name = (nameInput || "").trim() || `Line ${state.savedLines.length + 1} (${timestamp})`;
-      const entry = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        name,
-        line: {
-          a: { ...state.line.a },
-          b: { ...state.line.b },
-        },
-      };
-      state.savedLines.unshift(entry);
-      saveSavedLines();
-      state.lineName = entry.name || null;
-      state.lineSourceId = entry.id;
-      state.selectedLineId = entry.id;
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateLineNameDisplay();
-      updateLineProjection();
+  if (els.newRace) {
+    els.newRace.addEventListener("click", () => {
+      if (!state.venue) return;
+      const fallback = `Race ${state.races.length + 1}`;
+      const nameInput = window.prompt("Race name:", fallback);
+      if (nameInput === null) return;
+      const name = normalizeMarkName(nameInput, fallback);
+      const race = createRace(name, state.venue);
+      state.races.unshift(race);
+      state.race = race;
+      state.activeRaceId = race.id;
+      state.activeVenueId = state.venue.id;
+      syncDerivedRaceState();
+      syncVenueDefaultRoute();
+      persistVenueAndRace();
+      updateCourseUi();
     });
   }
 
-  if (els.loadLine) {
-    els.loadLine.addEventListener("click", () => {
-      openLoadModal();
+  if (els.selectRace) {
+    els.selectRace.addEventListener("click", () => {
+      openRaceModal();
     });
   }
 
-  if (els.confirmLoad) {
-    els.confirmLoad.addEventListener("click", () => {
-      if (!state.selectedLineId) return;
-      const entry = state.savedLines.find((line) => line.id === state.selectedLineId);
-      if (!entry) return;
-      state.line = {
-        a: { ...entry.line.a },
-        b: { ...entry.line.b },
-      };
-      state.lineName = entry.name || null;
-      state.lineSourceId = entry.id || null;
-      if (starterDeps.updateInputs) {
-        starterDeps.updateInputs();
-      }
-      updateLineProjection();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateLineNameDisplay();
-      closeLoadModal();
+  if (els.selectVenue) {
+    els.selectVenue.addEventListener("click", () => {
+      openVenueModal();
     });
   }
 
-  if (els.confirmDelete) {
-    els.confirmDelete.addEventListener("click", () => {
-      if (!state.selectedLineId) return;
-      const entry = state.savedLines.find((line) => line.id === state.selectedLineId);
-      if (!entry) return;
-      const confirmed = window.confirm(`Delete "${entry.name}"?`);
+  if (els.confirmRace) {
+    els.confirmRace.addEventListener("click", () => {
+      if (!state.selectedRaceId) return;
+      const race = getRaceById(state.races, state.selectedRaceId);
+      if (!race) return;
+      const venue = getVenueById(state.venues, race.venueId) || state.venue;
+      if (!venue) return;
+      state.race = race;
+      state.venue = venue;
+      state.activeRaceId = race.id;
+      state.activeVenueId = venue.id;
+      syncDerivedRaceState();
+      persistVenueAndRace();
+      updateCourseUi();
+      closeRaceModal();
+    });
+  }
+
+  if (els.deleteRace) {
+    els.deleteRace.addEventListener("click", () => {
+      if (!state.selectedRaceId) return;
+      const race = getRaceById(state.races, state.selectedRaceId);
+      if (!race) return;
+      const confirmed = window.confirm(`Delete "${race.name}"?`);
       if (!confirmed) return;
-      state.savedLines = state.savedLines.filter((line) => line.id !== entry.id);
-      if (state.lineSourceId === entry.id) {
-        state.lineName = null;
-        state.lineSourceId = null;
-        if (starterDeps.saveSettings) {
-          starterDeps.saveSettings();
+      state.races = state.races.filter((entry) => entry.id !== race.id);
+      if (!state.races.length) {
+        const venue = state.venue || createVenue("Local venue");
+        if (!state.venues.find((entry) => entry.id === venue.id)) {
+          state.venues.unshift(venue);
         }
-        updateLineNameDisplay();
+        const freshRace = createRace("Race 1", venue);
+        state.races.unshift(freshRace);
+        state.race = freshRace;
+        state.venue = venue;
+        state.activeRaceId = freshRace.id;
+        state.activeVenueId = venue.id;
+      } else if (state.activeRaceId === race.id) {
+        const nextRace = state.races[0];
+        const nextVenue = getVenueById(state.venues, nextRace.venueId) || state.venue;
+        state.race = nextRace;
+        state.venue = nextVenue;
+        state.activeRaceId = nextRace.id;
+        if (nextVenue) {
+          state.activeVenueId = nextVenue.id;
+        }
       }
-      saveSavedLines();
-      state.selectedLineId = null;
-      renderSavedLinesList();
+      syncDerivedRaceState();
+      persistVenueAndRace();
+      updateCourseUi();
+      closeRaceModal();
     });
   }
 
-  if (els.closeLoad) {
-    els.closeLoad.addEventListener("click", () => {
-      closeLoadModal();
+  if (els.closeRaceModal) {
+    els.closeRaceModal.addEventListener("click", () => {
+      closeRaceModal();
+    });
+  }
+
+  if (els.confirmVenue) {
+    els.confirmVenue.addEventListener("click", () => {
+      if (!state.selectedVenueId) return;
+      const venue = getVenueById(state.venues, state.selectedVenueId);
+      if (!venue) return;
+      const racesForVenue = state.races.filter((race) => race.venueId === venue.id);
+      racesForVenue.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      let race = racesForVenue[0];
+      if (!race) {
+        race = createRace(`Race ${state.races.length + 1}`, venue);
+        state.races.unshift(race);
+      }
+      state.venue = venue;
+      state.race = race;
+      state.activeVenueId = venue.id;
+      state.activeRaceId = race.id;
+      syncDerivedRaceState();
+      persistVenueAndRace();
+      updateCourseUi();
+      closeVenueModal();
+    });
+  }
+
+  if (els.deleteVenue) {
+    els.deleteVenue.addEventListener("click", () => {
+      if (!state.selectedVenueId) return;
+      const venue = getVenueById(state.venues, state.selectedVenueId);
+      if (!venue) return;
+      const confirmed = window.confirm(`Delete "${venue.name}"?`);
+      if (!confirmed) return;
+      state.venues = state.venues.filter((entry) => entry.id !== venue.id);
+      state.races = state.races.filter((race) => race.venueId !== venue.id);
+      if (!state.venues.length) {
+        const freshVenue = createVenue("Local venue");
+        state.venues.unshift(freshVenue);
+      }
+      if (!state.races.length) {
+        const activeVenue = state.venues[0];
+        const race = createRace("Race 1", activeVenue);
+        state.races.unshift(race);
+      }
+      const nextVenue =
+        getVenueById(state.venues, state.activeVenueId) || state.venues[0] || null;
+      const racesForVenue = nextVenue
+        ? state.races.filter((race) => race.venueId === nextVenue.id)
+        : [];
+      racesForVenue.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      const nextRace = racesForVenue[0] || state.races[0] || null;
+      state.venue = nextVenue;
+      state.race = nextRace;
+      if (nextVenue) state.activeVenueId = nextVenue.id;
+      if (nextRace) state.activeRaceId = nextRace.id;
+      syncDerivedRaceState();
+      persistVenueAndRace();
+      updateCourseUi();
+      closeVenueModal();
+    });
+  }
+
+  if (els.closeVenueModal) {
+    els.closeVenueModal.addEventListener("click", () => {
+      closeVenueModal();
+    });
+  }
+
+  if (els.openMap) {
+    els.openMap.addEventListener("click", () => {
+      const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
+      window.location.href = `map.html${suffix}`;
     });
   }
 
@@ -2011,340 +2148,128 @@ function bindStarterEvents() {
     });
   }
 
-  if (els.courseToggle) {
-    els.courseToggle.addEventListener("click", () => {
-      const next = !state.course?.enabled;
-      if (next && getCoursePointCount() > 0 && !hasFinishLine()) {
-        window.alert("Set a finish line or use the start line as finish.");
-        return;
+  if (els.startLineToggle) {
+    els.startLineToggle.addEventListener("click", () => {
+      if (!state.race) return;
+      const next = state.race.startEnabled === false;
+      state.race.startEnabled = next;
+      if (!next && state.race.finishUseStartLine) {
+        state.race.finishUseStartLine = false;
       }
-      if (!state.course) {
-        state.course = {
-          enabled: next,
-          marks: [],
-          finish: {
-            useStartLine: true,
-            reverse: false,
-            a: { lat: null, lon: null },
-            b: { lat: null, lon: null },
-          },
-          version: Date.now(),
-        };
-      } else {
-        state.course.enabled = next;
-        if (!state.course.finish) {
-          state.course.finish = {
-            useStartLine: true,
-            reverse: false,
-            a: { lat: null, lon: null },
-            b: { lat: null, lon: null },
-          };
-        }
-      }
-      if (!next) {
-        state.courseTrackActive = false;
-      }
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
+      persistVenueAndRace();
+      syncDerivedRaceState();
       updateCourseUi();
     });
   }
 
-  if (els.openCourseMap) {
-    els.openCourseMap.addEventListener("click", () => {
-      const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
-      const joiner = suffix ? "&" : "?";
-      window.location.href = `map.html${suffix}${joiner}mode=course`;
-    });
-  }
-
-  if (els.openCourseMarks) {
-    els.openCourseMarks.addEventListener("click", () => {
-      openCourseMarksModal();
-    });
-  }
-
-  if (els.openSavedMarks) {
-    els.openSavedMarks.addEventListener("click", () => {
-      openMarksModal();
-    });
-  }
-
-  if (els.openCourseKeyboard) {
-    els.openCourseKeyboard.addEventListener("click", () => {
-      openCourseKeyboardModal();
+  if (els.finishToggle) {
+    els.finishToggle.addEventListener("click", () => {
+      if (!state.race) return;
+      const routeCount = getRouteEntries().length;
+      const next = state.race.finishEnabled === false;
+      if (!next && state.race.routeEnabled && routeCount > 0) {
+        window.alert("Finish line required when a route is enabled.");
+        return;
+      }
+      state.race.finishEnabled = next;
+      if (!next) {
+        state.race.finishUseStartLine = false;
+      }
+      persistVenueAndRace();
+      syncDerivedRaceState();
+      updateCourseUi();
     });
   }
 
   if (els.finishUseStart) {
     els.finishUseStart.addEventListener("click", () => {
-      if (!state.course) return;
-      const next = !state.course.finish?.useStartLine;
-      if (!state.course.finish) {
-        state.course.finish = {
-          useStartLine: next,
-          reverse: false,
-          a: { lat: null, lon: null },
-          b: { lat: null, lon: null },
-        };
-      } else {
-        state.course.finish.useStartLine = next;
-      }
-      if (state.course.enabled && getCoursePointCount() > 0 && !hasFinishLine()) {
-        window.alert("Set a finish line or use the start line as finish.");
-      }
-      bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateCourseUi();
-    });
-  }
-
-  if (els.openFinishMap) {
-    els.openFinishMap.addEventListener("click", () => {
-      const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
-      const joiner = suffix ? "&" : "?";
-      window.location.href = `map.html${suffix}${joiner}mode=finish`;
-    });
-  }
-
-  if (els.swapFinish) {
-    els.swapFinish.addEventListener("click", () => {
-      if (!state.course || !state.course.finish) return;
-      if (state.course.finish.useStartLine) {
-        state.course.finish.reverse = !state.course.finish.reverse;
-      } else {
-        const hasFinish = hasFinishLine();
-        if (!hasFinish) return;
-        const nextA = { ...state.course.finish.b };
-        const nextB = { ...state.course.finish.a };
-        state.course.finish.a = nextA;
-        state.course.finish.b = nextB;
-      }
-      bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateCourseUi();
-    });
-  }
-
-  if (els.clearCourse) {
-    els.clearCourse.addEventListener("click", () => {
-      if (!state.course || !getCoursePointCount()) return;
-      const confirmed = window.confirm("Clear course marks?");
-      if (!confirmed) return;
-      state.course.marks = [];
-      bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateCourseUi();
-    });
-  }
-
-  if (els.saveCourse) {
-    els.saveCourse.addEventListener("click", () => {
-      if (!hasStartLine()) {
-        window.alert("No start line defined. Set port and starboard marks first.");
+      if (!state.race) return;
+      const next = !state.race.finishUseStartLine;
+      if (next && !hasStartLine()) {
+        window.alert("Set the start line first.");
         return;
       }
-      if (getCoursePointCount() > 0 && !hasFinishLine()) {
+      state.race.finishUseStartLine = next;
+      persistVenueAndRace();
+      syncDerivedRaceState();
+      updateCourseUi();
+    });
+  }
+
+  if (els.courseToggle) {
+    els.courseToggle.addEventListener("click", () => {
+      if (!state.race) return;
+      const next = !state.race.routeEnabled;
+      if (next && getRouteEntries().length > 0 && !hasFinishLine()) {
         window.alert("Set a finish line or use the start line as finish.");
         return;
       }
-      syncCourseRoundingDefaults();
-      syncCourseMarksToLibrary();
-      const nameInput = window.prompt("Name this course:");
-      const timestamp = new Date().toLocaleString("en-GB", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-      const name =
-        (nameInput || "").trim() ||
-        `Course ${state.savedCourses.length + 1} (${timestamp})`;
-      const entry = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        name,
-        line: {
-          a: { ...state.line.a },
-          b: { ...state.line.b },
-        },
-        course: {
-          enabled: Boolean(state.course?.enabled),
-          marks: getCourseMarks().map((mark) => ({ ...mark })),
-          finish: state.course?.finish ? { ...state.course.finish } : null,
-        },
-      };
-      state.savedCourses.unshift(entry);
-      saveSavedCourses();
-    });
-  }
-
-  if (els.loadCourse) {
-    els.loadCourse.addEventListener("click", () => {
-      openCourseModal();
-    });
-  }
-
-  if (els.confirmCourseLoad) {
-    els.confirmCourseLoad.addEventListener("click", () => {
-      if (!state.selectedCourseId) return;
-      const entry = state.savedCourses.find((course) => course.id === state.selectedCourseId);
-      if (!entry) return;
-      state.line = {
-        a: { ...entry.line.a },
-        b: { ...entry.line.b },
-      };
-      state.lineName = null;
-      state.lineSourceId = null;
-      state.course = {
-        enabled: Boolean(entry.course?.enabled),
-        marks: normalizeCourseMarks(entry.course?.marks),
-        finish: entry.course?.finish
-          ? { ...entry.course.finish }
-          : {
-              useStartLine: true,
-              reverse: false,
-              a: { lat: null, lon: null },
-              b: { lat: null, lon: null },
-            },
-        version: Date.now(),
-      };
-      state.courseTrackActive = false;
-      state.courseTrack = [];
-      bumpCourseVersion();
-      if (starterDeps.updateInputs) {
-        starterDeps.updateInputs();
+      state.race.routeEnabled = next;
+      if (!next) {
+        state.courseTrackActive = false;
       }
-      updateLineProjection();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateLineNameDisplay();
+      persistVenueAndRace();
+      syncDerivedRaceState();
       updateCourseUi();
-      syncCourseMarksToLibrary();
-      closeCourseModal();
     });
   }
 
-  if (els.confirmMarkAdd) {
-    els.confirmMarkAdd.addEventListener("click", () => {
-      if (!state.selectedMarkId) return;
-      const mark = state.savedMarks.find((entry) => entry.id === state.selectedMarkId);
-      if (!mark) return;
-      if (!state.course) {
-        state.course = {
-          enabled: false,
-          marks: [],
-          finish: {
-            useStartLine: true,
-            reverse: false,
-            a: { lat: null, lon: null },
-            b: { lat: null, lon: null },
-          },
-          version: Date.now(),
-        };
-      }
-      state.course.marks.push({
-        lat: mark.lat,
-        lon: mark.lon,
-        name: mark.name,
-        description: mark.description || "",
-        rounding: null,
-        manual: false,
-      });
-      syncCourseRoundingDefaults();
-      bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      updateCourseUi();
-      renderCourseSequence();
-      state.selectedMarkId = null;
-      renderSavedMarksList();
+  if (els.openRoute) {
+    els.openRoute.addEventListener("click", () => {
+      openCourseKeyboardModal();
     });
   }
 
-  if (els.confirmMarkDelete) {
-    els.confirmMarkDelete.addEventListener("click", () => {
-      if (!state.selectedMarkId) return;
-      const mark = state.savedMarks.find((entry) => entry.id === state.selectedMarkId);
-      if (!mark) return;
-      const confirmed = window.confirm(`Delete "${mark.name}"?`);
+  if (els.openRounding) {
+    els.openRounding.addEventListener("click", () => {
+      openCourseMarksModal();
+    });
+  }
+
+  if (els.clearRoute) {
+    els.clearRoute.addEventListener("click", () => {
+      if (!state.race || !getRouteEntries().length) return;
+      const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
-      state.savedMarks = state.savedMarks.filter((entry) => entry.id !== mark.id);
-      saveSavedMarks();
-      state.selectedMarkId = null;
-      renderSavedMarksList();
+      state.race.route = [];
+      syncVenueDefaultRoute();
+      persistVenueAndRace();
+      syncDerivedRaceState();
       updateCourseUi();
-    });
-  }
-
-  if (els.closeMarks) {
-    els.closeMarks.addEventListener("click", () => {
-      closeMarksModal();
+      renderRouteSequence();
     });
   }
 
   if (els.courseKeyboardUndo) {
     els.courseKeyboardUndo.addEventListener("click", () => {
-      if (!state.course || !state.course.marks.length) return;
-      state.course.marks.pop();
+      if (!state.race || !getRouteEntries().length) return;
+      state.race.route.pop();
+      syncVenueDefaultRoute();
+      persistVenueAndRace();
+      syncDerivedRaceState();
       syncCourseRoundingDefaults();
-      bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
       updateCourseUi();
-      renderCourseSequence();
+      renderRouteSequence();
     });
   }
 
   if (els.courseKeyboardClear) {
     els.courseKeyboardClear.addEventListener("click", () => {
-      if (!state.course || !state.course.marks.length) return;
-      const confirmed = window.confirm("Clear course marks?");
+      if (!state.race || !getRouteEntries().length) return;
+      const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
-      state.course.marks = [];
-      bumpCourseVersion();
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
+      state.race.route = [];
+      syncVenueDefaultRoute();
+      persistVenueAndRace();
+      syncDerivedRaceState();
       updateCourseUi();
-      renderCourseSequence();
+      renderRouteSequence();
     });
   }
 
   if (els.courseKeyboardClose) {
     els.courseKeyboardClose.addEventListener("click", () => {
       closeCourseKeyboardModal();
-    });
-  }
-
-  if (els.confirmCourseDelete) {
-    els.confirmCourseDelete.addEventListener("click", () => {
-      if (!state.selectedCourseId) return;
-      const entry = state.savedCourses.find((course) => course.id === state.selectedCourseId);
-      if (!entry) return;
-      const confirmed = window.confirm(`Delete "${entry.name}"?`);
-      if (!confirmed) return;
-      state.savedCourses = state.savedCourses.filter((course) => course.id !== entry.id);
-      saveSavedCourses();
-      state.selectedCourseId = null;
-      renderSavedCoursesList();
-    });
-  }
-
-  if (els.closeCourseLoad) {
-    els.closeCourseLoad.addEventListener("click", () => {
-      closeCourseModal();
     });
   }
 
@@ -2361,9 +2286,5 @@ export {
   initStarterUi,
   bindStarterEvents,
   syncStarterInputs,
-  loadSavedLines,
-  loadSavedMarks,
-  loadSavedCourses,
-  syncLineNameWithSavedLines,
   updateStartDisplay,
 };

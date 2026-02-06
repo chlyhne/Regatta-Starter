@@ -19,6 +19,20 @@ import {
   loadSettings as loadSettingsFromStorage,
   saveSettings as saveSettingsToStorage,
 } from "./core/settings.js";
+import {
+  loadVenues,
+  saveVenues,
+  loadRaces,
+  saveRaces,
+  createVenue,
+  createRace,
+  getVenueById,
+  getRaceById,
+  MARK_ROLES,
+  getStartLineFromVenue,
+  getFinishLineFromVenue,
+  buildCourseMarksFromRace,
+} from "./core/venues.js";
 import { KALMAN_TUNING } from "./core/tuning.js";
 import { getNowMs } from "./core/clock.js";
 import {
@@ -66,10 +80,6 @@ import {
   initStarterUi,
   bindStarterEvents,
   syncStarterInputs,
-  loadSavedLines,
-  loadSavedMarks,
-  loadSavedCourses,
-  syncLineNameWithSavedLines,
   updateStartDisplay,
 } from "./features/starter/starter.js";
 import {
@@ -882,30 +892,11 @@ function releaseWakeLock() {
 
 function loadSettings() {
   const settings = loadSettingsFromStorage();
-  state.line = settings.line;
   state.coordsFormat = settings.coordsFormat;
   state.lineName = settings.lineMeta?.name || null;
   state.lineSourceId = settings.lineMeta?.sourceId || null;
-  state.course = {
-    enabled: Boolean(settings.course?.enabled),
-    marks: Array.isArray(settings.course?.marks)
-      ? settings.course.marks.map((mark) => ({ ...mark }))
-      : [],
-    finish: settings.course?.finish
-      ? {
-          useStartLine: Boolean(settings.course.finish.useStartLine),
-          reverse: Boolean(settings.course.finish.reverse),
-          a: { ...settings.course.finish.a },
-          b: { ...settings.course.finish.b },
-        }
-      : {
-          useStartLine: true,
-          reverse: false,
-          a: { lat: null, lon: null },
-          b: { lat: null, lon: null },
-        },
-    version: Date.now(),
-  };
+  state.activeVenueId = settings.activeVenueId || null;
+  state.activeRaceId = settings.activeRaceId || null;
   state.courseTrack = [];
   state.courseTrackActive = false;
   state.useKalman = true;
@@ -942,6 +933,8 @@ function loadSettings() {
 
 function saveSettings() {
   saveSettingsToStorage({
+    activeVenueId: state.activeVenueId,
+    activeRaceId: state.activeRaceId,
     line: state.line,
     lineMeta: {
       name: state.lineName,
@@ -981,6 +974,90 @@ function saveSettings() {
       crossedEarly: state.start.crossedEarly,
     },
   });
+}
+
+function ensureVenueAndRace() {
+  const venues = loadVenues();
+  const races = loadRaces();
+
+  if (!venues.length) {
+    venues.push(createVenue("Local venue"));
+    saveVenues(venues);
+  }
+
+  let activeVenue = getVenueById(venues, state.activeVenueId);
+  let activeRace = getRaceById(races, state.activeRaceId);
+
+  if (activeRace && activeRace.venueId) {
+    activeVenue = getVenueById(venues, activeRace.venueId) || activeVenue;
+  }
+
+  if (!activeVenue) {
+    activeVenue = venues[0];
+  }
+
+  if (!activeRace || activeRace.venueId !== activeVenue.id) {
+    const raceName = `Race ${races.length + 1}`;
+    activeRace = createRace(raceName, activeVenue);
+    races.unshift(activeRace);
+    saveRaces(races);
+  }
+
+  state.venues = venues;
+  state.races = races;
+  state.venue = activeVenue;
+  state.race = activeRace;
+  state.activeVenueId = activeVenue.id;
+  state.activeRaceId = activeRace.id;
+}
+
+function applyVenueRaceToState() {
+  const venue = state.venue;
+  const race = state.race;
+  const startLine = getStartLineFromVenue(venue, race);
+  const finishLine = getFinishLineFromVenue(venue, race);
+  const courseMarks = buildCourseMarksFromRace(venue, race);
+  const finishUseStartLine = Boolean(race?.finishUseStartLine) &&
+    race?.finishEnabled !== false;
+  const finishReverse = Boolean(race?.finishReverse);
+  const finishEnabled = race?.finishEnabled !== false;
+
+  state.line = startLine
+    ? { a: { ...startLine.a }, b: { ...startLine.b } }
+    : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+
+  state.course = {
+    enabled: Boolean(race?.routeEnabled),
+    marks: courseMarks,
+    finish: finishEnabled
+      ? finishUseStartLine
+        ? {
+            useStartLine: true,
+            reverse: finishReverse,
+            a: { lat: null, lon: null },
+            b: { lat: null, lon: null },
+          }
+        : finishLine
+          ? {
+              useStartLine: false,
+              reverse: false,
+              a: { ...finishLine.a },
+              b: { ...finishLine.b },
+            }
+          : {
+              useStartLine: false,
+              reverse: false,
+              a: { lat: null, lon: null },
+              b: { lat: null, lon: null },
+            }
+      : {
+          useStartLine: false,
+          reverse: false,
+          a: { lat: null, lon: null },
+          b: { lat: null, lon: null },
+        },
+    version: Date.now(),
+  };
 }
 
 function updateInputs() {
@@ -1257,6 +1334,9 @@ function tick() {
 }
 
 loadSettings();
+ensureVenueAndRace();
+applyVenueRaceToState();
+saveSettings();
 configureRecordingUpload({
   endpoint: DIAG_ENDPOINT_URL,
   getToken: () => state.diagUploadToken || "",
@@ -1273,10 +1353,6 @@ document.addEventListener("visibilitychange", () => {
 applyDebugFlagFromUrl();
 syncNoCacheToken();
 initStarterUi();
-loadSavedLines();
-loadSavedMarks();
-loadSavedCourses();
-syncLineNameWithSavedLines();
 updateInputs();
 updateRaceMetricLabels();
 initHome({

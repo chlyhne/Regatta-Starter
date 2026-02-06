@@ -16,6 +16,8 @@ const GPS_STALE_MS = 15000;
 const LINES_KEY = "racetimer-lines";
 const COURSES_KEY = "racetimer-courses";
 const MARKS_KEY = "racetimer-marks";
+const VENUES_KEY = "racetimer-venues";
+const RACES_KEY = "racetimer-races";
 
 const hemisphereGroups = {};
 
@@ -92,6 +94,14 @@ const state = {
   selectedCourseId: null,
   savedMarks: [],
   selectedMarkId: null,
+  selectedRaceId: null,
+  selectedVenueId: null,
+  venues: [],
+  races: [],
+  activeVenueId: null,
+  activeRaceId: null,
+  venue: null,
+  race: null,
   wakeLock: null,
   gpsTrackRaw: [],
   gpsTrackDevice: [],
@@ -136,6 +146,8 @@ export {
   LINES_KEY,
   COURSES_KEY,
   MARKS_KEY,
+  VENUES_KEY,
+  RACES_KEY,
   SPEED_UNITS,
   DISTANCE_UNITS,
   hemisphereGroups,

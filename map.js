@@ -1,146 +1,55 @@
-import { loadSettings as loadSettingsFromStorage, saveSettings as saveSettingsToStorage } from "./core/settings.js";
-import { toMeters, fromMeters } from "./core/geo.js";
+import { loadSettings as loadSettingsFromStorage } from "./core/settings.js";
+import {
+  loadVenues,
+  saveVenues,
+  loadRaces,
+  saveRaces,
+  createVenue,
+  createRace,
+  getVenueById,
+  getRaceById,
+  MARK_ROLES,
+  getStartLineFromVenue,
+  getFinishLineFromVenue,
+} from "./core/venues.js";
 
 const NO_CACHE_KEY = "racetimer-nocache";
-
 const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
-
-function getMapMode() {
-  const params = new URLSearchParams(window.location.search);
-  const mode = params.get("mode");
-  if (mode === "course") return "course";
-  if (mode === "finish") return "finish";
-  return "line";
-}
-
-const MAP_MODE = getMapMode();
 
 const els = {
   mapTitle: document.getElementById("map-title"),
-  setA: document.getElementById("set-map-a"),
-  setB: document.getElementById("set-map-b"),
-  swap: document.getElementById("swap-map"),
-  addCourse: document.getElementById("add-course-mark"),
-  undoCourse: document.getElementById("undo-course-mark"),
-  clearCourse: document.getElementById("clear-course-marks"),
+  addMark: document.getElementById("add-course-mark"),
+  undoMark: document.getElementById("undo-course-mark"),
+  clearMarks: document.getElementById("clear-course-marks"),
   closeMap: document.getElementById("close-map"),
   mapStatus: document.getElementById("map-status"),
   mapCaption: document.getElementById("map-caption"),
   courseMeta: document.getElementById("course-meta"),
   mapMarkName: document.getElementById("map-mark-name"),
   mapMarkDesc: document.getElementById("map-mark-desc"),
+  mapRoleButtons: Array.from(document.querySelectorAll(".map-role")),
+  newMark: document.getElementById("new-mark"),
+  deleteMark: document.getElementById("delete-mark"),
+  mapMarkList: document.getElementById("map-mark-list"),
+  addRoute: document.getElementById("add-route-mark"),
+  undoRoute: document.getElementById("undo-route-mark"),
+  clearRoute: document.getElementById("clear-route"),
   mapCourseList: document.getElementById("map-course-list"),
 };
 
 const state = {
   map: null,
-  markerA: null,
-  markerB: null,
-  lineOverlay: null,
-  arrowLine: null,
-  arrowHead: null,
-  arrowOutlineLine: null,
-  arrowOutlineHead: null,
-  arrowLabel: null,
-  arrowLabelHalfDiagonalPx: null,
-  line: {
-    a: { lat: null, lon: null },
-    b: { lat: null, lon: null },
-  },
-  finishLine: {
-    a: { lat: null, lon: null },
-    b: { lat: null, lon: null },
-  },
-  sessionSet: {
-    a: false,
-    b: false,
-  },
-  finishSessionSet: {
-    a: false,
-    b: false,
-  },
-  course: {
-    enabled: false,
-    marks: [],
-  },
-  courseMarkers: [],
-  courseLine: null,
+  venues: [],
+  races: [],
+  venue: null,
+  race: null,
+  selectedMarkId: null,
+  markMarkers: [],
+  labelMarkers: [],
+  startLine: null,
+  finishLine: null,
+  routeLine: null,
 };
-
-function getArrowLabelHalfDiagonalPx() {
-  if (Number.isFinite(state.arrowLabelHalfDiagonalPx)) {
-    return state.arrowLabelHalfDiagonalPx;
-  }
-  const probe = document.createElement("div");
-  probe.className = "map-arrow-label";
-  probe.textContent = "Sail this way";
-  probe.style.position = "absolute";
-  probe.style.left = "-9999px";
-  probe.style.top = "-9999px";
-  probe.style.visibility = "hidden";
-  document.body.appendChild(probe);
-  const rect = probe.getBoundingClientRect();
-  probe.remove();
-  const halfDiag = Math.hypot(rect.width / 2, rect.height / 2);
-  state.arrowLabelHalfDiagonalPx = halfDiag;
-  return halfDiag;
-}
-
-function getMetersPerPixel(latlng) {
-  if (!state.map || typeof L === "undefined") return null;
-  const point = state.map.latLngToContainerPoint(latlng);
-  const deltaPx = 50;
-  const point2 = L.point(point.x + deltaPx, point.y);
-  const latlng2 = state.map.containerPointToLatLng(point2);
-  const meters = state.map.distance(latlng, latlng2);
-  if (!Number.isFinite(meters) || meters <= 0) return null;
-  return meters / deltaPx;
-}
-
-function loadSettings() {
-  const settings = loadSettingsFromStorage();
-  if (settings.line) {
-    state.line = settings.line;
-  }
-  if (settings.course) {
-    state.course.enabled = Boolean(settings.course.enabled);
-    state.course.marks = Array.isArray(settings.course.marks)
-      ? settings.course.marks.map((mark) => ({ ...mark }))
-      : [];
-    if (settings.course.finish) {
-      state.finishLine = {
-        a: { ...settings.course.finish.a },
-        b: { ...settings.course.finish.b },
-      };
-    }
-  }
-}
-
-function saveSettings() {
-  const patch = {
-    course: {
-      enabled: Boolean(state.course.enabled),
-      marks: state.course.marks,
-    },
-  };
-  if (MAP_MODE === "finish") {
-    const finish = {
-      a: { ...state.finishLine.a },
-      b: { ...state.finishLine.b },
-    };
-    const hasFinish =
-      Number.isFinite(finish.a.lat) &&
-      Number.isFinite(finish.a.lon) &&
-      Number.isFinite(finish.b.lat) &&
-      Number.isFinite(finish.b.lon);
-    patch.course.finish = hasFinish ? { ...finish, useStartLine: false } : finish;
-  }
-  if (MAP_MODE !== "course") {
-    patch.line = state.line;
-    patch.lineMeta = { name: null, sourceId: null };
-  }
-  saveSettingsToStorage(patch);
-}
 
 function getNoCacheQuery() {
   const params = new URLSearchParams(window.location.search);
@@ -150,12 +59,357 @@ function getNoCacheQuery() {
   return `?nocache=${encodeURIComponent(token)}`;
 }
 
-function getActiveLine() {
-  return MAP_MODE === "finish" ? state.finishLine : state.line;
+function loadData() {
+  const settings = loadSettingsFromStorage();
+  const venues = loadVenues();
+  const races = loadRaces();
+
+  if (!venues.length) {
+    venues.push(createVenue("Local venue"));
+    saveVenues(venues);
+  }
+
+  let venue = getVenueById(venues, settings.activeVenueId) || null;
+  let race = getRaceById(races, settings.activeRaceId) || null;
+
+  if (race && race.venueId) {
+    venue = getVenueById(venues, race.venueId) || venue;
+  }
+
+  if (!venue) {
+    venue = venues[0];
+  }
+
+  if (!race || race.venueId !== venue.id) {
+    race = createRace(`Race ${races.length + 1}`, venue);
+    races.unshift(race);
+    saveRaces(races);
+  }
+
+  state.venues = venues;
+  state.races = races;
+  state.venue = venue;
+  state.race = race;
 }
 
-function getActiveSessionSet() {
-  return MAP_MODE === "finish" ? state.finishSessionSet : state.sessionSet;
+function saveData() {
+  if (state.venue) {
+    state.venue.updatedAt = Date.now();
+  }
+  if (state.race) {
+    state.race.updatedAt = Date.now();
+  }
+  saveVenues(state.venues);
+  saveRaces(state.races);
+}
+
+function syncVenueDefaultRoute() {
+  if (!state.venue || !state.race) return;
+  const route = Array.isArray(state.race.route) ? state.race.route : [];
+  state.venue.defaultRoute = route.map((entry) => ({ ...entry }));
+}
+
+function getSelectedMark() {
+  if (!state.venue || !state.selectedMarkId) return null;
+  return state.venue.marks.find((mark) => mark.id === state.selectedMarkId) || null;
+}
+
+function roleLabel(role) {
+  switch (role) {
+    case MARK_ROLES.START_PORT:
+      return "Start P";
+    case MARK_ROLES.START_STARBOARD:
+      return "Start SB";
+    case MARK_ROLES.FINISH_PORT:
+      return "Finish P";
+    case MARK_ROLES.FINISH_STARBOARD:
+      return "Finish SB";
+    default:
+      return "Mark";
+  }
+}
+
+function setSelectedMark(markId) {
+  state.selectedMarkId = markId;
+  const mark = getSelectedMark();
+  if (els.mapMarkName) {
+    els.mapMarkName.value = mark ? mark.name : "";
+  }
+  if (els.mapMarkDesc) {
+    els.mapMarkDesc.value = mark ? mark.description || "" : "";
+  }
+  syncRoleButtons();
+  renderMarkList();
+  syncRouteButtons();
+}
+
+function clearSelection() {
+  state.selectedMarkId = null;
+  if (els.mapMarkName) {
+    els.mapMarkName.value = "";
+    els.mapMarkName.placeholder = `Mark ${state.venue?.marks.length + 1 || 1}`;
+  }
+  if (els.mapMarkDesc) {
+    els.mapMarkDesc.value = "";
+  }
+  syncRoleButtons();
+  renderMarkList();
+  syncRouteButtons();
+}
+
+function syncRoleButtons() {
+  const mark = getSelectedMark();
+  const role = mark ? mark.role : null;
+  els.mapRoleButtons.forEach((button) => {
+    const buttonRole = button.dataset.role || "none";
+    const selected = role === buttonRole || (!role && buttonRole === "none");
+    button.classList.toggle("selected", Boolean(mark) && selected);
+    button.disabled = !mark;
+  });
+  if (els.deleteMark) {
+    els.deleteMark.disabled = !mark;
+  }
+}
+
+function syncRouteButtons() {
+  const mark = getSelectedMark();
+  if (els.addRoute) {
+    const canAdd = Boolean(mark) && (!mark.role || mark.role === MARK_ROLES.NONE);
+    els.addRoute.disabled = !canAdd;
+  }
+  const routeLength = state.race?.route?.length || 0;
+  if (els.undoRoute) {
+    els.undoRoute.disabled = routeLength === 0;
+  }
+  if (els.clearRoute) {
+    els.clearRoute.disabled = routeLength === 0;
+  }
+}
+
+function pruneRoutesForVenue(venueId, removedIds = new Set()) {
+  if (!state.races.length) return;
+  state.races.forEach((race) => {
+    if (race.venueId !== venueId) return;
+    if (!Array.isArray(race.route)) return;
+    race.route = race.route.filter((entry) => !removedIds.has(entry.markId));
+    if (!race.route.length) {
+      race.routeEnabled = false;
+    }
+  });
+  if (state.venue && state.venue.id === venueId) {
+    const route = Array.isArray(state.venue.defaultRoute) ? state.venue.defaultRoute : [];
+    state.venue.defaultRoute = route.filter((entry) => !removedIds.has(entry.markId));
+  }
+}
+
+function assignRole(mark, role) {
+  if (!mark || !state.venue) return;
+  const normalizedRole = role || MARK_ROLES.NONE;
+  if (normalizedRole !== MARK_ROLES.NONE) {
+    state.venue.marks.forEach((other) => {
+      if (other.id !== mark.id && other.role === normalizedRole) {
+        other.role = MARK_ROLES.NONE;
+      }
+    });
+  }
+  mark.role = normalizedRole;
+
+  if (normalizedRole !== MARK_ROLES.NONE) {
+    const removed = new Set([mark.id]);
+    pruneRoutesForVenue(state.venue.id, removed);
+  }
+}
+
+function updateSelectedMarkFromInputs() {
+  const mark = getSelectedMark();
+  if (!mark) return;
+  if (els.mapMarkName) {
+    const name = els.mapMarkName.value.trim();
+    mark.name = name || mark.name || "Mark";
+  }
+  if (els.mapMarkDesc) {
+    mark.description = els.mapMarkDesc.value.trim();
+  }
+  saveData();
+  renderMarkList();
+  renderCourseList();
+  updateMapOverlays();
+}
+
+function getRouteLatLngs() {
+  if (!state.race) return [];
+  const marksById = new Map(
+    (state.venue?.marks || []).map((mark) => [mark.id, mark])
+  );
+  return (state.race.route || [])
+    .map((entry) => marksById.get(entry.markId))
+    .filter(Boolean)
+    .map((mark) => [mark.lat, mark.lon]);
+}
+
+function renderMarkList() {
+  if (!els.mapMarkList) return;
+  els.mapMarkList.innerHTML = "";
+  const marks = state.venue?.marks || [];
+  if (!marks.length) {
+    els.mapMarkList.textContent = "No marks yet.";
+    return;
+  }
+  marks.forEach((mark) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "map-mark-item";
+    if (mark.id === state.selectedMarkId) {
+      item.classList.add("selected");
+    }
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = mark.name;
+    const roleSpan = document.createElement("span");
+    roleSpan.className = "map-mark-role";
+    roleSpan.textContent = roleLabel(mark.role);
+    item.appendChild(nameSpan);
+    item.appendChild(roleSpan);
+    item.addEventListener("click", () => {
+      setSelectedMark(mark.id);
+    });
+    els.mapMarkList.appendChild(item);
+  });
+}
+
+function renderCourseList() {
+  if (!els.mapCourseList) return;
+  els.mapCourseList.innerHTML = "";
+  const route = state.race?.route || [];
+  if (!route.length) {
+    els.mapCourseList.textContent = "No course yet.";
+    return;
+  }
+  const marksById = new Map(
+    (state.venue?.marks || []).map((mark) => [mark.id, mark])
+  );
+  route.forEach((entry) => {
+    const mark = marksById.get(entry.markId);
+    if (!mark) return;
+    const chip = document.createElement("span");
+    chip.className = "map-course-chip";
+    if (entry.rounding === "starboard") {
+      chip.classList.add("starboard");
+    } else if (entry.rounding === "port") {
+      chip.classList.add("port");
+    }
+    chip.textContent = mark.name;
+    els.mapCourseList.appendChild(chip);
+  });
+}
+
+function updateMapOverlays() {
+  if (!state.map || typeof L === "undefined") return;
+
+  state.markMarkers.forEach((marker) => state.map.removeLayer(marker));
+  state.labelMarkers.forEach((marker) => state.map.removeLayer(marker));
+  state.markMarkers = [];
+  state.labelMarkers = [];
+
+  if (state.startLine) {
+    state.map.removeLayer(state.startLine);
+    state.startLine = null;
+  }
+  if (state.finishLine) {
+    state.map.removeLayer(state.finishLine);
+    state.finishLine = null;
+  }
+  if (state.routeLine) {
+    state.map.removeLayer(state.routeLine);
+    state.routeLine = null;
+  }
+
+  const marks = state.venue?.marks || [];
+  marks.forEach((mark) => {
+    const role = mark.role;
+    const isPort = role === MARK_ROLES.START_PORT || role === MARK_ROLES.FINISH_PORT;
+    const isStarboard =
+      role === MARK_ROLES.START_STARBOARD || role === MARK_ROLES.FINISH_STARBOARD;
+    const stroke = isPort ? "#d62828" : isStarboard ? "#1b7f3a" : "#000000";
+    const fill = isPort ? "#ffffff" : isStarboard ? "#ffffff" : "#ffffff";
+    const marker = L.circleMarker([mark.lat, mark.lon], {
+      radius: 7,
+      color: stroke,
+      weight: 2,
+      fillColor: fill,
+      fillOpacity: 1,
+      interactive: false,
+      pane: "markPane",
+    }).addTo(state.map);
+    state.markMarkers.push(marker);
+
+    const label = L.marker([mark.lat, mark.lon], {
+      icon: L.divIcon({
+        className: "mark-label",
+        html: `<span>${mark.name}</span>`,
+      }),
+      interactive: false,
+      pane: "markPane",
+    }).addTo(state.map);
+    state.labelMarkers.push(label);
+  });
+
+  const startLine = getStartLineFromVenue(state.venue, state.race);
+  if (startLine) {
+    state.startLine = L.polyline(
+      [
+        [startLine.a.lat, startLine.a.lon],
+        [startLine.b.lat, startLine.b.lon],
+      ],
+      { color: "#000000", weight: 4, opacity: 1, interactive: false }
+    ).addTo(state.map);
+  }
+
+  const finishLine = getFinishLineFromVenue(state.venue, state.race);
+  if (finishLine) {
+    state.finishLine = L.polyline(
+      [
+        [finishLine.a.lat, finishLine.a.lon],
+        [finishLine.b.lat, finishLine.b.lon],
+      ],
+      { color: "#000000", weight: 3, opacity: 1, dashArray: "8 6", interactive: false }
+    ).addTo(state.map);
+  }
+
+  const route = getRouteLatLngs();
+  if (route.length >= 2) {
+    state.routeLine = L.polyline(route, {
+      color: "#0f6bff",
+      weight: 3,
+      opacity: 0.9,
+      interactive: false,
+    }).addTo(state.map);
+  }
+}
+
+function updateUi() {
+  if (els.mapTitle) {
+    els.mapTitle.textContent = "Define course";
+  }
+  if (els.mapCaption) {
+    els.mapCaption.textContent = "Add marks on the crosshair, name them, then build the route.";
+  }
+  if (els.courseMeta) {
+    els.courseMeta.hidden = false;
+    els.courseMeta.setAttribute("aria-hidden", "false");
+  }
+  if (els.addMark) {
+    els.addMark.hidden = false;
+  }
+  if (els.undoMark) {
+    els.undoMark.hidden = false;
+  }
+  if (els.clearMarks) {
+    els.clearMarks.hidden = false;
+  }
+  renderMarkList();
+  renderCourseList();
+  syncRoleButtons();
+  syncRouteButtons();
 }
 
 function initMap() {
@@ -176,14 +430,8 @@ function initMap() {
   });
   state.map.on("zoomend", () => updateMapOverlays());
 
-  state.map.createPane("arrowPane");
-  state.map.createPane("linePane");
   state.map.createPane("markPane");
-  state.map.getPane("arrowPane").style.zIndex = "380";
-  state.map.getPane("linePane").style.zIndex = "390";
   state.map.getPane("markPane").style.zIndex = "400";
-  state.map.getPane("arrowPane").style.pointerEvents = "none";
-  state.map.getPane("linePane").style.pointerEvents = "none";
   state.map.getPane("markPane").style.pointerEvents = "none";
 
   const tiles = L.tileLayer(
@@ -229,508 +477,165 @@ function initMap() {
   updateMapOverlays();
 }
 
-function setModeUi() {
-  const isCourse = MAP_MODE === "course";
-  const isFinish = MAP_MODE === "finish";
-  const toggle = (el, show) => {
-    if (!el) return;
-    el.hidden = !show;
-    el.setAttribute("aria-hidden", show ? "false" : "true");
-  };
-  toggle(els.setA, !isCourse);
-  toggle(els.setB, !isCourse);
-  toggle(els.swap, !isCourse);
-  toggle(els.addCourse, isCourse);
-  toggle(els.undoCourse, isCourse);
-  toggle(els.clearCourse, isCourse);
-  toggle(els.courseMeta, isCourse);
-  if (els.mapTitle) {
-    if (isCourse) {
-      els.mapTitle.textContent = "Select course";
-    } else if (isFinish) {
-      els.mapTitle.textContent = "Select finish line";
-    } else {
-      els.mapTitle.textContent = "Select marks";
-    }
-  }
-  if (els.mapCaption) {
-    els.mapCaption.textContent = isCourse
-      ? "Drag the map. Add marks in order."
-      : "Drag the map. The crosshair is the exact point.";
-  }
-}
-
-function updateSetButtons() {
-  if (MAP_MODE === "course") {
-    updateCourseButtons();
-    return;
-  }
-  const sessionSet = getActiveSessionSet();
-  const hasA = sessionSet.a;
-  const hasB = sessionSet.b;
-  if (els.setA) {
-    els.setA.classList.toggle("set", hasA);
-    els.setA.textContent = hasA ? "Set P ✓" : "Set P";
-  }
-  if (els.setB) {
-    els.setB.classList.toggle("set", hasB);
-    els.setB.textContent = hasB ? "Set SB ✓" : "Set SB";
-  }
-}
-
-function updateCourseButtons() {
-  const count = state.course.marks.length;
-  if (els.addCourse) {
-    els.addCourse.classList.toggle("set", count > 0);
-  }
-  if (els.undoCourse) {
-    els.undoCourse.disabled = count === 0;
-  }
-  if (els.clearCourse) {
-    els.clearCourse.disabled = count === 0;
-  }
-  if (els.mapStatus) {
-    els.mapStatus.textContent = count
-      ? `Marks: ${count}`
-      : "Add the first mark, then press Done.";
-  }
-  updateCourseMeta();
-}
-
-function getDefaultMarkName() {
-  return `Mark ${state.course.marks.length + 1}`;
-}
-
-function updateCourseMeta() {
-  if (els.mapMarkName) {
-    if (!els.mapMarkName.value) {
-      els.mapMarkName.placeholder = getDefaultMarkName();
-    }
-  }
-  if (!els.mapCourseList) return;
-  els.mapCourseList.innerHTML = "";
-  if (!state.course.marks.length) {
-    els.mapCourseList.textContent = "No marks yet.";
-    return;
-  }
-  state.course.marks.forEach((mark, index) => {
-    const chip = document.createElement("span");
-    const name = typeof mark.name === "string" && mark.name.trim()
-      ? mark.name.trim()
-      : `Mark ${index + 1}`;
-    const side = mark.rounding === "starboard" ? "starboard" : "port";
-    chip.className = `map-course-chip ${side}`;
-    chip.textContent = name;
-    els.mapCourseList.appendChild(chip);
-  });
-}
-
-function computeTurnSide(prev, current, next) {
-  if (!prev || !current || !next) return null;
-  const origin = { lat: current.lat, lon: current.lon };
-  const prevMeters = toMeters(prev, origin);
-  const nextMeters = toMeters(next, origin);
-  const v1 = { x: -prevMeters.x, y: -prevMeters.y };
-  const v2 = { x: nextMeters.x, y: nextMeters.y };
-  const cross = v1.x * v2.y - v1.y * v2.x;
-  if (!Number.isFinite(cross) || Math.abs(cross) < 1e-6) return null;
-  return cross > 0 ? "port" : "starboard";
-}
-
-function applyCourseRoundingDefaults() {
-  const marks = state.course.marks;
-  marks.forEach((mark, index) => {
-    if (!mark || mark.manual) return;
-    const prev = index > 0 ? marks[index - 1] : null;
-    const next = index < marks.length - 1 ? marks[index + 1] : null;
-    const side = prev && next ? computeTurnSide(prev, mark, next) : null;
-    mark.rounding = side || mark.rounding || "port";
-  });
-}
-
-function updateCourseOverlays() {
-  if (!state.map || typeof L === "undefined") return;
-  if (state.courseLine) {
-    state.map.removeLayer(state.courseLine);
-    state.courseLine = null;
-  }
-  if (state.courseMarkers.length) {
-    state.courseMarkers.forEach((marker) => state.map.removeLayer(marker));
-    state.courseMarkers = [];
-  }
-  if (!state.course.marks.length) return;
-
-  const markerStyle = {
-    radius: 7,
-    color: "#000000",
-    weight: 2,
-    fillColor: "#ffffff",
-    fillOpacity: 1,
-    interactive: false,
-    pane: "markPane",
-  };
-  state.courseMarkers = state.course.marks.map((mark) =>
-    L.circleMarker([mark.lat, mark.lon], markerStyle).addTo(state.map)
-  );
-
-  if (state.course.marks.length >= 2) {
-    const latLngs = state.course.marks.map((mark) => [mark.lat, mark.lon]);
-    state.courseLine = L.polyline(latLngs, {
-      color: "#000000",
-      weight: 3,
-      opacity: 1,
-      interactive: false,
-      pane: "linePane",
-    }).addTo(state.map);
-  }
-}
-
-function updateMapOverlays() {
-  if (!state.map) return;
-  if (MAP_MODE === "course") {
-    updateCourseOverlays();
-    return;
-  }
-  const activeLine = getActiveLine();
-  const hasA = Number.isFinite(activeLine.a.lat) && Number.isFinite(activeLine.a.lon);
-  const hasB = Number.isFinite(activeLine.b.lat) && Number.isFinite(activeLine.b.lon);
-
-  if (hasA) {
-    const portStyle = {
-      radius: 8,
-      color: "#000000",
-      weight: 2,
-      fillColor: "#d62020",
-      fillOpacity: 1,
-      interactive: false,
-      pane: "markPane",
-    };
-    if (!state.markerA) {
-      state.markerA = L.circleMarker(
-        [activeLine.a.lat, activeLine.a.lon],
-        portStyle
-      ).addTo(state.map);
-    } else {
-      state.markerA.setLatLng([activeLine.a.lat, activeLine.a.lon]);
-      state.markerA.setStyle(portStyle);
-    }
-  } else if (state.markerA) {
-    state.map.removeLayer(state.markerA);
-    state.markerA = null;
-  }
-
-  if (hasB) {
-    const starboardStyle = {
-      radius: 8,
-      color: "#000000",
-      weight: 2,
-      fillColor: "#10a64a",
-      fillOpacity: 1,
-      interactive: false,
-      pane: "markPane",
-    };
-    if (!state.markerB) {
-      state.markerB = L.circleMarker(
-        [activeLine.b.lat, activeLine.b.lon],
-        starboardStyle
-      ).addTo(state.map);
-    } else {
-      state.markerB.setLatLng([activeLine.b.lat, activeLine.b.lon]);
-      state.markerB.setStyle(starboardStyle);
-    }
-  } else if (state.markerB) {
-    state.map.removeLayer(state.markerB);
-    state.markerB = null;
-  }
-
-  if (hasA && hasB) {
-    const origin = {
-      lat: (activeLine.a.lat + activeLine.b.lat) / 2,
-      lon: (activeLine.a.lon + activeLine.b.lon) / 2,
-    };
-    const pointA = toMeters(activeLine.a, origin);
-    const pointB = toMeters(activeLine.b, origin);
-    const lineVec = { x: pointB.x - pointA.x, y: pointB.y - pointA.y };
-    const lineLen = Math.hypot(lineVec.x, lineVec.y);
-    if (lineLen >= 1) {
-      const normal = { x: -lineVec.y / lineLen, y: lineVec.x / lineLen };
-      const tangent = { x: lineVec.x / lineLen, y: lineVec.y / lineLen };
-      const mid = { x: (pointA.x + pointB.x) / 2, y: (pointA.y + pointB.y) / 2 };
-      const arrowLength = Math.min(180, Math.max(45, lineLen * 0.75));
-      const headLength = Math.min(54, Math.max(24, arrowLength * 0.4));
-      const headWidth = headLength * 0.9;
-      const tip = {
-        x: mid.x + normal.x * arrowLength,
-        y: mid.y + normal.y * arrowLength,
-      };
-      const base = {
-        x: tip.x - normal.x * headLength,
-        y: tip.y - normal.y * headLength,
-      };
-      const left = {
-        x: base.x + tangent.x * (headWidth / 2),
-        y: base.y + tangent.y * (headWidth / 2),
-      };
-      const right = {
-        x: base.x - tangent.x * (headWidth / 2),
-        y: base.y - tangent.y * (headWidth / 2),
-      };
-      const stemLatLngs = [
-        fromMeters(mid, origin),
-        fromMeters(base, origin),
-      ];
-      const headLatLngs = [
-        fromMeters(tip, origin),
-        fromMeters(left, origin),
-        fromMeters(right, origin),
-      ];
-      const labelPoint = {
-        x: tip.x + normal.x * (headLength * 0.9),
-        y: tip.y + normal.y * (headLength * 0.9),
-      };
-      const midLatLng = fromMeters(mid, origin);
-      const metersPerPixel = getMetersPerPixel(L.latLng(midLatLng.lat, midLatLng.lon));
-      const halfDiagPx = getArrowLabelHalfDiagonalPx();
-      const marginPx = 8;
-      const extraMeters =
-        Number.isFinite(metersPerPixel) && Number.isFinite(halfDiagPx)
-          ? metersPerPixel * (halfDiagPx + marginPx)
-          : 6;
-      const safeLabelPoint = {
-        x: labelPoint.x + normal.x * extraMeters,
-        y: labelPoint.y + normal.y * extraMeters,
-      };
-      const labelLatLng = fromMeters(safeLabelPoint, origin);
-      const arrowWeight = 6;
-      const outlineExtraPx = 6;
-      const outlineColor = "#ffffff";
-      const outlineWeight = arrowWeight + outlineExtraPx;
-      const outlineHeadWeight = 1 + outlineExtraPx;
-      const outlineOpacity = 1;
-      if (!state.arrowOutlineLine) {
-        state.arrowOutlineLine = L.polyline(stemLatLngs, {
-          color: outlineColor,
-          weight: outlineWeight,
-          opacity: outlineOpacity,
-          pane: "arrowPane",
-        }).addTo(state.map);
-      } else {
-        state.arrowOutlineLine.setLatLngs(stemLatLngs);
-      }
-      if (!state.arrowOutlineHead) {
-        state.arrowOutlineHead = L.polygon(headLatLngs, {
-          color: outlineColor,
-          fillColor: outlineColor,
-          weight: outlineHeadWeight,
-          fillOpacity: outlineOpacity,
-          pane: "arrowPane",
-        }).addTo(state.map);
-      } else {
-        state.arrowOutlineHead.setLatLngs(headLatLngs);
-      }
-      if (!state.arrowLine) {
-        state.arrowLine = L.polyline(stemLatLngs, {
-          color: "#000000",
-          weight: arrowWeight,
-          opacity: 0.9,
-          pane: "arrowPane",
-        }).addTo(state.map);
-      } else {
-        state.arrowLine.setLatLngs(stemLatLngs);
-      }
-      if (!state.arrowHead) {
-        state.arrowHead = L.polygon(headLatLngs, {
-          color: "#000000",
-          fillColor: "#000000",
-          weight: 1,
-          fillOpacity: 0.9,
-          pane: "arrowPane",
-        }).addTo(state.map);
-      } else {
-        state.arrowHead.setLatLngs(headLatLngs);
-      }
-      if (!state.arrowLabel) {
-        state.arrowLabel = L.marker([labelLatLng.lat, labelLatLng.lon], {
-          icon: L.divIcon({
-            className: "map-arrow-label",
-            html: "Sail this way",
-            iconSize: [1, 1],
-            iconAnchor: [0, 0],
-          }),
-          pane: "arrowPane",
-          interactive: false,
-        }).addTo(state.map);
-      } else {
-        state.arrowLabel.setLatLng([labelLatLng.lat, labelLatLng.lon]);
-      }
-    } else {
-      if (state.arrowOutlineLine) {
-        state.map.removeLayer(state.arrowOutlineLine);
-        state.arrowOutlineLine = null;
-      }
-      if (state.arrowOutlineHead) {
-        state.map.removeLayer(state.arrowOutlineHead);
-        state.arrowOutlineHead = null;
-      }
-      if (state.arrowLine) {
-        state.map.removeLayer(state.arrowLine);
-        state.arrowLine = null;
-      }
-      if (state.arrowHead) {
-        state.map.removeLayer(state.arrowHead);
-        state.arrowHead = null;
-      }
-      if (state.arrowLabel) {
-        state.map.removeLayer(state.arrowLabel);
-        state.arrowLabel = null;
-      }
-    }
-
-    const latlngs = [
-      [activeLine.a.lat, activeLine.a.lon],
-      [activeLine.b.lat, activeLine.b.lon],
-    ];
-    if (!state.lineOverlay) {
-      state.lineOverlay = L.polyline(latlngs, {
-        color: "#0f6bff",
-        weight: 4,
-        pane: "linePane",
-      }).addTo(state.map);
-    } else {
-      state.lineOverlay.setLatLngs(latlngs);
-    }
-  } else {
-    if (state.lineOverlay) {
-      state.map.removeLayer(state.lineOverlay);
-      state.lineOverlay = null;
-    }
-    if (state.arrowLine) {
-      state.map.removeLayer(state.arrowLine);
-      state.arrowLine = null;
-    }
-    if (state.arrowOutlineLine) {
-      state.map.removeLayer(state.arrowOutlineLine);
-      state.arrowOutlineLine = null;
-    }
-    if (state.arrowOutlineHead) {
-      state.map.removeLayer(state.arrowOutlineHead);
-      state.arrowOutlineHead = null;
-    }
-    if (state.arrowHead) {
-      state.map.removeLayer(state.arrowHead);
-      state.arrowHead = null;
-    }
-    if (state.arrowLabel) {
-      state.map.removeLayer(state.arrowLabel);
-      state.arrowLabel = null;
-    }
-  }
-
-}
-
-window.addEventListener("resize", () => {
-  if (state.map) {
-    state.map.invalidateSize();
-  }
-});
-
 function bindEvents() {
-  if (MAP_MODE === "course") {
-    if (els.addCourse) {
-      els.addCourse.addEventListener("click", () => {
-        if (!state.map) return;
-        const center = state.map.getCenter();
-        const nameInput = els.mapMarkName ? els.mapMarkName.value : "";
-        const descInput = els.mapMarkDesc ? els.mapMarkDesc.value : "";
-        const name = (nameInput || "").trim() || getDefaultMarkName();
-        const description = (descInput || "").trim();
-        state.course.marks.push({
-          lat: center.lat,
-          lon: center.lng,
-          name,
-          description,
-          rounding: null,
-          manual: false,
-        });
-        if (els.mapMarkName) {
-          els.mapMarkName.value = "";
-          els.mapMarkName.placeholder = getDefaultMarkName();
-        }
-        if (els.mapMarkDesc) {
-          els.mapMarkDesc.value = "";
-        }
-        applyCourseRoundingDefaults();
-        saveSettings();
-        updateSetButtons();
-        updateMapOverlays();
-      });
-    }
-
-    if (els.undoCourse) {
-      els.undoCourse.addEventListener("click", () => {
-        if (!state.course.marks.length) return;
-        state.course.marks.pop();
-        applyCourseRoundingDefaults();
-        saveSettings();
-        updateSetButtons();
-        updateMapOverlays();
-      });
-    }
-
-    if (els.clearCourse) {
-      els.clearCourse.addEventListener("click", () => {
-        if (!state.course.marks.length) return;
-        const confirmed = window.confirm("Clear all course marks?");
-        if (!confirmed) return;
-        state.course.marks = [];
-        saveSettings();
-        updateSetButtons();
-        updateMapOverlays();
-      });
-    }
-  } else {
-    if (els.setA) {
-      els.setA.addEventListener("click", () => {
-        if (!state.map) return;
-        const center = state.map.getCenter();
-        const activeLine = getActiveLine();
-        const sessionSet = getActiveSessionSet();
-        activeLine.a = { lat: center.lat, lon: center.lng };
-        sessionSet.a = true;
-        saveSettings();
-        updateSetButtons();
-        updateMapOverlays();
-        if (els.mapStatus) {
-          els.mapStatus.textContent = MAP_MODE === "finish"
-            ? "Finish port mark set. You can now set starboard mark or press Done."
-            : "Port mark set. You can now set starboard mark or press Done.";
-        }
-      });
-    }
-
-    if (els.setB) {
-      els.setB.addEventListener("click", () => {
-        if (!state.map) return;
-        const center = state.map.getCenter();
-        const activeLine = getActiveLine();
-        const sessionSet = getActiveSessionSet();
-        activeLine.b = { lat: center.lat, lon: center.lng };
-        sessionSet.b = true;
-        saveSettings();
-        updateSetButtons();
-        updateMapOverlays();
-        if (els.mapStatus) {
-          els.mapStatus.textContent = MAP_MODE === "finish"
-            ? "Finish starboard mark set. You can now set port mark or press Done."
-            : "Starboard mark set. You can now set port mark or press Done.";
-        }
-      });
-    }
+  if (els.addMark) {
+    els.addMark.addEventListener("click", () => {
+      if (!state.map || !state.venue) return;
+      const center = state.map.getCenter();
+      const nameInput = els.mapMarkName ? els.mapMarkName.value.trim() : "";
+      const descInput = els.mapMarkDesc ? els.mapMarkDesc.value.trim() : "";
+      const name = nameInput || `Mark ${state.venue.marks.length + 1}`;
+      const mark = {
+        id: `mark-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name,
+        description: descInput,
+        lat: center.lat,
+        lon: center.lng,
+        role: MARK_ROLES.NONE,
+      };
+      state.venue.marks.push(mark);
+      saveData();
+      clearSelection();
+      updateMapOverlays();
+    });
   }
 
-  els.closeMap.addEventListener("click", () => {
-    window.location.href = `index.html${getNoCacheQuery()}#setup`;
-  });
+  if (els.undoMark) {
+    els.undoMark.addEventListener("click", () => {
+      if (!state.venue || !state.venue.marks.length) return;
+      const removed = state.venue.marks.pop();
+      if (removed && removed.id === state.selectedMarkId) {
+        clearSelection();
+      }
+      pruneRoutesForVenue(state.venue.id, new Set([removed?.id]));
+      saveData();
+      renderMarkList();
+      renderCourseList();
+      updateMapOverlays();
+    });
+  }
+
+  if (els.clearMarks) {
+    els.clearMarks.addEventListener("click", () => {
+      if (!state.venue || !state.venue.marks.length) return;
+      const confirmed = window.confirm("Clear all marks?");
+      if (!confirmed) return;
+      const removedIds = new Set(state.venue.marks.map((mark) => mark.id));
+      state.venue.marks = [];
+      pruneRoutesForVenue(state.venue.id, removedIds);
+      saveData();
+      clearSelection();
+      renderCourseList();
+      updateMapOverlays();
+    });
+  }
+
+  if (els.mapMarkName) {
+    els.mapMarkName.addEventListener("input", () => {
+      updateSelectedMarkFromInputs();
+    });
+  }
+
+  if (els.mapMarkDesc) {
+    els.mapMarkDesc.addEventListener("input", () => {
+      updateSelectedMarkFromInputs();
+    });
+  }
+
+  if (els.mapRoleButtons.length) {
+    els.mapRoleButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const mark = getSelectedMark();
+        if (!mark) return;
+        const role = button.dataset.role || MARK_ROLES.NONE;
+        assignRole(mark, role);
+        saveData();
+        renderMarkList();
+        renderCourseList();
+        syncRoleButtons();
+        syncRouteButtons();
+        updateMapOverlays();
+      });
+    });
+  }
+
+  if (els.newMark) {
+    els.newMark.addEventListener("click", () => {
+      clearSelection();
+    });
+  }
+
+  if (els.deleteMark) {
+    els.deleteMark.addEventListener("click", () => {
+      const mark = getSelectedMark();
+      if (!mark || !state.venue) return;
+      const confirmed = window.confirm(`Delete "${mark.name}"?`);
+      if (!confirmed) return;
+      state.venue.marks = state.venue.marks.filter((item) => item.id !== mark.id);
+      pruneRoutesForVenue(state.venue.id, new Set([mark.id]));
+      saveData();
+      clearSelection();
+      renderCourseList();
+      updateMapOverlays();
+    });
+  }
+
+  if (els.addRoute) {
+    els.addRoute.addEventListener("click", () => {
+      if (!state.race) return;
+      const mark = getSelectedMark();
+      if (!mark) return;
+      if (mark.role && mark.role !== MARK_ROLES.NONE) {
+        window.alert("Start/finish marks cannot be part of the route.");
+        return;
+      }
+      if (!Array.isArray(state.race.route)) {
+        state.race.route = [];
+      }
+      state.race.route.push({
+        markId: mark.id,
+        rounding: "port",
+        manual: false,
+      });
+      syncVenueDefaultRoute();
+      saveData();
+      renderCourseList();
+      updateMapOverlays();
+      syncRouteButtons();
+    });
+  }
+
+  if (els.undoRoute) {
+    els.undoRoute.addEventListener("click", () => {
+      if (!state.race || !Array.isArray(state.race.route) || !state.race.route.length) return;
+      state.race.route.pop();
+      syncVenueDefaultRoute();
+      saveData();
+      renderCourseList();
+      updateMapOverlays();
+      syncRouteButtons();
+    });
+  }
+
+  if (els.clearRoute) {
+    els.clearRoute.addEventListener("click", () => {
+      if (!state.race || !Array.isArray(state.race.route) || !state.race.route.length) return;
+      const confirmed = window.confirm("Clear route?");
+      if (!confirmed) return;
+      state.race.route = [];
+      syncVenueDefaultRoute();
+      saveData();
+      renderCourseList();
+      updateMapOverlays();
+      syncRouteButtons();
+    });
+  }
+
+  if (els.closeMap) {
+    els.closeMap.addEventListener("click", () => {
+      window.location.href = `index.html${getNoCacheQuery()}#setup`;
+    });
+  }
 
   const close = (event) => {
     if (event) {
@@ -739,33 +644,13 @@ function bindEvents() {
     }
     window.location.href = `index.html${getNoCacheQuery()}#setup`;
   };
-  els.closeMap.addEventListener("touchend", close, { passive: false });
-  els.closeMap.addEventListener("pointerup", close);
-
-  if (els.swap && MAP_MODE !== "course") {
-    els.swap.addEventListener("click", () => {
-      const activeLine = getActiveLine();
-      const sessionSet = getActiveSessionSet();
-      const nextA = { ...activeLine.b };
-      const nextB = { ...activeLine.a };
-      activeLine.a = nextA;
-      activeLine.b = nextB;
-      const nextSetA = sessionSet.b;
-      const nextSetB = sessionSet.a;
-      sessionSet.a = nextSetA;
-      sessionSet.b = nextSetB;
-      saveSettings();
-      updateSetButtons();
-      updateMapOverlays();
-      if (els.mapStatus) {
-        els.mapStatus.textContent = MAP_MODE === "finish" ? "Finish marks swapped." : "Marks swapped.";
-      }
-    });
+  if (els.closeMap) {
+    els.closeMap.addEventListener("touchend", close, { passive: false });
+    els.closeMap.addEventListener("pointerup", close);
   }
 }
 
-loadSettings();
-setModeUi();
+loadData();
+updateUi();
 initMap();
-updateSetButtons();
 bindEvents();

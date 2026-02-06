@@ -53,47 +53,55 @@ export const setupView = `
   </section>
 
   <section class="panel">
-    <h2>Define Start Line</h2>
+    <h2>Race</h2>
+    <div class="hint">Race</div>
+    <div id="race-name" class="value">--</div>
+    <div class="hint">Venue</div>
+    <div id="venue-name" class="value">--</div>
+    <div class="row stack">
+      <button id="new-race" class="ghost">New race</button>
+      <button id="select-race" class="ghost">Select race</button>
+      <button id="select-venue" class="ghost">Select venue</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Marks and Start</h2>
+    <div class="hint">Marks</div>
+    <div id="mark-count" class="value">0</div>
+    <div class="hint">Start line</div>
+    <div id="start-line-status" class="value">NO LINE</div>
+    <button id="start-line-toggle" class="check-toggle" type="button" aria-pressed="true">
+      <span class="check-label">Use start line</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
     <div class="row stack">
       <button id="open-map" class="ghost">Select on map</button>
-      <button id="swap-marks" class="ghost">Swap marks</button>
-      <button id="load-line" class="ghost">Saved start lines</button>
-      <button id="save-line" class="ghost">Save start line…</button>
-      <button id="open-location" class="ghost">Use GPS position</button>
-      <button id="open-coords" class="ghost">Enter coordinates</button>
     </div>
   </section>
 
   <section class="panel">
     <h2>Course</h2>
     <button id="course-toggle" class="check-toggle" type="button" aria-pressed="false">
-      <span class="check-label">Track course after start</span>
+      <span class="check-label">Use course route</span>
       <span class="check-box" aria-hidden="true"></span>
     </button>
-    <div class="hint">Marks</div>
-    <div id="course-marks" class="value">NO COURSE</div>
     <div class="hint">Finish line</div>
-    <div id="finish-status" class="value">OFF</div>
-    <button id="finish-use-start" class="check-toggle" type="button" aria-pressed="true">
-      <span class="check-label">Finish uses start line</span>
+    <div id="finish-status" class="value">NO LINE</div>
+    <button id="finish-toggle" class="check-toggle" type="button" aria-pressed="true">
+      <span class="check-label">Use finish line</span>
       <span class="check-box" aria-hidden="true"></span>
     </button>
+    <button id="finish-use-start" class="check-toggle" type="button" aria-pressed="false">
+      <span class="check-label">Finish = start line</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
+    <div class="hint">Route</div>
+    <div id="route-count" class="value">NO ROUTE</div>
     <div class="row stack">
-      <button id="open-course-map" class="ghost">Select on map</button>
-      <button id="open-course-marks" class="ghost">Edit marks</button>
-      <button id="open-saved-marks" class="ghost">Saved marks</button>
-      <button id="open-course-keyboard" class="ghost">Course keyboard</button>
-      <button id="open-finish-map" class="ghost">Set finish line</button>
-      <button id="swap-finish" class="ghost">Swap finish marks</button>
-      <button id="clear-course" class="ghost">Clear course</button>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Saved Course</h2>
-    <div class="row stack">
-      <button id="load-course" class="ghost">Saved courses</button>
-      <button id="save-course" class="ghost">Save course…</button>
+      <button id="open-route" class="ghost">Edit route</button>
+      <button id="open-rounding" class="ghost">Rounding sides</button>
+      <button id="clear-route" class="ghost">Clear route</button>
     </div>
   </section>
 
