@@ -183,6 +183,7 @@ const els = {
   venueModal: document.getElementById("venue-modal"),
   venueList: document.getElementById("venue-list"),
   renameVenue: document.getElementById("rename-venue"),
+  calibrateMark: document.getElementById("calibrate-mark"),
   confirmVenue: document.getElementById("confirm-venue"),
   deleteVenue: document.getElementById("delete-venue"),
   closeVenueModal: document.getElementById("close-venue-modal"),

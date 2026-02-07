@@ -591,6 +591,28 @@ function getFinishLineStatusText() {
   return name || "NO LINE";
 }
 
+function getNearestVenueMark(venue, position) {
+  if (!venue || !position) return null;
+  const lat = position.coords?.latitude;
+  const lon = position.coords?.longitude;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const origin = { lat, lon };
+  let nearest = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  (venue.marks || []).forEach((mark) => {
+    if (!Number.isFinite(mark?.lat) || !Number.isFinite(mark?.lon)) return;
+    const delta = toMeters(mark, origin);
+    if (!Number.isFinite(delta.x) || !Number.isFinite(delta.y)) return;
+    const distance = Math.hypot(delta.x, delta.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = mark;
+    }
+  });
+  if (!nearest) return null;
+  return { mark: nearest, distance: bestDistance };
+}
+
 function getCourseLengthStatus() {
   const startMid = getStartLineMidpoint();
   if (!startMid) {
@@ -775,6 +797,7 @@ function updateCourseUi() {
   if (els.clearRoute) {
     els.clearRoute.disabled = routeCount === 0 || !routeLinesReady;
   }
+  updateLineNameDisplay();
   if (els.courseKeyboardModal) {
     const open = els.courseKeyboardModal.getAttribute("aria-hidden") === "false";
     if (open) {
@@ -1184,6 +1207,7 @@ function renderVenueList() {
     if (els.confirmVenue) els.confirmVenue.disabled = true;
     if (els.deleteVenue) els.deleteVenue.disabled = true;
     if (els.renameVenue) els.renameVenue.disabled = true;
+    if (els.calibrateMark) els.calibrateMark.disabled = true;
     return;
   }
 
@@ -1233,6 +1257,13 @@ function renderVenueList() {
   if (els.confirmVenue) els.confirmVenue.disabled = !state.selectedVenueId;
   if (els.deleteVenue) els.deleteVenue.disabled = !state.selectedVenueId;
   if (els.renameVenue) els.renameVenue.disabled = !state.selectedVenueId;
+  if (els.calibrateMark) {
+    const selected = state.selectedVenueId
+      ? getVenueById(state.venues, state.selectedVenueId)
+      : null;
+    const hasMarks = Boolean(selected?.marks?.length);
+    els.calibrateMark.disabled = !state.selectedVenueId || !hasMarks;
+  }
 }
 
 function renderStartLineList() {
@@ -2467,6 +2498,45 @@ function bindStarterEvents() {
         updateCourseUi();
       }
       renderVenueList();
+    });
+  }
+
+  if (els.calibrateMark) {
+    els.calibrateMark.addEventListener("click", () => {
+      if (!state.selectedVenueId) return;
+      const venue = getVenueById(state.venues, state.selectedVenueId);
+      if (!venue) return;
+      if (!Array.isArray(venue.marks) || !venue.marks.length) {
+        window.alert("No marks yet.");
+        return;
+      }
+      requestHighPrecisionPosition(
+        starterDeps.handlePosition,
+        starterDeps.handlePositionError,
+        () => {
+          const sourcePosition = state.kalmanPosition;
+          if (!sourcePosition) {
+            window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
+            return;
+          }
+          const nearest = getNearestVenueMark(venue, sourcePosition);
+          if (!nearest) {
+            window.alert("No marks to calibrate.");
+            return;
+          }
+          nearest.mark.lat = sourcePosition.coords.latitude;
+          nearest.mark.lon = sourcePosition.coords.longitude;
+          venue.updatedAt = Date.now();
+          saveVenues(state.venues);
+          if (state.venue && state.venue.id === venue.id) {
+            syncDerivedRaceState();
+            syncStartFromRace();
+            updateCourseUi();
+            updateLineProjection();
+          }
+          renderVenueList();
+        }
+      );
     });
   }
 

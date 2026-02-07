@@ -447,6 +447,29 @@ function resolveLineLatLng(line) {
   };
 }
 
+function shouldFitVenueMarks() {
+  if (!state.venue) return false;
+  if (!isVenueMarksMode() && !isLineEditMode()) return false;
+  const marks = Array.isArray(state.venue.marks) ? state.venue.marks : [];
+  return marks.some(
+    (mark) => Number.isFinite(mark?.lat) && Number.isFinite(mark?.lon)
+  );
+}
+
+function fitMapToVenueMarks() {
+  if (!state.map || !state.venue) return false;
+  const marks = Array.isArray(state.venue.marks) ? state.venue.marks : [];
+  const points = marks
+    .filter((mark) => Number.isFinite(mark?.lat) && Number.isFinite(mark?.lon))
+    .map((mark) => [mark.lat, mark.lon]);
+  if (!points.length) return false;
+  const bounds = L.latLngBounds(points);
+  if (!bounds.isValid()) return false;
+  const maxZoom = points.length === 1 ? 16 : 17;
+  state.map.fitBounds(bounds, { padding: [36, 36], maxZoom });
+  return true;
+}
+
 function getRouteLineIds() {
   if (!state.race || !state.venue) {
     return { startLineId: null, finishLineId: null };
@@ -1413,7 +1436,8 @@ function initMap() {
     }
   });
 
-  if (navigator.geolocation) {
+  const didFit = shouldFitVenueMarks() ? fitMapToVenueMarks() : false;
+  if (navigator.geolocation && !didFit) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         state.map.setView([pos.coords.latitude, pos.coords.longitude], 15);

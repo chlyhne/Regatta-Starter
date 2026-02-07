@@ -63,6 +63,7 @@ export const modalsView = `
     <div id="mark-count" class="value">0</div>
     <div class="row stack">
       <button id="rename-venue" class="ghost">Rename venue</button>
+      <button id="calibrate-mark" class="ghost">Calibrate mark</button>
       <button id="open-venue-marks" class="ghost">Edit marks</button>
       <button id="open-lines" class="ghost">Edit lines</button>
     </div>
