@@ -1907,6 +1907,14 @@ function openVenueModal(options = {}) {
   } = options;
   if (mode) {
     venueModalMode = mode;
+  } else if (raceId) {
+    venueModalMode = "change";
+  } else if (document.body.classList.contains("plan-mode")) {
+    venueModalMode = "plan";
+  } else if (document.body.classList.contains("quick-mode")) {
+    venueModalMode = "quick-home";
+  } else {
+    venueModalMode = "change";
   }
   venueSelectionTargetRaceId = raceId;
   state.selectedVenueId = selectedVenueId || state.activeVenueId;
@@ -2120,6 +2128,9 @@ function renderRaceList() {
 function renderVenueList() {
   if (!els.venueList) return;
   els.venueList.innerHTML = "";
+  if (els.renameVenue) {
+    els.renameVenue.hidden = venueModalMode !== "plan";
+  }
   const venues = Array.isArray(state.venues) ? [...state.venues] : [];
   if (!venues.length) {
     const empty = document.createElement("div");
@@ -2180,7 +2191,9 @@ function renderVenueList() {
   });
   if (els.confirmVenue) els.confirmVenue.disabled = !state.selectedVenueId;
   if (els.deleteVenue) els.deleteVenue.disabled = !state.selectedVenueId;
-  if (els.renameVenue) els.renameVenue.disabled = !state.selectedVenueId;
+  if (els.renameVenue) {
+    els.renameVenue.disabled = !state.selectedVenueId || venueModalMode !== "plan";
+  }
   updateCalibrationControls();
 }
 
@@ -3417,8 +3430,7 @@ function bindStarterEvents() {
 
   if (els.quickChangeVenue) {
     els.quickChangeVenue.addEventListener("click", () => {
-      venueModalMode = "quick-home";
-      openVenueModal({ reset: true });
+      openVenueModal({ reset: true, mode: "quick-home" });
     });
   }
 
@@ -3483,8 +3495,7 @@ function bindStarterEvents() {
 
   if (els.planSelectVenue) {
     els.planSelectVenue.addEventListener("click", () => {
-      venueModalMode = "plan";
-      openVenueModal({ reset: true });
+      openVenueModal({ reset: true, mode: "plan" });
     });
   }
 
@@ -3650,7 +3661,7 @@ function bindStarterEvents() {
 
   if (els.selectVenue) {
     els.selectVenue.addEventListener("click", () => {
-      openVenueModal({ reset: true });
+      openVenueModal({ reset: true, mode: "change" });
     });
   }
 
@@ -3661,6 +3672,7 @@ function bindStarterEvents() {
       openVenueModal({
         raceId: race.id,
         selectedVenueId: race.venueId,
+        mode: "change",
       });
     });
   }

@@ -71,6 +71,7 @@ test("plan venue selection updates default venue", async ({ page }) => {
 
   await page.click("#plan-select-venue");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
+  await expect(page.locator("#rename-venue")).toBeVisible();
 
   await page.getByRole("button", { name: "Away Harbor" }).click();
   await page.click("#confirm-venue");
@@ -285,4 +286,53 @@ test("plan planned events create plan races", async ({ page }) => {
   expect(planRace).toBeTruthy();
   expect(planRace.isPlan).toBe(true);
   expect(planRace.venueId).toBe("venue-1");
+});
+
+test("changing venue hides rename button", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [],
+      lines: [],
+      defaultStartLineId: null,
+      defaultFinishLineId: null,
+      defaultRouteStartLineId: null,
+      defaultRouteFinishLineId: null,
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+    {
+      id: "venue-2",
+      name: "Away",
+      marks: [],
+      lines: [],
+      defaultStartLineId: null,
+      defaultFinishLineId: null,
+      defaultRouteStartLineId: null,
+      defaultRouteFinishLineId: null,
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Race 1",
+      venueId: "venue-1",
+      routeEnabled: false,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
+
+  await page.click("#quick-change-venue");
+  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
+  await expect(page.locator("#rename-venue")).toBeHidden();
 });
