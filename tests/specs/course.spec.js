@@ -176,3 +176,80 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
   await expect(page.locator(".course-chip")).toHaveCount(0);
   await expect(page.locator("#course-sequence .hint")).toHaveText("No route yet.");
 });
+
+test("course length switches to nautical miles over 1000m", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-port", name: "Port", description: "", lat: 55.0, lon: 12.0 },
+        { id: "mark-star", name: "Starboard", description: "", lat: 55.0, lon: 12.02 },
+        { id: "mark-a", name: "A", description: "", lat: 55.01, lon: 12.01 },
+        {
+          id: "mark-port-finish",
+          name: "Finish P",
+          description: "",
+          lat: 55.02,
+          lon: 12.0,
+        },
+        {
+          id: "mark-star-finish",
+          name: "Finish S",
+          description: "",
+          lat: 55.02,
+          lon: 12.02,
+        },
+      ],
+      lines: [
+        {
+          id: "line-start",
+          name: "",
+          starboardMarkId: "mark-star",
+          portMarkId: "mark-port",
+        },
+        {
+          id: "line-finish",
+          name: "",
+          starboardMarkId: "mark-star-finish",
+          portMarkId: "mark-port-finish",
+        },
+      ],
+      defaultStartLineId: "line-start",
+      defaultFinishLineId: "line-finish",
+      defaultRouteStartLineId: "line-start",
+      defaultRouteFinishLineId: "line-finish",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-start",
+      finishLineId: "line-finish",
+      routeStartLineId: "line-start",
+      routeFinishLineId: "line-finish",
+      routeEnabled: true,
+      route: [{ markId: "mark-a", rounding: "port", manual: true }],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/#setup");
+  await expect(page.locator("#setup-view")).toBeVisible();
+
+  const valueText = await page.locator("#status-course-length-value").textContent();
+  const unitText = await page.locator("#status-course-length-unit").textContent();
+  const value = Number.parseFloat(valueText || "");
+
+  expect(unitText).toBe("[nm]");
+  expect(Number.isFinite(value)).toBe(true);
+  expect(value).toBeGreaterThan(1.1);
+  expect(value).toBeLessThan(1.3);
+});

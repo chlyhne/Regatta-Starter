@@ -268,6 +268,7 @@ export {
   parseDurationInput,
   formatOverUnder,
   formatRaceSign,
+  formatSignificant,
   formatRaceDelta,
   formatRaceTimeDelta,
   formatTimeRemaining,

@@ -49,4 +49,31 @@ function applyForwardOffset(position, velocity, offsetMeters) {
   };
 }
 
-export { toRadians, toMeters, fromMeters, applyForwardOffset };
+function getClosestPointOnSegment(point, start, end) {
+  if (!point || !start || !end) return null;
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return null;
+  if (!Number.isFinite(start.lat) || !Number.isFinite(start.lon)) return null;
+  if (!Number.isFinite(end.lat) || !Number.isFinite(end.lon)) return null;
+  const origin = {
+    lat: (start.lat + end.lat) / 2,
+    lon: (start.lon + end.lon) / 2,
+  };
+  const pointA = toMeters(start, origin);
+  const pointB = toMeters(end, origin);
+  const pointP = toMeters(point, origin);
+  const abx = pointB.x - pointA.x;
+  const aby = pointB.y - pointA.y;
+  const abLenSq = abx * abx + aby * aby;
+  if (!Number.isFinite(abLenSq) || abLenSq <= 0) {
+    return { lat: start.lat, lon: start.lon };
+  }
+  const t = ((pointP.x - pointA.x) * abx + (pointP.y - pointA.y) * aby) / abLenSq;
+  const clamped = Math.min(1, Math.max(0, t));
+  const closest = {
+    x: pointA.x + abx * clamped,
+    y: pointA.y + aby * clamped,
+  };
+  return fromMeters(closest, origin);
+}
+
+export { toRadians, toMeters, fromMeters, applyForwardOffset, getClosestPointOnSegment };

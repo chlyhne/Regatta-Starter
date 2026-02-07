@@ -26,7 +26,7 @@ import {
 } from "../../core/venues.js";
 import { unlockAudio, playBeep, handleCountdownBeeps, resetBeepState } from "../../core/audio.js";
 import { requestHighPrecisionPosition } from "../../core/gps-watch.js";
-import { toMeters } from "../../core/geo.js";
+import { toMeters, getClosestPointOnSegment } from "../../core/geo.js";
 import {
   hasLine,
   updateRaceHintUnits,
@@ -35,9 +35,8 @@ import {
 } from "./race.js";
 import {
   formatClockTime,
-  formatDistanceValue,
   formatUnitLabel,
-  getDistanceUnitMeta,
+  formatSignificant,
   formatTimeInput,
   formatTimeRemainingHMSFull,
   splitDurationSeconds,
@@ -55,6 +54,7 @@ let startLineReturnModal = null;
 let startLineReturnRaceId = null;
 let finishLineReturnModal = null;
 let finishLineReturnRaceId = null;
+const NAUTICAL_MILE_METERS = 1852;
 let starterDeps = {
   saveSettings: null,
   updateInputs: null,
@@ -601,10 +601,31 @@ function getCourseLengthStatus() {
     .filter(
       (mark) => Number.isFinite(mark.lat) && Number.isFinite(mark.lon)
     );
-  const finishMid = getFinishLineMidpoint();
-  const points = [startMid, ...marks];
-  if (finishMid) {
-    points.push(finishMid);
+  const finishLine = getFinishLine();
+  const points = [];
+  const startLine = { a: { ...state.line.a }, b: { ...state.line.b } };
+  const startAnchor =
+    marks.length > 0
+      ? getClosestPointOnSegment(marks[0], startLine.a, startLine.b)
+      : startMid;
+  if (!startAnchor) {
+    return { value: null, text: "NO LINE" };
+  }
+  points.push(startAnchor);
+  marks.forEach((mark) => points.push(mark));
+  if (finishLine) {
+    const finishMid = getFinishLineMidpoint();
+    const finishAnchor =
+      marks.length > 0
+        ? getClosestPointOnSegment(
+            marks[marks.length - 1],
+            finishLine.a,
+            finishLine.b
+          )
+        : finishMid;
+    if (finishAnchor) {
+      points.push(finishAnchor);
+    }
   }
   if (points.length < 2) {
     return { value: null, text: "NO ROUTE" };
@@ -629,6 +650,23 @@ function getCourseLengthStatus() {
     return { value: null, text: "--" };
   }
   return { value: total, text: null };
+}
+
+function formatCourseLength(lengthMeters) {
+  if (!Number.isFinite(lengthMeters)) {
+    return { value: "--", unit: "" };
+  }
+  if (lengthMeters > 1000) {
+    const nauticalMiles = lengthMeters / NAUTICAL_MILE_METERS;
+    return {
+      value: formatSignificant(nauticalMiles, 3),
+      unit: formatUnitLabel("nm"),
+    };
+  }
+  return {
+    value: String(Math.round(lengthMeters)),
+    unit: formatUnitLabel("m"),
+  };
 }
 
 function computeTurnSide(prev, current, next) {
@@ -709,18 +747,17 @@ function updateCourseUi() {
   }
   if (els.statusCourseLength) {
     const lengthStatus = getCourseLengthStatus();
-    const unitLabel = formatUnitLabel(getDistanceUnitMeta().label);
     const hasLength = Number.isFinite(lengthStatus.value);
-    const valueText = hasLength
-      ? formatDistanceValue(lengthStatus.value)
-      : lengthStatus.text || "--";
+    const formatted = hasLength
+      ? formatCourseLength(lengthStatus.value)
+      : { value: lengthStatus.text || "--", unit: "" };
     if (els.statusCourseLengthValue) {
-      els.statusCourseLengthValue.textContent = valueText;
+      els.statusCourseLengthValue.textContent = formatted.value;
     } else {
-      els.statusCourseLength.textContent = valueText;
+      els.statusCourseLength.textContent = formatted.value;
     }
     if (els.statusCourseLengthUnit) {
-      els.statusCourseLengthUnit.textContent = hasLength ? unitLabel : "";
+      els.statusCourseLengthUnit.textContent = hasLength ? formatted.unit : "";
     }
   }
   if (els.openRoute) {

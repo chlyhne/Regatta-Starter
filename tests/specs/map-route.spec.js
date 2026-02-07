@@ -104,6 +104,84 @@ test("map route editing adds and clears marks", async ({ page }) => {
   expect(clearedAgain).toBe(0);
 });
 
+test("route line includes start and finish lines", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-port", name: "Port", description: "", lat: 55.0, lon: 12.0 },
+        { id: "mark-star", name: "Starboard", description: "", lat: 55.0, lon: 12.02 },
+        { id: "mark-a", name: "A", description: "", lat: 55.01, lon: 12.01 },
+        { id: "mark-port-finish", name: "Finish P", description: "", lat: 55.02, lon: 12.0 },
+        {
+          id: "mark-star-finish",
+          name: "Finish S",
+          description: "",
+          lat: 55.02,
+          lon: 12.02,
+        },
+      ],
+      lines: [
+        {
+          id: "line-start",
+          name: "",
+          starboardMarkId: "mark-star",
+          portMarkId: "mark-port",
+        },
+        {
+          id: "line-finish",
+          name: "",
+          starboardMarkId: "mark-star-finish",
+          portMarkId: "mark-port-finish",
+        },
+      ],
+      defaultStartLineId: "line-start",
+      defaultFinishLineId: "line-finish",
+      defaultRouteStartLineId: "line-start",
+      defaultRouteFinishLineId: "line-finish",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-start",
+      finishLineId: "line-finish",
+      routeStartLineId: "line-start",
+      routeFinishLineId: "line-finish",
+      routeEnabled: true,
+      route: [{ markId: "mark-a", rounding: "port", manual: true }],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=race-route");
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const paths = Array.from(document.querySelectorAll("path"));
+        return paths.some((path) => {
+          const attr = (path.getAttribute("stroke") || "").toLowerCase();
+          if (attr === "#0f6bff") return true;
+          const style = (path.getAttribute("style") || "").toLowerCase();
+          if (style.includes("stroke: #0f6bff")) return true;
+          if (style.includes("stroke: rgb(15, 107, 255)")) return true;
+          const computed = window.getComputedStyle(path).stroke;
+          return computed === "rgb(15, 107, 255)";
+        });
+      });
+    })
+    .toBe(true);
+});
+
 test("line arrows point in the start direction", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [

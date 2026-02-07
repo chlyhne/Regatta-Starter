@@ -1,4 +1,5 @@
 import { loadSettings as loadSettingsFromStorage } from "./core/settings.js";
+import { getClosestPointOnSegment } from "./core/geo.js";
 import {
   loadVenues,
   saveVenues,
@@ -445,6 +446,39 @@ function resolveLineLatLng(line) {
     b: { lat: starboard.lat, lon: starboard.lon },
   };
 }
+
+function getRouteLineIds() {
+  if (!state.race || !state.venue) {
+    return { startLineId: null, finishLineId: null };
+  }
+  const lines = getLinesForType();
+  const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  const routeStartLineId = hasLine(state.race.routeStartLineId)
+    ? state.race.routeStartLineId
+    : hasLine(state.venue.defaultRouteStartLineId)
+      ? state.venue.defaultRouteStartLineId
+      : null;
+  const routeFinishLineId = hasLine(state.race.routeFinishLineId)
+    ? state.race.routeFinishLineId
+    : hasLine(state.venue.defaultRouteFinishLineId)
+      ? state.venue.defaultRouteFinishLineId
+      : null;
+  const startFallback = hasLine(state.race.startLineId)
+    ? state.race.startLineId
+    : hasLine(state.venue.defaultStartLineId)
+      ? state.venue.defaultStartLineId
+      : null;
+  const finishFallback = hasLine(state.race.finishLineId)
+    ? state.race.finishLineId
+    : hasLine(state.venue.defaultFinishLineId)
+      ? state.venue.defaultFinishLineId
+      : null;
+  return {
+    startLineId: routeStartLineId || startFallback,
+    finishLineId: routeFinishLineId || finishFallback,
+  };
+}
+
 
 function updateSelectionStatus() {
   if (!els.mapStatus) return;
@@ -1282,10 +1316,34 @@ function getRouteLatLngs() {
   const marksById = new Map(
     (state.venue.marks || []).map((mark) => [mark.id, mark])
   );
-  return (state.race.route || [])
+  const routeMarks = (state.race.route || [])
     .map((entry) => marksById.get(entry.markId))
-    .filter(Boolean)
-    .map((mark) => [mark.lat, mark.lon]);
+    .filter(Boolean);
+  if (!routeMarks.length) return [];
+
+  const points = routeMarks.map((mark) => ({ lat: mark.lat, lon: mark.lon }));
+  const { startLineId, finishLineId } = getRouteLineIds();
+  if (startLineId) {
+    const line = getLineById(getLinesForType(), startLineId);
+    const coords = resolveLineLatLng(line);
+    const closest = coords
+      ? getClosestPointOnSegment(points[0], coords.a, coords.b)
+      : null;
+    if (closest) {
+      points.unshift({ lat: closest.lat, lon: closest.lon });
+    }
+  }
+  if (finishLineId) {
+    const line = getLineById(getLinesForType(), finishLineId);
+    const coords = resolveLineLatLng(line);
+    const closest = coords
+      ? getClosestPointOnSegment(points[points.length - 1], coords.a, coords.b)
+      : null;
+    if (closest) {
+      points.push({ lat: closest.lat, lon: closest.lon });
+    }
+  }
+  return points.map((point) => [point.lat, point.lon]);
 }
 
 function getRouteRoundingMap() {
