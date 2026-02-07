@@ -229,6 +229,16 @@ body {
   padding-right: 4px;
 }
 
+.modal-scroll {
+  max-height: 40vh;
+}
+
+@supports (height: 100dvh) {
+  .modal-scroll {
+    max-height: min(40dvh, calc(var(--app-height) - 260px));
+  }
+}
+
 .modal-item {
   display: grid;
   grid-template-columns: 1fr;
@@ -320,7 +330,7 @@ body {
 .course-keyboard {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .course-key {
@@ -328,10 +338,24 @@ body {
   color: #000000;
   border: 2px solid #000000;
   border-radius: 12px;
-  padding: 12px 0;
+  padding: 10px 8px;
   font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: normal;
+}
+
+.course-key.port {
+  background: var(--port-color);
+  border-color: var(--port-color);
+  color: #ffffff;
+}
+
+.course-key.starboard {
+  background: var(--starboard-color);
+  border-color: var(--starboard-color);
+  color: #ffffff;
 }
 
 .modal-actions {

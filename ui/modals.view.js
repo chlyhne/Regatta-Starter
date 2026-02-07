@@ -40,7 +40,7 @@ export const modalsView = `
 <section id="race-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
     <h2>Races</h2>
-    <div id="race-list" class="modal-list"></div>
+    <div id="race-list" class="modal-list modal-scroll"></div>
     <div class="row stack">
       <button id="edit-race-venue" class="ghost">Venue</button>
       <button id="edit-race-start-line" class="ghost">Start line</button>
@@ -142,7 +142,7 @@ export const modalsView = `
 <section id="course-keyboard-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
     <h2>Edit Route</h2>
-    <p class="info-text">Tap marks in order to build the route.</p>
+    <p class="info-text">Tap red (port) or green (starboard) to add.</p>
     <div id="course-sequence" class="course-sequence"></div>
     <div id="course-keyboard" class="course-keyboard"></div>
     <div class="modal-actions">

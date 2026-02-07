@@ -148,16 +148,25 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
   await page.click("#open-course");
   await expect(page.locator("#course-modal")).toBeVisible();
   await page.click("#open-route");
-  await expect(page.locator(".course-key", { hasText: "A" })).toBeVisible();
-  await expect(page.locator(".course-key", { hasText: "B" })).toBeVisible();
-  await expect(page.locator(".course-key", { hasText: "Gate" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add A (port)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add B (starboard)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Gate (port)" })).toBeVisible();
 
-  await page.click('.course-key:has-text("A")');
-  await page.click('.course-key:has-text("B")');
+  await page.getByRole("button", { name: "Add A (port)" }).click();
+  await page.getByRole("button", { name: "Add B (starboard)" }).click();
 
   await expect(page.locator(".course-chip")).toHaveCount(2);
   await expect(page.locator(".course-chip", { hasText: "A" })).toBeVisible();
   await expect(page.locator(".course-chip", { hasText: "B" })).toBeVisible();
+  const routeState = await page.evaluate(() => {
+    const racesRaw = localStorage.getItem("racetimer-races");
+    const parsed = racesRaw ? JSON.parse(racesRaw) : [];
+    return parsed[0]?.route || [];
+  });
+  expect(routeState).toEqual([
+    { markId: "mark-a", rounding: "port", manual: true },
+    { markId: "mark-b", rounding: "starboard", manual: true },
+  ]);
 
   await page.click("#course-keyboard-undo");
   await expect(page.locator(".course-chip")).toHaveCount(1);

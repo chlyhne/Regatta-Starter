@@ -829,22 +829,12 @@ function closeCourseMarksModal() {
   }
 }
 
-function isSingleLetterName(name) {
-  const trimmed = normalizeMarkName(name, "").trim();
-  return trimmed.length === 1;
-}
-
-function getSingleLetterMarks() {
-  const seen = new Set();
+function getVenueMarksForRoute() {
   return (state.venue?.marks || [])
-    .filter((mark) => mark && isSingleLetterName(mark.name))
-    .filter((mark) => {
-      const key = mark.name.trim().toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    .filter((mark) => mark && typeof mark.name === "string")
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    );
 }
 
 function renderRouteSequence() {
@@ -871,41 +861,51 @@ function renderRouteSequence() {
 function renderCourseKeyboard() {
   if (!els.courseKeyboard) return;
   els.courseKeyboard.innerHTML = "";
-  const letters = getSingleLetterMarks();
-  if (!letters.length) {
+  const marks = getVenueMarksForRoute();
+  if (!marks.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No single-letter marks yet.";
+    empty.textContent = "No marks yet.";
     els.courseKeyboard.appendChild(empty);
     return;
   }
-  letters.forEach((mark) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "course-key";
-    button.textContent = mark.name.trim();
-    if (mark.description) {
-      button.title = mark.description;
+  const addRouteMark = (mark, side) => {
+    if (!state.race) return;
+    if (!Array.isArray(state.race.route)) {
+      state.race.route = [];
     }
-    button.addEventListener("click", () => {
-      if (!state.race) return;
-      if (!Array.isArray(state.race.route)) {
-        state.race.route = [];
-      }
-      state.race.route.push({
-        markId: mark.id,
-        rounding: "port",
-        manual: false,
-      });
-      syncVenueDefaultRoute();
-      persistVenueAndRace();
-      syncDerivedRaceState();
-      syncCourseRoundingDefaults();
-      bumpCourseVersion();
-      updateCourseUi();
-      renderRouteSequence();
+    state.race.route.push({
+      markId: mark.id,
+      rounding: side,
+      manual: true,
     });
-    els.courseKeyboard.appendChild(button);
+    syncVenueDefaultRoute();
+    persistVenueAndRace();
+    syncDerivedRaceState();
+    syncCourseRoundingDefaults();
+    bumpCourseVersion();
+    updateCourseUi();
+    renderRouteSequence();
+  };
+  marks.forEach((mark) => {
+    const name = normalizeMarkName(mark.name, "Mark");
+    ["port", "starboard"].forEach((side) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `course-key ${side}`;
+      button.textContent = name;
+      button.setAttribute(
+        "aria-label",
+        `Add ${name} (${side === "port" ? "port" : "starboard"})`
+      );
+      if (mark.description) {
+        button.title = mark.description;
+      }
+      button.addEventListener("click", () => {
+        addRouteMark(mark, side);
+      });
+      els.courseKeyboard.appendChild(button);
+    });
   });
 }
 
