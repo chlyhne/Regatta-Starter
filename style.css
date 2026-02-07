@@ -195,31 +195,28 @@ body {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  background: #ffffff;
+  color: #000000;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
   z-index: 1000;
 }
 
 .modal-panel {
   background: #ffffff;
   color: #000000;
-  border: 3px solid #000000;
-  border-radius: 20px;
-  padding: 20px;
-  max-width: 520px;
+  border: none;
+  border-radius: 0;
+  padding: 24px;
   width: 100%;
-  display: grid;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  max-height: 80vh;
   overflow-y: auto;
-}
-
-@supports (height: 100dvh) {
-  .modal-panel {
-    max-height: min(80dvh, calc(var(--app-height) - 48px));
-  }
 }
 
 .modal-list {
@@ -230,13 +227,8 @@ body {
 }
 
 .modal-scroll {
-  max-height: 40vh;
-}
-
-@supports (height: 100dvh) {
-  .modal-scroll {
-    max-height: min(40dvh, calc(var(--app-height) - 260px));
-  }
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .modal-item {
