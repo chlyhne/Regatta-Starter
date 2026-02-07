@@ -1229,6 +1229,10 @@ h1 {
   padding-bottom: calc(var(--mode-section-padding-block) + var(--mode-divider-gap));
 }
 
+.mode-shell[aria-hidden="true"] {
+  display: none;
+}
+
 .mode-shell > * {
   padding: var(--section-padding-block, var(--mode-section-padding-block))
     var(--section-padding-inline, var(--mode-section-padding));
