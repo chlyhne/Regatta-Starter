@@ -543,7 +543,62 @@ function hasFinishLine() {
   return Boolean(getFinishLine());
 }
 
-function ensureRouteLinesForRoute() {
+function navigateToVenueMarks(options = {}) {
+  const {
+    returnModal = "venue",
+    returnRaceId = null,
+    closeModal = null,
+    message = "Add marks first.",
+  } = options;
+  if (message) {
+    window.alert(message);
+  }
+  if (typeof closeModal === "function") {
+    closeModal();
+  }
+  window.location.href = getMapHref("venue-marks", { returnModal, returnRaceId });
+}
+
+function navigateToVenueLines(options = {}) {
+  const {
+    returnModal = "venue",
+    returnRaceId = null,
+    closeModal = null,
+    message = "Add lines first.",
+  } = options;
+  if (message) {
+    window.alert(message);
+  }
+  if (typeof closeModal === "function") {
+    closeModal();
+  }
+  window.location.href = getMapHref("venue-lines", { returnModal, returnRaceId });
+}
+
+function ensureVenueLinesReady(venue, options = {}) {
+  if (!venue) return false;
+  const markCount = Array.isArray(venue.marks) ? venue.marks.length : 0;
+  if (!markCount) {
+    navigateToVenueMarks(options);
+    return false;
+  }
+  const lineCount = Array.isArray(venue.lines) ? venue.lines.length : 0;
+  if (!lineCount) {
+    navigateToVenueLines(options);
+    return false;
+  }
+  return true;
+}
+
+function ensureRouteLinesForRoute(options = {}) {
+  const {
+    returnModal = "course",
+    returnRaceId = null,
+    closeModal = null,
+  } = options;
+  if (!ensureVenueLinesReady(state.venue, { returnModal, returnRaceId, closeModal })) {
+    return false;
+  }
   if (hasStartLine()) {
     if (state.race) {
       let changed = false;
@@ -562,7 +617,10 @@ function ensureRouteLinesForRoute() {
     }
     return true;
   }
-  window.alert("Select a start line first.");
+  if (typeof closeModal === "function") {
+    closeModal();
+  }
+  openStartLineModal({ returnModal, returnRaceId });
   return false;
 }
 
@@ -2744,6 +2802,15 @@ function bindStarterEvents() {
       const race = getSelectedRace();
       if (!race) return;
       if (!activateRaceSelection(race)) return;
+      if (
+        !ensureVenueLinesReady(state.venue, {
+          returnModal: "race",
+          returnRaceId: race.id,
+          closeModal: closeRaceModal,
+        })
+      ) {
+        return;
+      }
       closeRaceModal();
       openStartLineModal({ returnModal: "race", returnRaceId: race.id });
     });
@@ -2761,6 +2828,13 @@ function bindStarterEvents() {
 
   if (els.openCourse) {
     els.openCourse.addEventListener("click", () => {
+      if (
+        !ensureVenueLinesReady(state.venue, {
+          returnModal: "course",
+        })
+      ) {
+        return;
+      }
       openCourseModal();
     });
   }
@@ -2841,7 +2915,11 @@ function bindStarterEvents() {
       }
       const racesForVenue = state.races.filter((race) => race.venueId === venue.id);
       racesForVenue.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      let race = racesForVenue[0];
+      let race =
+        state.race && state.race.venueId === venue.id ? state.race : racesForVenue[0];
+      if (race && !state.races.find((entry) => entry.id === race.id)) {
+        race = racesForVenue[0];
+      }
       if (!race) {
         race = createRace(`Race ${state.races.length + 1}`, venue);
         state.races.unshift(race);
@@ -3154,6 +3232,17 @@ function bindStarterEvents() {
   if (els.openLines) {
     els.openLines.addEventListener("click", () => {
       const returnRaceId = venueSelectionTargetRaceId || null;
+      const venue = getSelectedVenue();
+      if (!venue) return;
+      if (
+        !ensureVenueLinesReady(venue, {
+          returnModal: "venue",
+          returnRaceId,
+          closeModal: closeVenueModal,
+        })
+      ) {
+        return;
+      }
       closeVenueModal();
       window.location.href = getMapHref("venue-lines", {
         returnModal: "venue",
@@ -3164,6 +3253,14 @@ function bindStarterEvents() {
 
   if (els.selectStartLine) {
     els.selectStartLine.addEventListener("click", () => {
+      if (
+        !ensureVenueLinesReady(state.venue, {
+          returnModal: "course",
+          closeModal: closeCourseModal,
+        })
+      ) {
+        return;
+      }
       closeCourseModal();
       openStartLineModal({ returnModal: "course" });
     });
@@ -3171,6 +3268,14 @@ function bindStarterEvents() {
 
   if (els.selectFinishLine) {
     els.selectFinishLine.addEventListener("click", () => {
+      if (
+        !ensureVenueLinesReady(state.venue, {
+          returnModal: "course",
+          closeModal: closeCourseModal,
+        })
+      ) {
+        return;
+      }
       closeCourseModal();
       openFinishLineModal({ returnModal: "course" });
     });
@@ -3178,7 +3283,8 @@ function bindStarterEvents() {
 
   if (els.openRouteMap) {
     els.openRouteMap.addEventListener("click", () => {
-      if (!ensureRouteLinesForRoute()) return;
+      if (!ensureRouteLinesForRoute({ returnModal: "course", closeModal: closeCourseModal }))
+        return;
       closeCourseModal();
       window.location.href = getMapHref("race-route", { returnModal: "course" });
     });
@@ -3186,6 +3292,14 @@ function bindStarterEvents() {
 
   if (els.openRaceMap) {
     els.openRaceMap.addEventListener("click", () => {
+      if (
+        !ensureVenueLinesReady(state.venue, {
+          returnModal: "course",
+          closeModal: closeCourseModal,
+        })
+      ) {
+        return;
+      }
       closeCourseModal();
       window.location.href = getMapHref("race-view", { returnModal: "course" });
     });
@@ -3405,7 +3519,12 @@ function bindStarterEvents() {
     els.courseToggle.addEventListener("click", () => {
       if (!state.race) return;
       const next = !state.race.routeEnabled;
-      if (next && !ensureRouteLinesForRoute()) return;
+      if (
+        next &&
+        !ensureRouteLinesForRoute({ returnModal: "course", closeModal: closeCourseModal })
+      ) {
+        return;
+      }
       state.race.routeEnabled = next;
       if (!next) {
         state.courseTrackActive = false;
@@ -3418,7 +3537,7 @@ function bindStarterEvents() {
 
   if (els.openRoute) {
     els.openRoute.addEventListener("click", () => {
-      if (!ensureRouteLinesForRoute()) return;
+      if (!ensureRouteLinesForRoute({ returnModal: "course", closeModal: closeCourseModal })) return;
       closeCourseModal();
       openCourseKeyboardModal();
     });
@@ -3426,7 +3545,7 @@ function bindStarterEvents() {
 
   if (els.openRounding) {
     els.openRounding.addEventListener("click", () => {
-      if (!ensureRouteLinesForRoute()) return;
+      if (!ensureRouteLinesForRoute({ returnModal: "course", closeModal: closeCourseModal })) return;
       closeCourseModal();
       openCourseMarksModal();
     });
@@ -3434,7 +3553,7 @@ function bindStarterEvents() {
 
   if (els.clearRoute) {
     els.clearRoute.addEventListener("click", () => {
-      if (!ensureRouteLinesForRoute()) return;
+      if (!ensureRouteLinesForRoute({ returnModal: "course", closeModal: closeCourseModal })) return;
       if (!state.race || !getRouteEntries().length) return;
       const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
