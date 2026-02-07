@@ -248,6 +248,73 @@ test("line arrows point in the start direction", async ({ page }) => {
   expect(Math.abs(angle + 90)).toBeLessThan(12);
 });
 
+test("route uses finish line role when no finish line is selected", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-port", name: "Port", description: "", lat: 55.0, lon: 12.0 },
+        { id: "mark-star", name: "Starboard", description: "", lat: 55.0, lon: 12.02 },
+        { id: "mark-a", name: "A", description: "", lat: 55.01, lon: 12.01 },
+        { id: "mark-port-finish", name: "Finish P", description: "", lat: 55.02, lon: 12.0 },
+        {
+          id: "mark-star-finish",
+          name: "Finish S",
+          description: "",
+          lat: 55.02,
+          lon: 12.02,
+        },
+      ],
+      lines: [
+        {
+          id: "line-start",
+          name: "Start",
+          starboardMarkId: "mark-star",
+          portMarkId: "mark-port",
+          roles: { start: true, finish: false },
+        },
+        {
+          id: "line-finish",
+          name: "Finish",
+          starboardMarkId: "mark-star-finish",
+          portMarkId: "mark-port-finish",
+          roles: { start: false, finish: true },
+        },
+      ],
+      defaultStartLineId: "line-start",
+      defaultFinishLineId: null,
+      defaultRouteStartLineId: "line-start",
+      defaultRouteFinishLineId: null,
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-start",
+      finishLineId: null,
+      routeStartLineId: "line-start",
+      routeFinishLineId: null,
+      routeEnabled: true,
+      route: [{ markId: "mark-a", rounding: "port", manual: true }],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=race-route&debug=true");
+
+  await page.waitForFunction(() => window.__raceTimerMap);
+  const ids = await page.evaluate(() => window.__raceTimerMap.getRouteLineIds());
+  expect(ids.finishLineId).toBe("line-finish");
+});
+
 test("mark labels fit text and arrows are sized", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [

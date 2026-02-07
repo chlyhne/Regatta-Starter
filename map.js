@@ -542,6 +542,15 @@ function getRouteLineIds() {
   }
   const lines = getLinesForType();
   const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  const pickRole = (role) => {
+    const candidates = lines.filter((line) => getLineRoles(line)[role]);
+    if (candidates.length === 1) {
+      return candidates[0].id;
+    }
+    return null;
+  };
+  const startRoleFallback = pickRole("start");
+  const finishRoleFallback = pickRole("finish");
   if (isVenueSetupMode()) {
     const routeStartLineId = hasLine(state.venue.defaultRouteStartLineId)
       ? state.venue.defaultRouteStartLineId
@@ -556,8 +565,8 @@ function getRouteLineIds() {
       ? state.venue.defaultFinishLineId
       : null;
     return {
-      startLineId: routeStartLineId || startFallback,
-      finishLineId: routeFinishLineId || finishFallback,
+      startLineId: routeStartLineId || startFallback || startRoleFallback,
+      finishLineId: routeFinishLineId || finishFallback || finishRoleFallback,
     };
   }
   if (!state.race) {
@@ -584,8 +593,8 @@ function getRouteLineIds() {
       ? state.venue.defaultFinishLineId
       : null;
   return {
-    startLineId: routeStartLineId || startFallback,
-    finishLineId: routeFinishLineId || finishFallback,
+    startLineId: routeStartLineId || startFallback || startRoleFallback,
+    finishLineId: routeFinishLineId || finishFallback || finishRoleFallback,
   };
 }
 
@@ -1944,6 +1953,14 @@ function bindEvents() {
     els.closeMap.addEventListener("touchend", close, { passive: false });
     els.closeMap.addEventListener("pointerup", close);
   }
+}
+
+const DEBUG = new URLSearchParams(window.location.search).get("debug") === "true";
+if (DEBUG) {
+  window.__raceTimerMap = {
+    getRouteLineIds: () => getRouteLineIds(),
+    getRouteLatLngs: () => getRouteLatLngs(),
+  };
 }
 
 loadData();
