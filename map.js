@@ -99,12 +99,47 @@ function getNoCacheQuery() {
   return `?nocache=${encodeURIComponent(token)}`;
 }
 
-function getMapHref(mode) {
-  const suffix = getNoCacheQuery();
-  if (suffix) {
-    return `map.html${suffix}&mode=${encodeURIComponent(mode)}`;
+function getReturnParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    view: params.get("return") || "setup",
+    modal: params.get("returnModal"),
+    raceId: params.get("returnRaceId"),
+  };
+}
+
+function applyReturnParams(targetParams, returnParams) {
+  if (!returnParams) return;
+  if (returnParams.view) {
+    targetParams.set("return", returnParams.view);
   }
-  return `map.html?mode=${encodeURIComponent(mode)}`;
+  if (returnParams.modal) {
+    targetParams.set("returnModal", returnParams.modal);
+  }
+  if (returnParams.raceId) {
+    targetParams.set("returnRaceId", returnParams.raceId);
+  }
+}
+
+function getMapHref(mode) {
+  const params = new URLSearchParams(getNoCacheQuery().replace(/^\?/, ""));
+  params.set("mode", mode);
+  applyReturnParams(params, getReturnParams());
+  return `map.html?${params.toString()}`;
+}
+
+function buildReturnHref() {
+  const returnParams = getReturnParams();
+  const params = new URLSearchParams(getNoCacheQuery().replace(/^\?/, ""));
+  if (returnParams.modal) {
+    params.set("modal", returnParams.modal);
+  }
+  if (returnParams.raceId) {
+    params.set("raceId", returnParams.raceId);
+  }
+  const query = params.toString();
+  const view = returnParams.view || "setup";
+  return `index.html${query ? `?${query}` : ""}#${view}`;
 }
 
 function normalizeMode(value) {
@@ -1613,7 +1648,7 @@ function bindEvents() {
 
   if (els.closeMap) {
     els.closeMap.addEventListener("click", () => {
-      window.location.href = `index.html${getNoCacheQuery()}#setup`;
+      window.location.href = buildReturnHref();
     });
   }
 
@@ -1622,7 +1657,7 @@ function bindEvents() {
       event.preventDefault();
       event.stopPropagation();
     }
-    window.location.href = `index.html${getNoCacheQuery()}#setup`;
+    window.location.href = buildReturnHref();
   };
   if (els.closeMap) {
     els.closeMap.addEventListener("touchend", close, { passive: false });

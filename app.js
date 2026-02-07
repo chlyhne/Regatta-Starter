@@ -83,6 +83,7 @@ import {
   syncStarterInputs,
   updateCourseUi,
   updateStartDisplay,
+  openSetupModal,
 } from "./features/starter/starter.js";
 import {
   initHome,
@@ -474,6 +475,25 @@ function clearNoCacheParam() {
   const token = url.searchParams.get("nocache");
   if (!token) return;
   sessionStorage.setItem(NO_CACHE_KEY, token);
+}
+
+function clearModalParams() {
+  const url = new URL(window.location.href);
+  const hasModal = url.searchParams.has("modal") || url.searchParams.has("raceId");
+  if (!hasModal) return;
+  url.searchParams.delete("modal");
+  url.searchParams.delete("raceId");
+  history.replaceState(null, "", url.toString());
+}
+
+function openModalFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const modal = params.get("modal");
+  if (!modal) return;
+  if (window.location.hash !== "#setup") return;
+  const raceId = params.get("raceId");
+  openSetupModal(modal, { raceId });
+  clearModalParams();
 }
 
 function buildImuMappingCandidates() {
@@ -1513,6 +1533,7 @@ updateImuDisplay();
 updateImuCalibrationUi();
 updateSensorToggleButtons();
 syncViewFromHash();
+openModalFromQuery();
 tick();
 updateViewportHeight();
 

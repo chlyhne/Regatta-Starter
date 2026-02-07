@@ -51,6 +51,10 @@ import { setTrackMode } from "./track.js";
 let countdownPickerLive = false;
 let venueSelectionTargetRaceId = null;
 let venueSelectionReturnToRace = false;
+let startLineReturnModal = null;
+let startLineReturnRaceId = null;
+let finishLineReturnModal = null;
+let finishLineReturnRaceId = null;
 let starterDeps = {
   saveSettings: null,
   updateInputs: null,
@@ -91,13 +95,25 @@ function setCountdownPickerLive(active) {
   countdownPickerLive = Boolean(active);
 }
 
-function getMapHref(mode) {
+function getMapHref(mode, options = {}) {
+  const {
+    returnView = "setup",
+    returnModal = null,
+    returnRaceId = null,
+  } = options;
   const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
-  const encoded = encodeURIComponent(mode);
-  if (suffix) {
-    return `map.html${suffix}&mode=${encoded}`;
+  const params = new URLSearchParams(suffix.replace(/^\?/, ""));
+  params.set("mode", mode);
+  if (returnView) {
+    params.set("return", returnView);
   }
-  return `map.html?mode=${encoded}`;
+  if (returnModal) {
+    params.set("returnModal", returnModal);
+  }
+  if (returnRaceId) {
+    params.set("returnRaceId", returnRaceId);
+  }
+  return `map.html?${params.toString()}`;
 }
 
 function cancelActiveCountdown(options = {}) {
@@ -1005,6 +1021,79 @@ function closeCourseModal() {
   }
 }
 
+function openStartLineModal(options = {}) {
+  const { returnModal = null, returnRaceId = null } = options;
+  if (!state.venue) return;
+  startLineReturnModal = returnModal;
+  startLineReturnRaceId = returnRaceId;
+  state.selectedStartLineId =
+    state.race?.startLineId || state.venue.defaultStartLineId || null;
+  renderStartLineList();
+  document.body.classList.add("modal-open");
+  if (els.startLineModal) {
+    els.startLineModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeStartLineModal() {
+  document.body.classList.remove("modal-open");
+  if (els.startLineModal) {
+    els.startLineModal.setAttribute("aria-hidden", "true");
+  }
+  const returnModal = startLineReturnModal;
+  const returnRaceId = startLineReturnRaceId;
+  startLineReturnModal = null;
+  startLineReturnRaceId = null;
+  if (returnModal) {
+    openSetupModal(returnModal, { raceId: returnRaceId });
+  }
+}
+
+function openFinishLineModal(options = {}) {
+  const { returnModal = null, returnRaceId = null } = options;
+  if (!state.venue) return;
+  finishLineReturnModal = returnModal;
+  finishLineReturnRaceId = returnRaceId;
+  state.selectedFinishLineId =
+    state.race?.finishLineId || state.venue.defaultFinishLineId || null;
+  renderFinishLineList();
+  document.body.classList.add("modal-open");
+  if (els.finishLineModal) {
+    els.finishLineModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeFinishLineModal() {
+  document.body.classList.remove("modal-open");
+  if (els.finishLineModal) {
+    els.finishLineModal.setAttribute("aria-hidden", "true");
+  }
+  const returnModal = finishLineReturnModal;
+  const returnRaceId = finishLineReturnRaceId;
+  finishLineReturnModal = null;
+  finishLineReturnRaceId = null;
+  if (returnModal) {
+    openSetupModal(returnModal, { raceId: returnRaceId });
+  }
+}
+
+function openSetupModal(modal, options = {}) {
+  const key = String(modal || "").toLowerCase();
+  if (key === "race") {
+    openRaceModal(options.raceId);
+    return true;
+  }
+  if (key === "venue") {
+    openVenueModal();
+    return true;
+  }
+  if (key === "course") {
+    openCourseModal();
+    return true;
+  }
+  return false;
+}
+
 function renderRaceList() {
   if (!els.raceList) return;
   els.raceList.innerHTML = "";
@@ -1057,6 +1146,7 @@ function renderVenueList() {
     els.venueList.appendChild(empty);
     if (els.confirmVenue) els.confirmVenue.disabled = true;
     if (els.deleteVenue) els.deleteVenue.disabled = true;
+    if (els.renameVenue) els.renameVenue.disabled = true;
     return;
   }
 
@@ -1105,6 +1195,81 @@ function renderVenueList() {
   });
   if (els.confirmVenue) els.confirmVenue.disabled = !state.selectedVenueId;
   if (els.deleteVenue) els.deleteVenue.disabled = !state.selectedVenueId;
+  if (els.renameVenue) els.renameVenue.disabled = !state.selectedVenueId;
+}
+
+function renderStartLineList() {
+  if (!els.startLineList) return;
+  els.startLineList.innerHTML = "";
+  const lines = Array.isArray(state.venue?.lines) ? state.venue.lines : [];
+  if (!lines.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No lines yet.";
+    els.startLineList.appendChild(empty);
+    if (els.confirmStartLine) els.confirmStartLine.disabled = true;
+    return;
+  }
+  const lineIds = new Set(lines.map((line) => line.id));
+  if (!lineIds.has(state.selectedStartLineId)) {
+    state.selectedStartLineId = null;
+  }
+  lines.forEach((line) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = getLineDisplayName(line, lines, "Line");
+    if (state.selectedStartLineId === line.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      state.selectedStartLineId = line.id;
+      renderStartLineList();
+    });
+    row.appendChild(button);
+    els.startLineList.appendChild(row);
+  });
+  if (els.confirmStartLine) {
+    els.confirmStartLine.disabled = !state.selectedStartLineId;
+  }
+}
+
+function renderFinishLineList() {
+  if (!els.finishLineList) return;
+  els.finishLineList.innerHTML = "";
+  const lines = Array.isArray(state.venue?.lines) ? state.venue.lines : [];
+  if (!lines.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No lines yet.";
+    els.finishLineList.appendChild(empty);
+    if (els.confirmFinishLine) els.confirmFinishLine.disabled = true;
+    return;
+  }
+  const lineIds = new Set(lines.map((line) => line.id));
+  if (!lineIds.has(state.selectedFinishLineId)) {
+    state.selectedFinishLineId = null;
+  }
+  lines.forEach((line) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = getLineDisplayName(line, lines, "Line");
+    if (state.selectedFinishLineId === line.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      state.selectedFinishLineId = line.id;
+      renderFinishLineList();
+    });
+    row.appendChild(button);
+    els.finishLineList.appendChild(row);
+  });
+  if (els.confirmFinishLine) {
+    els.confirmFinishLine.disabled = !state.selectedFinishLineId;
+  }
 }
 
 function openLoadModal() {
@@ -2082,7 +2247,7 @@ function bindStarterEvents() {
       if (!race) return;
       if (!activateRaceSelection(race)) return;
       closeRaceModal();
-      window.location.href = getMapHref("race-start-line");
+      openStartLineModal({ returnModal: "race", returnRaceId: race.id });
     });
   }
 
@@ -2248,6 +2413,26 @@ function bindStarterEvents() {
     });
   }
 
+  if (els.renameVenue) {
+    els.renameVenue.addEventListener("click", () => {
+      if (!state.selectedVenueId) return;
+      const venue = getVenueById(state.venues, state.selectedVenueId);
+      if (!venue) return;
+      const fallback = venue.name || "Venue";
+      const nameInput = window.prompt("Venue name:", fallback);
+      if (nameInput === null) return;
+      const name = normalizeMarkName(nameInput, fallback);
+      if (name === venue.name) return;
+      venue.name = name;
+      venue.updatedAt = Date.now();
+      saveVenues(state.venues);
+      if (state.venue && state.venue.id === venue.id) {
+        updateCourseUi();
+      }
+      renderVenueList();
+    });
+  }
+
   if (els.closeVenueModal) {
     els.closeVenueModal.addEventListener("click", () => {
       const returnToRace = venueSelectionReturnToRace;
@@ -2267,31 +2452,67 @@ function bindStarterEvents() {
     });
   }
 
+  if (els.confirmStartLine) {
+    els.confirmStartLine.addEventListener("click", () => {
+      if (!state.race || !state.selectedStartLineId) return;
+      state.race.startLineId = state.selectedStartLineId;
+      state.race.routeStartLineId = state.selectedStartLineId;
+      syncDerivedRaceState();
+      persistVenueAndRace();
+      updateCourseUi();
+      closeStartLineModal();
+    });
+  }
+
+  if (els.confirmFinishLine) {
+    els.confirmFinishLine.addEventListener("click", () => {
+      if (!state.race || !state.selectedFinishLineId) return;
+      state.race.finishLineId = state.selectedFinishLineId;
+      state.race.routeFinishLineId = state.selectedFinishLineId;
+      syncDerivedRaceState();
+      persistVenueAndRace();
+      updateCourseUi();
+      closeFinishLineModal();
+    });
+  }
+
+  if (els.closeStartLine) {
+    els.closeStartLine.addEventListener("click", () => {
+      closeStartLineModal();
+    });
+  }
+
+  if (els.closeFinishLine) {
+    els.closeFinishLine.addEventListener("click", () => {
+      closeFinishLineModal();
+    });
+  }
+
   if (els.openVenueMarks) {
     els.openVenueMarks.addEventListener("click", () => {
       closeVenueModal();
-      window.location.href = getMapHref("venue-marks");
+      window.location.href = getMapHref("venue-marks", { returnModal: "venue" });
     });
   }
 
   if (els.openLines) {
     els.openLines.addEventListener("click", () => {
       closeVenueModal();
-      window.location.href = getMapHref("venue-lines");
+      window.location.href = getMapHref("venue-lines", { returnModal: "venue" });
     });
   }
 
   if (els.selectStartLine) {
     els.selectStartLine.addEventListener("click", () => {
       closeCourseModal();
-      window.location.href = getMapHref("race-start-line");
+      openStartLineModal({ returnModal: "course" });
     });
   }
 
   if (els.selectFinishLine) {
     els.selectFinishLine.addEventListener("click", () => {
       closeCourseModal();
-      window.location.href = getMapHref("race-finish-line");
+      openFinishLineModal({ returnModal: "course" });
     });
   }
 
@@ -2299,14 +2520,14 @@ function bindStarterEvents() {
     els.openRouteMap.addEventListener("click", () => {
       if (!ensureRouteLinesForRoute()) return;
       closeCourseModal();
-      window.location.href = getMapHref("race-route");
+      window.location.href = getMapHref("race-route", { returnModal: "course" });
     });
   }
 
   if (els.openRaceMap) {
     els.openRaceMap.addEventListener("click", () => {
       closeCourseModal();
-      window.location.href = getMapHref("race-view");
+      window.location.href = getMapHref("race-view", { returnModal: "course" });
     });
   }
 
@@ -2614,4 +2835,5 @@ export {
   syncStarterInputs,
   updateCourseUi,
   updateStartDisplay,
+  openSetupModal,
 };

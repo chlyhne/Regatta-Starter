@@ -62,6 +62,7 @@ export const modalsView = `
     <div class="hint">Marks</div>
     <div id="mark-count" class="value">0</div>
     <div class="row stack">
+      <button id="rename-venue" class="ghost">Rename venue</button>
       <button id="open-venue-marks" class="ghost">Edit marks</button>
       <button id="open-lines" class="ghost">Edit lines</button>
     </div>
@@ -101,6 +102,28 @@ export const modalsView = `
     </div>
     <div class="modal-actions">
       <button id="close-course-modal" class="ghost">Done</button>
+    </div>
+  </div>
+</section>
+
+<section id="start-line-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Start line</h2>
+    <div id="start-line-list" class="modal-list"></div>
+    <div class="modal-actions">
+      <button id="confirm-start-line">Use line</button>
+      <button id="close-start-line" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section id="finish-line-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Finish line</h2>
+    <div id="finish-line-list" class="modal-list"></div>
+    <div class="modal-actions">
+      <button id="confirm-finish-line">Use line</button>
+      <button id="close-finish-line" class="ghost">Cancel</button>
     </div>
   </div>
 </section>
