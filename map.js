@@ -9,6 +9,7 @@ import {
   createRace,
   getVenueById,
   getRaceById,
+  normalizeRouteEntry,
   getLineById,
   getLineDisplayName,
   getLineRoles,
@@ -53,7 +54,6 @@ const els = {
   undoRoute: document.getElementById("undo-route-mark"),
   clearRoute: document.getElementById("clear-route"),
   openMarkList: document.getElementById("open-mark-list"),
-  nextStep: document.getElementById("map-next-step"),
   closeMap: document.getElementById("close-map"),
   mapStatus: document.getElementById("map-status"),
   mapCaption: document.getElementById("map-caption"),
@@ -202,12 +202,12 @@ function getModeCaption(mode) {
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
       }
-      return "Tap a mark, then add it to the course.";
+      return "Tap marks to add or remove them from the course.";
     case MODES.RACE_ROUTE:
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
       }
-      return "Tap a mark, then add it to the course.";
+      return "Tap marks to add or remove them from the course.";
     case MODES.RACE_START_LINE:
       return "Tap starboard mark, then port mark to select a start line.";
     case MODES.RACE_FINISH_LINE:
@@ -481,6 +481,37 @@ function getSelectedLine() {
   const lines = getLinesForType(type);
   if (!lines.length || !state.selectedLineId) return null;
   return getLineById(lines, state.selectedLineId);
+}
+
+function routesMatch(left, right) {
+  const leftRoute = Array.isArray(left)
+    ? left.map(normalizeRouteEntry).filter(Boolean)
+    : [];
+  const rightRoute = Array.isArray(right)
+    ? right.map(normalizeRouteEntry).filter(Boolean)
+    : [];
+  if (leftRoute.length !== rightRoute.length) return false;
+  return leftRoute.every((entry, index) => {
+    const compare = rightRoute[index];
+    return (
+      compare &&
+      entry.markId === compare.markId &&
+      entry.rounding === compare.rounding &&
+      Boolean(entry.manual) === Boolean(compare.manual)
+    );
+  });
+}
+
+function shouldSyncRaceRouteFromDefault() {
+  if (!isVenueSetupMode()) return false;
+  if (!state.race || !state.venue) return false;
+  if (state.race.venueId !== state.venue.id) return false;
+  return routesMatch(state.race.route, state.venue.defaultRoute);
+}
+
+function syncRaceRouteFromDefault() {
+  if (!state.race || !state.venue) return;
+  state.race.route = (state.venue.defaultRoute || []).map((entry) => ({ ...entry }));
 }
 
 function getLinesForType(type) {
@@ -909,6 +940,35 @@ function updateLineEditUi() {
   }
 }
 
+function toggleRouteMark(mark) {
+  if (!mark || !isRouteMode()) return;
+  if (!hasRouteStartLine()) {
+    window.alert("Select a start line first.");
+    return;
+  }
+  const syncRace = shouldSyncRaceRouteFromDefault();
+  const route = ensureRouteEntries();
+  if (!route) return;
+  const index = route.findIndex((entry) => entry.markId === mark.id);
+  if (index >= 0) {
+    route.splice(index, 1);
+  } else {
+    route.push({
+      markId: mark.id,
+      rounding: "port",
+      manual: false,
+    });
+  }
+  if (!isVenueSetupMode()) {
+    syncVenueDefaultRoute();
+  } else if (syncRace) {
+    syncRaceRouteFromDefault();
+  }
+  saveData();
+  updateMapOverlays();
+  syncRouteButtons();
+}
+
 function trimLineToMark(mark) {
   if (!state.map || !state.venue) return;
   const line = getSelectedLine();
@@ -1116,6 +1176,11 @@ function renderMarkList() {
     nameSpan.textContent = mark.name;
     item.appendChild(nameSpan);
     item.addEventListener("click", () => {
+      if (isRouteMode()) {
+        toggleRouteMark(mark);
+        closeMarkListModal();
+        return;
+      }
       closeMarkListModal();
       openMarkEditModal(mark.id);
     });
@@ -1181,7 +1246,7 @@ function updateModeUi() {
   const markCount = state.venue?.marks?.length || 0;
   const hasMarks = markCount > 0;
   const hasRouteStart = hasRouteStartLine();
-  const showMarkList = !readOnly && (isVenueMarksMode() || isRouteMode());
+  const showMarkList = !readOnly && isVenueMarksMode();
   const showLineList = !readOnly && (isLineEditMode() || isLineSelectMode());
 
   if (els.mapTabs) {
@@ -1220,19 +1285,7 @@ function updateModeUi() {
   setButtonVisible(els.undoRoute, !readOnly && isRouteMode());
   setButtonVisible(els.clearRoute, !readOnly && isRouteMode());
 
-  if (els.nextStep) {
-    if (!isSetup || venueStep === VENUE_STEPS.ROUTE) {
-      setButtonVisible(els.nextStep, false);
-    } else if (venueStep === VENUE_STEPS.MARKS) {
-      setButtonVisible(els.nextStep, true);
-      els.nextStep.textContent = "Next: Lines";
-      els.nextStep.disabled = !hasMarks;
-    } else {
-      setButtonVisible(els.nextStep, true);
-      els.nextStep.textContent = "Next: Course";
-      els.nextStep.disabled = !hasRouteStart;
-    }
-  }
+  // No "Next" button; navigation uses tabs only.
 
   if (els.mapCrosshair) {
     els.mapCrosshair.style.display = isVenueMarksMode() ? "block" : "none";
@@ -1486,6 +1539,7 @@ function updateMapOverlays() {
       fillColor,
       fillOpacity: 1,
       interactive: true,
+      className: `map-mark map-mark-${mark.id}`,
       pane: "markPane",
     }).addTo(state.map);
     marker.on("click", () => {
@@ -1494,9 +1548,13 @@ function updateMapOverlays() {
       }
       if (isLineMode()) {
         handleLineMarkSelection(mark);
-      } else {
-        openMarkEditModal(mark.id);
+        return;
       }
+      if (isRouteMode()) {
+        toggleRouteMark(mark);
+        return;
+      }
+      openMarkEditModal(mark.id);
     });
     state.markMarkers.push(marker);
 
@@ -1663,12 +1721,12 @@ function initMap() {
   state.map.createPane("markPane");
   const markPane = state.map.getPane("markPane");
   if (markPane) {
-    markPane.style.zIndex = "350";
+    markPane.style.zIndex = "650";
   }
   state.map.createPane("labelPane");
   const labelPane = state.map.getPane("labelPane");
   if (labelPane) {
-    labelPane.style.zIndex = "360";
+    labelPane.style.zIndex = "700";
     labelPane.style.pointerEvents = "none";
   }
 
@@ -1818,6 +1876,7 @@ function bindEvents() {
         window.alert("Select a start line first.");
         return;
       }
+      const syncRace = shouldSyncRaceRouteFromDefault();
       const mark = getSelectedMark();
       if (!mark) return;
       const route = ensureRouteEntries();
@@ -1829,6 +1888,8 @@ function bindEvents() {
       });
       if (!isVenueSetupMode()) {
         syncVenueDefaultRoute();
+      } else if (syncRace) {
+        syncRaceRouteFromDefault();
       }
       saveData();
       updateMapOverlays();
@@ -1839,11 +1900,14 @@ function bindEvents() {
   if (els.undoRoute) {
     els.undoRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
+      const syncRace = shouldSyncRaceRouteFromDefault();
       const route = ensureRouteEntries();
       if (!route || !route.length) return;
       route.pop();
       if (!isVenueSetupMode()) {
         syncVenueDefaultRoute();
+      } else if (syncRace) {
+        syncRaceRouteFromDefault();
       }
       saveData();
       updateMapOverlays();
@@ -1854,6 +1918,7 @@ function bindEvents() {
   if (els.clearRoute) {
     els.clearRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
+      const syncRace = shouldSyncRaceRouteFromDefault();
       const route = ensureRouteEntries();
       if (!route || !route.length) return;
       const confirmed = window.confirm("Clear course?");
@@ -1863,6 +1928,9 @@ function bindEvents() {
       } else if (state.race) {
         state.race.route = [];
         syncVenueDefaultRoute();
+      }
+      if (isVenueSetupMode() && syncRace) {
+        syncRaceRouteFromDefault();
       }
       saveData();
       updateMapOverlays();
@@ -1905,17 +1973,6 @@ function bindEvents() {
     els.tabRoute.addEventListener("click", () => {
       if (els.tabRoute.disabled) return;
       setVenueStep(VENUE_STEPS.ROUTE);
-    });
-  }
-
-  if (els.nextStep) {
-    els.nextStep.addEventListener("click", () => {
-      const step = getVenueStep();
-      if (step === VENUE_STEPS.MARKS) {
-        setVenueStep(VENUE_STEPS.LINES);
-      } else if (step === VENUE_STEPS.LINES) {
-        setVenueStep(VENUE_STEPS.ROUTE);
-      }
     });
   }
 

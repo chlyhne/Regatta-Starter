@@ -230,12 +230,9 @@ test("plan edit venue updates default course", async ({ page }) => {
   const routeTab = page.locator("#tab-route");
   await expect(routeTab).toBeEnabled();
   await routeTab.click();
-  await page.click("#open-mark-list");
-  await expect(page.locator("#mark-list-modal")).toHaveAttribute("aria-hidden", "false");
-  await page.locator("#map-mark-list").getByRole("button", { name: "A" }).click();
-  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
-  await page.click("#mark-add-route");
-  await page.click("#close-mark-edit");
+  await expect(page.locator(".map-mark-mark-1")).toBeVisible();
+  await page.click(".map-mark-mark-1");
+  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "true");
 
   await page.click("#close-map");
   await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");

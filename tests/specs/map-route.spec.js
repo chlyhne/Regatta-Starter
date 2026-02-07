@@ -65,11 +65,9 @@ test("map route editing adds and clears marks", async ({ page }) => {
   await seedStorage(page, { settings, venues, races });
   await page.goto("/map.html?mode=race-route");
 
-  await page.click("#open-mark-list");
-  await page.click('.map-mark-item:has-text("A")');
-  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
-  await expect(page.locator("#mark-add-route")).toBeEnabled();
-  await page.click("#mark-add-route");
+  await expect(page.locator(".map-mark-mark-a")).toBeVisible();
+  await page.click(".map-mark-mark-a");
+  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "true");
 
   const routeLength = await page.evaluate(() => {
     const racesRaw = localStorage.getItem("racetimer-races");
@@ -78,9 +76,7 @@ test("map route editing adds and clears marks", async ({ page }) => {
   });
   expect(routeLength).toBe(1);
 
-  await page.click("#close-mark-edit");
-  await expect(page.locator("#undo-route-mark")).toBeEnabled();
-  await page.click("#undo-route-mark");
+  await page.click(".map-mark-mark-a");
 
   const clearedLength = await page.evaluate(() => {
     const racesRaw = localStorage.getItem("racetimer-races");
@@ -89,10 +85,19 @@ test("map route editing adds and clears marks", async ({ page }) => {
   });
   expect(clearedLength).toBe(0);
 
-  await page.click("#open-mark-list");
-  await page.click('.map-mark-item:has-text("A")');
-  await page.click("#mark-add-route");
-  await page.click("#close-mark-edit");
+  await page.click(".map-mark-mark-a");
+
+  await expect(page.locator("#undo-route-mark")).toBeEnabled();
+  await page.click("#undo-route-mark");
+
+  const afterUndoLength = await page.evaluate(() => {
+    const racesRaw = localStorage.getItem("racetimer-races");
+    const parsed = racesRaw ? JSON.parse(racesRaw) : [];
+    return parsed[0]?.route?.length || 0;
+  });
+  expect(afterUndoLength).toBe(0);
+
+  await page.click(".map-mark-mark-a");
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#clear-route");
