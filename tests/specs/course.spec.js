@@ -85,7 +85,11 @@ test("rounding modal toggles rounding for the route", async ({ page }) => {
   await page.goto("/#setup");
   await expect(page.locator("#setup-view")).toBeVisible();
 
-  await page.click("#open-rounding");
+  await page.click("#open-course");
+  await expect(page.locator("#course-modal")).toBeVisible();
+  const roundingButton = page.locator("#open-rounding");
+  await roundingButton.scrollIntoViewIfNeeded();
+  await roundingButton.click();
   const markButton = page.locator(
     '.course-mark-btn:has(.mark-name:has-text("A"))'
   );
@@ -141,6 +145,8 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
   await page.goto("/#setup");
   await expect(page.locator("#setup-view")).toBeVisible();
 
+  await page.click("#open-course");
+  await expect(page.locator("#course-modal")).toBeVisible();
   await page.click("#open-route");
   await expect(page.locator(".course-key", { hasText: "A" })).toBeVisible();
   await expect(page.locator(".course-key", { hasText: "B" })).toBeVisible();

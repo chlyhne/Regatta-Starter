@@ -213,6 +213,7 @@ body {
   display: grid;
   gap: 16px;
   max-height: 80vh;
+  overflow-y: auto;
 }
 
 @supports (height: 100dvh) {
