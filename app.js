@@ -81,6 +81,7 @@ import {
   initStarterUi,
   bindStarterEvents,
   syncStarterInputs,
+  updateCourseUi,
   updateStartDisplay,
 } from "./features/starter/starter.js";
 import {
@@ -1469,7 +1470,7 @@ initReplay({
   onStop: resumeFromReplay,
   onStatus: handleReplayStatus,
 });
-initSettingsView({ saveSettings, setView, updateStartDisplay });
+initSettingsView({ saveSettings, setView, updateStartDisplay, updateCourseUi });
 initStarter({
   saveSettings,
   updateInputs,

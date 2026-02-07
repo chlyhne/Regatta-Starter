@@ -39,10 +39,11 @@ export const modalsView = `
 
 <section id="race-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
-    <h2>Select Race</h2>
+    <h2>Races</h2>
     <div id="race-list" class="modal-list"></div>
     <div class="modal-actions">
       <button id="confirm-race">Use race</button>
+      <button id="new-race" class="ghost">New race</button>
       <button id="delete-race" class="ghost danger">Delete race</button>
       <button id="close-race-modal" class="ghost">Cancel</button>
     </div>
@@ -51,12 +52,50 @@ export const modalsView = `
 
 <section id="venue-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
-    <h2>Select Venue</h2>
+    <h2>Venues</h2>
     <div id="venue-list" class="modal-list"></div>
+    <div class="hint">Marks</div>
+    <div id="mark-count" class="value">0</div>
+    <div class="row stack">
+      <button id="open-venue-marks" class="ghost">Edit marks</button>
+      <button id="open-lines" class="ghost">Edit lines</button>
+    </div>
     <div class="modal-actions">
       <button id="confirm-venue">Use venue</button>
       <button id="delete-venue" class="ghost danger">Delete venue</button>
       <button id="close-venue-modal" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section id="course-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Courses</h2>
+    <div class="hint">Start line</div>
+    <div id="start-line-status" class="value">NO LINE</div>
+    <div class="row stack">
+      <button id="select-start-line" class="ghost">Select start line</button>
+    </div>
+    <div class="hint">Finish line</div>
+    <div id="finish-status" class="value">NO LINE</div>
+    <div class="row stack">
+      <button id="select-finish-line" class="ghost">Select finish line</button>
+    </div>
+    <button id="course-toggle" class="check-toggle" type="button" aria-pressed="false">
+      <span class="check-label">Use course route</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
+    <div class="hint">Route</div>
+    <div id="route-count" class="value">NO ROUTE</div>
+    <div class="row stack">
+      <button id="open-route" class="ghost">Edit route</button>
+      <button id="open-rounding" class="ghost">Rounding sides</button>
+      <button id="clear-route" class="ghost">Clear route</button>
+      <button id="open-route-map" class="ghost">Edit route on map</button>
+      <button id="open-race-map" class="ghost">View race map</button>
+    </div>
+    <div class="modal-actions">
+      <button id="close-course-modal" class="ghost">Done</button>
     </div>
   </div>
 </section>

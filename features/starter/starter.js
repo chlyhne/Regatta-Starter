@@ -35,6 +35,9 @@ import {
 } from "./race.js";
 import {
   formatClockTime,
+  formatDistanceValue,
+  formatUnitLabel,
+  getDistanceUnitMeta,
   formatTimeInput,
   formatTimeRemainingHMSFull,
   splitDurationSeconds,
@@ -504,6 +507,15 @@ function getFinishLine() {
   return null;
 }
 
+function getFinishLineMidpoint() {
+  const finish = getFinishLine();
+  if (!finish) return null;
+  return {
+    lat: (finish.a.lat + finish.b.lat) / 2,
+    lon: (finish.a.lon + finish.b.lon) / 2,
+  };
+}
+
 function hasFinishLine() {
   return Boolean(getFinishLine());
 }
@@ -559,6 +571,46 @@ function getStartLineStatusText() {
 function getFinishLineStatusText() {
   const name = getFinishLineDisplayName();
   return name || "NO LINE";
+}
+
+function getCourseLengthStatus() {
+  const startMid = getStartLineMidpoint();
+  if (!startMid) {
+    return { value: null, text: "NO LINE" };
+  }
+  const marks = getCourseMarks()
+    .map((mark) => ({ lat: mark.lat, lon: mark.lon }))
+    .filter(
+      (mark) => Number.isFinite(mark.lat) && Number.isFinite(mark.lon)
+    );
+  const finishMid = getFinishLineMidpoint();
+  const points = [startMid, ...marks];
+  if (finishMid) {
+    points.push(finishMid);
+  }
+  if (points.length < 2) {
+    return { value: null, text: "NO ROUTE" };
+  }
+  const origin = points[0];
+  let total = 0;
+  let prev = toMeters(origin, origin);
+  for (let i = 1; i < points.length; i += 1) {
+    const next = toMeters(points[i], origin);
+    if (
+      !Number.isFinite(prev.x) ||
+      !Number.isFinite(prev.y) ||
+      !Number.isFinite(next.x) ||
+      !Number.isFinite(next.y)
+    ) {
+      return { value: null, text: "--" };
+    }
+    total += Math.hypot(next.x - prev.x, next.y - prev.y);
+    prev = next;
+  }
+  if (!Number.isFinite(total)) {
+    return { value: null, text: "--" };
+  }
+  return { value: total, text: null };
 }
 
 function computeTurnSide(prev, current, next) {
@@ -636,6 +688,22 @@ function updateCourseUi() {
   }
   if (els.finishStatus) {
     els.finishStatus.textContent = getFinishLineStatusText();
+  }
+  if (els.statusCourseLength) {
+    const lengthStatus = getCourseLengthStatus();
+    const unitLabel = formatUnitLabel(getDistanceUnitMeta().label);
+    const hasLength = Number.isFinite(lengthStatus.value);
+    const valueText = hasLength
+      ? formatDistanceValue(lengthStatus.value)
+      : lengthStatus.text || "--";
+    if (els.statusCourseLengthValue) {
+      els.statusCourseLengthValue.textContent = valueText;
+    } else {
+      els.statusCourseLength.textContent = valueText;
+    }
+    if (els.statusCourseLengthUnit) {
+      els.statusCourseLengthUnit.textContent = hasLength ? unitLabel : "";
+    }
   }
   if (els.openRoute) {
     els.openRoute.disabled = markCount === 0 || !routeLinesReady;
@@ -868,6 +936,21 @@ function closeVenueModal() {
   document.body.classList.remove("modal-open");
   if (els.venueModal) {
     els.venueModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openCourseModal() {
+  updateCourseUi();
+  document.body.classList.add("modal-open");
+  if (els.courseModal) {
+    els.courseModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeCourseModal() {
+  document.body.classList.remove("modal-open");
+  if (els.courseModal) {
+    els.courseModal.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -1907,6 +1990,7 @@ function bindStarterEvents() {
       syncVenueDefaultRoute();
       persistVenueAndRace();
       updateCourseUi();
+      closeRaceModal();
     });
   }
 
@@ -1919,6 +2003,12 @@ function bindStarterEvents() {
   if (els.selectVenue) {
     els.selectVenue.addEventListener("click", () => {
       openVenueModal();
+    });
+  }
+
+  if (els.openCourse) {
+    els.openCourse.addEventListener("click", () => {
+      openCourseModal();
     });
   }
 
@@ -2055,26 +2145,36 @@ function bindStarterEvents() {
     });
   }
 
+  if (els.closeCourseModal) {
+    els.closeCourseModal.addEventListener("click", () => {
+      closeCourseModal();
+    });
+  }
+
   if (els.openVenueMarks) {
     els.openVenueMarks.addEventListener("click", () => {
+      closeVenueModal();
       window.location.href = getMapHref("venue-marks");
     });
   }
 
   if (els.openLines) {
     els.openLines.addEventListener("click", () => {
+      closeVenueModal();
       window.location.href = getMapHref("venue-lines");
     });
   }
 
   if (els.selectStartLine) {
     els.selectStartLine.addEventListener("click", () => {
+      closeCourseModal();
       window.location.href = getMapHref("race-start-line");
     });
   }
 
   if (els.selectFinishLine) {
     els.selectFinishLine.addEventListener("click", () => {
+      closeCourseModal();
       window.location.href = getMapHref("race-finish-line");
     });
   }
@@ -2082,12 +2182,14 @@ function bindStarterEvents() {
   if (els.openRouteMap) {
     els.openRouteMap.addEventListener("click", () => {
       if (!ensureRouteLinesForRoute()) return;
+      closeCourseModal();
       window.location.href = getMapHref("race-route");
     });
   }
 
   if (els.openRaceMap) {
     els.openRaceMap.addEventListener("click", () => {
+      closeCourseModal();
       window.location.href = getMapHref("race-view");
     });
   }
@@ -2320,6 +2422,7 @@ function bindStarterEvents() {
   if (els.openRoute) {
     els.openRoute.addEventListener("click", () => {
       if (!ensureRouteLinesForRoute()) return;
+      closeCourseModal();
       openCourseKeyboardModal();
     });
   }
@@ -2327,6 +2430,7 @@ function bindStarterEvents() {
   if (els.openRounding) {
     els.openRounding.addEventListener("click", () => {
       if (!ensureRouteLinesForRoute()) return;
+      closeCourseModal();
       openCourseMarksModal();
     });
   }
@@ -2392,5 +2496,6 @@ export {
   initStarterUi,
   bindStarterEvents,
   syncStarterInputs,
+  updateCourseUi,
   updateStartDisplay,
 };

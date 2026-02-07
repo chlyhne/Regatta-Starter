@@ -33,6 +33,7 @@ Instructions for coding agents working in this repo.
 
 ## Debug and QA
 - Debug mode is optional and enabled via `?debug=true`.
+- When asked to debug and a bug is found, add a new test that would catch that class of bug across the app, unless such a test already exists.
 
 ## Communication
 - When presenting options, avoid repeating the same set of options in multiple lists.

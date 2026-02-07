@@ -29,6 +29,15 @@ export const setupView = `
 
   <section class="panel">
     <h2 class="panel-title">My Race</h2>
+    <div class="hint">Race</div>
+    <div id="race-name" class="value">--</div>
+    <div class="hint">Venue</div>
+    <div id="venue-name" class="value">--</div>
+    <div class="hint">Course length</div>
+    <div id="status-course-length" class="value value-split">
+      <span id="status-course-length-value">--</span>
+      <span id="status-course-length-unit" class="value-unit">[m]</span>
+    </div>
     <div class="hint">Line name</div>
     <div id="status-line-name" class="value">--</div>
     <div class="hint">Distance to line</div>
@@ -54,51 +63,22 @@ export const setupView = `
 
   <section class="panel">
     <h2>Race</h2>
-    <div class="hint">Race</div>
-    <div id="race-name" class="value">--</div>
-    <div class="hint">Venue</div>
-    <div id="venue-name" class="value">--</div>
     <div class="row stack">
-      <button id="new-race" class="ghost">New race</button>
-      <button id="select-race" class="ghost">Select race</button>
-      <button id="select-venue" class="ghost">Select venue</button>
+      <button id="select-race" class="ghost">Races</button>
     </div>
   </section>
 
   <section class="panel">
     <h2>Venue</h2>
-    <div class="hint">Marks</div>
-    <div id="mark-count" class="value">0</div>
     <div class="row stack">
-      <button id="open-venue-marks" class="ghost">Edit marks</button>
-      <button id="open-lines" class="ghost">Edit lines</button>
+      <button id="select-venue" class="ghost">Venues</button>
     </div>
   </section>
 
   <section class="panel">
     <h2>Course</h2>
-    <div class="hint">Start line</div>
-    <div id="start-line-status" class="value">NO LINE</div>
     <div class="row stack">
-      <button id="select-start-line" class="ghost">Select start line</button>
-    </div>
-    <div class="hint">Finish line</div>
-    <div id="finish-status" class="value">NO LINE</div>
-    <div class="row stack">
-      <button id="select-finish-line" class="ghost">Select finish line</button>
-    </div>
-    <button id="course-toggle" class="check-toggle" type="button" aria-pressed="false">
-      <span class="check-label">Use course route</span>
-      <span class="check-box" aria-hidden="true"></span>
-    </button>
-    <div class="hint">Route</div>
-    <div id="route-count" class="value">NO ROUTE</div>
-    <div class="row stack">
-      <button id="open-route" class="ghost">Edit route</button>
-      <button id="open-rounding" class="ghost">Rounding sides</button>
-      <button id="clear-route" class="ghost">Clear route</button>
-      <button id="open-route-map" class="ghost">Edit route on map</button>
-      <button id="open-race-map" class="ghost">View race map</button>
+      <button id="open-course" class="ghost">Courses</button>
     </div>
   </section>
 

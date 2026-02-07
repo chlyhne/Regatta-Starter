@@ -20,6 +20,7 @@ let settingsDeps = {
   saveSettings: null,
   setView: null,
   updateStartDisplay: null,
+  updateCourseUi: null,
 };
 
 function initSettingsView(deps = {}) {
@@ -256,6 +257,9 @@ function setDistanceUnit(unit) {
   syncBoatLengthInput();
   updateLineProjection();
   updateGPSDisplay();
+  if (settingsDeps.updateCourseUi) {
+    settingsDeps.updateCourseUi();
+  }
 }
 
 function syncSettingsInputs() {
