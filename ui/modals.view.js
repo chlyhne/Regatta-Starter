@@ -41,6 +41,11 @@ export const modalsView = `
   <div class="modal-panel">
     <h2>Races</h2>
     <div id="race-list" class="modal-list"></div>
+    <div class="row stack">
+      <button id="edit-race-venue" class="ghost">Venue</button>
+      <button id="edit-race-start-line" class="ghost">Start line</button>
+      <button id="edit-race-course" class="ghost">Course</button>
+    </div>
     <div class="modal-actions">
       <button id="confirm-race">Use race</button>
       <button id="new-race" class="ghost">New race</button>

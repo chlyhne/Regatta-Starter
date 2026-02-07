@@ -49,6 +49,8 @@ import { trimTrailingZeros } from "../../core/common.js";
 import { setTrackMode } from "./track.js";
 
 let countdownPickerLive = false;
+let venueSelectionTargetRaceId = null;
+let venueSelectionReturnToRace = false;
 let starterDeps = {
   saveSettings: null,
   updateInputs: null,
@@ -907,8 +909,50 @@ function closeCourseKeyboardModal() {
   }
 }
 
-function openRaceModal() {
-  state.selectedRaceId = state.activeRaceId;
+function getSelectedRace() {
+  if (!state.selectedRaceId) return null;
+  return getRaceById(state.races, state.selectedRaceId);
+}
+
+function activateRaceSelection(race) {
+  if (!race) return false;
+  const venue = getVenueById(state.venues, race.venueId) || state.venue;
+  if (!venue) return false;
+  state.race = race;
+  state.venue = venue;
+  state.activeRaceId = race.id;
+  state.activeVenueId = venue.id;
+  state.selectedRaceId = race.id;
+  syncDerivedRaceState();
+  syncStartFromRace();
+  syncStartUi();
+  persistVenueAndRace();
+  updateCourseUi();
+  return true;
+}
+
+function assignVenueToRace(race, venue) {
+  if (!race || !venue) return false;
+  race.venueId = venue.id;
+  state.race = race;
+  state.venue = venue;
+  state.activeRaceId = race.id;
+  state.activeVenueId = venue.id;
+  state.selectedRaceId = race.id;
+  migrateLineSelections(state.venues, state.races);
+  pruneRouteEntries();
+  syncDerivedRaceState();
+  syncStartFromRace();
+  syncStartUi();
+  persistVenueAndRace();
+  updateCourseUi();
+  return true;
+}
+
+function openRaceModal(selectedRaceId = state.activeRaceId) {
+  const races = Array.isArray(state.races) ? state.races : [];
+  const hasSelected = races.some((race) => race.id === selectedRaceId);
+  state.selectedRaceId = hasSelected ? selectedRaceId : state.activeRaceId;
   renderRaceList();
   document.body.classList.add("modal-open");
   if (els.raceModal) {
@@ -923,8 +967,15 @@ function closeRaceModal() {
   }
 }
 
-function openVenueModal() {
-  state.selectedVenueId = state.activeVenueId;
+function openVenueModal(options = {}) {
+  const {
+    raceId = null,
+    selectedVenueId = state.activeVenueId,
+    returnToRaceModal = false,
+  } = options;
+  venueSelectionTargetRaceId = raceId;
+  venueSelectionReturnToRace = returnToRaceModal;
+  state.selectedVenueId = selectedVenueId || state.activeVenueId;
   renderVenueList();
   document.body.classList.add("modal-open");
   if (els.venueModal) {
@@ -965,6 +1016,9 @@ function renderRaceList() {
     els.raceList.appendChild(empty);
     if (els.confirmRace) els.confirmRace.disabled = true;
     if (els.deleteRace) els.deleteRace.disabled = true;
+    if (els.editRaceVenue) els.editRaceVenue.disabled = true;
+    if (els.editRaceStartLine) els.editRaceStartLine.disabled = true;
+    if (els.editRaceCourse) els.editRaceCourse.disabled = true;
     return;
   }
   races.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -987,6 +1041,9 @@ function renderRaceList() {
   });
   if (els.confirmRace) els.confirmRace.disabled = !state.selectedRaceId;
   if (els.deleteRace) els.deleteRace.disabled = !state.selectedRaceId;
+  if (els.editRaceVenue) els.editRaceVenue.disabled = !state.selectedRaceId;
+  if (els.editRaceStartLine) els.editRaceStartLine.disabled = !state.selectedRaceId;
+  if (els.editRaceCourse) els.editRaceCourse.disabled = !state.selectedRaceId;
 }
 
 function renderVenueList() {
@@ -2006,6 +2063,39 @@ function bindStarterEvents() {
     });
   }
 
+  if (els.editRaceVenue) {
+    els.editRaceVenue.addEventListener("click", () => {
+      const race = getSelectedRace();
+      if (!race) return;
+      closeRaceModal();
+      openVenueModal({
+        raceId: race.id,
+        selectedVenueId: race.venueId,
+        returnToRaceModal: true,
+      });
+    });
+  }
+
+  if (els.editRaceStartLine) {
+    els.editRaceStartLine.addEventListener("click", () => {
+      const race = getSelectedRace();
+      if (!race) return;
+      if (!activateRaceSelection(race)) return;
+      closeRaceModal();
+      window.location.href = getMapHref("race-start-line");
+    });
+  }
+
+  if (els.editRaceCourse) {
+    els.editRaceCourse.addEventListener("click", () => {
+      const race = getSelectedRace();
+      if (!race) return;
+      if (!activateRaceSelection(race)) return;
+      closeRaceModal();
+      openCourseModal();
+    });
+  }
+
   if (els.openCourse) {
     els.openCourse.addEventListener("click", () => {
       openCourseModal();
@@ -2017,17 +2107,7 @@ function bindStarterEvents() {
       if (!state.selectedRaceId) return;
       const race = getRaceById(state.races, state.selectedRaceId);
       if (!race) return;
-      const venue = getVenueById(state.venues, race.venueId) || state.venue;
-      if (!venue) return;
-      state.race = race;
-      state.venue = venue;
-      state.activeRaceId = race.id;
-      state.activeVenueId = venue.id;
-      syncDerivedRaceState();
-      syncStartFromRace();
-      syncStartUi();
-      persistVenueAndRace();
-      updateCourseUi();
+      if (!activateRaceSelection(race)) return;
       closeRaceModal();
     });
   }
@@ -2081,6 +2161,21 @@ function bindStarterEvents() {
       if (!state.selectedVenueId) return;
       const venue = getVenueById(state.venues, state.selectedVenueId);
       if (!venue) return;
+      if (venueSelectionTargetRaceId) {
+        const raceId = venueSelectionTargetRaceId;
+        const returnToRace = venueSelectionReturnToRace;
+        venueSelectionTargetRaceId = null;
+        venueSelectionReturnToRace = false;
+        const race = getRaceById(state.races, raceId);
+        if (race) {
+          assignVenueToRace(race, venue);
+        }
+        closeVenueModal();
+        if (returnToRace) {
+          openRaceModal(raceId);
+        }
+        return;
+      }
       const racesForVenue = state.races.filter((race) => race.venueId === venue.id);
       racesForVenue.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       let race = racesForVenue[0];
@@ -2097,7 +2192,14 @@ function bindStarterEvents() {
       syncStartUi();
       persistVenueAndRace();
       updateCourseUi();
+      const returnToRace = venueSelectionReturnToRace;
+      const returnRaceId = venueSelectionTargetRaceId;
+      venueSelectionTargetRaceId = null;
+      venueSelectionReturnToRace = false;
       closeVenueModal();
+      if (returnToRace) {
+        openRaceModal(returnRaceId);
+      }
     });
   }
 
@@ -2135,13 +2237,27 @@ function bindStarterEvents() {
       syncStartUi();
       persistVenueAndRace();
       updateCourseUi();
+      const returnToRace = venueSelectionReturnToRace;
+      const returnRaceId = venueSelectionTargetRaceId;
+      venueSelectionTargetRaceId = null;
+      venueSelectionReturnToRace = false;
       closeVenueModal();
+      if (returnToRace) {
+        openRaceModal(returnRaceId);
+      }
     });
   }
 
   if (els.closeVenueModal) {
     els.closeVenueModal.addEventListener("click", () => {
+      const returnToRace = venueSelectionReturnToRace;
+      const returnRaceId = venueSelectionTargetRaceId;
+      venueSelectionTargetRaceId = null;
+      venueSelectionReturnToRace = false;
       closeVenueModal();
+      if (returnToRace) {
+        openRaceModal(returnRaceId);
+      }
     });
   }
 
