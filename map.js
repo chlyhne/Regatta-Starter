@@ -393,17 +393,28 @@ function syncRaceLineState() {
   if (!state.race || !state.venue) return false;
   const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
   const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
-  let startLineId = state.race.startLineId || state.venue.defaultStartLineId || null;
-  let finishLineId = state.race.finishLineId || state.venue.defaultFinishLineId || null;
-  let routeStartLineId =
-    state.race.routeStartLineId || state.venue.defaultRouteStartLineId || null;
-  let routeFinishLineId =
-    state.race.routeFinishLineId || state.venue.defaultRouteFinishLineId || null;
-
-  if (startLineId && !hasLine(startLineId)) startLineId = null;
-  if (finishLineId && !hasLine(finishLineId)) finishLineId = null;
-  if (routeStartLineId && !hasLine(routeStartLineId)) routeStartLineId = null;
-  if (routeFinishLineId && !hasLine(routeFinishLineId)) routeFinishLineId = null;
+  const resolveLineId = (primary, fallback) => {
+    let lineId = primary || null;
+    if (lineId && !hasLine(lineId)) lineId = null;
+    if (!lineId && fallback) {
+      lineId = fallback;
+      if (lineId && !hasLine(lineId)) lineId = null;
+    }
+    return lineId;
+  };
+  let startLineId = resolveLineId(state.race.startLineId, state.venue.defaultStartLineId);
+  let finishLineId = resolveLineId(
+    state.race.finishLineId,
+    state.venue.defaultFinishLineId
+  );
+  let routeStartLineId = resolveLineId(
+    state.race.routeStartLineId,
+    state.venue.defaultRouteStartLineId
+  );
+  let routeFinishLineId = resolveLineId(
+    state.race.routeFinishLineId,
+    state.venue.defaultRouteFinishLineId
+  );
 
   let routeEnabled = Boolean(state.race.routeEnabled);
   if (routeEnabled) {

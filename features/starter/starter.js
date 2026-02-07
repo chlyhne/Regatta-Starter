@@ -739,17 +739,29 @@ function syncDerivedRaceState() {
   if (!state.venue || !state.race) return;
   const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
   const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  const resolveLineId = (primary, fallback) => {
+    let lineId = primary || null;
+    if (lineId && !hasLine(lineId)) lineId = null;
+    if (!lineId && fallback) {
+      lineId = fallback;
+      if (lineId && !hasLine(lineId)) lineId = null;
+    }
+    return lineId;
+  };
 
-  let startLineId = state.race.startLineId || state.venue.defaultStartLineId || null;
-  if (startLineId && !hasLine(startLineId)) startLineId = null;
-  let finishLineId = state.race.finishLineId || state.venue.defaultFinishLineId || null;
-  if (finishLineId && !hasLine(finishLineId)) finishLineId = null;
-  let routeStartLineId =
-    state.race.routeStartLineId || state.venue.defaultRouteStartLineId || null;
-  if (routeStartLineId && !hasLine(routeStartLineId)) routeStartLineId = null;
-  let routeFinishLineId =
-    state.race.routeFinishLineId || state.venue.defaultRouteFinishLineId || null;
-  if (routeFinishLineId && !hasLine(routeFinishLineId)) routeFinishLineId = null;
+  let startLineId = resolveLineId(state.race.startLineId, state.venue.defaultStartLineId);
+  let finishLineId = resolveLineId(
+    state.race.finishLineId,
+    state.venue.defaultFinishLineId
+  );
+  let routeStartLineId = resolveLineId(
+    state.race.routeStartLineId,
+    state.venue.defaultRouteStartLineId
+  );
+  let routeFinishLineId = resolveLineId(
+    state.race.routeFinishLineId,
+    state.venue.defaultRouteFinishLineId
+  );
 
   let routeEnabled = Boolean(state.race.routeEnabled);
   if (routeEnabled) {
@@ -1629,8 +1641,10 @@ function updatePlanUi() {
     els.planRouteCount.textContent = count ? String(count) : "NO COURSE";
   }
   if (els.planSetDefault) {
-    els.planSetDefault.disabled =
+    const isDefault =
       Boolean(selectedVenue?.id) && selectedVenue?.id === state.defaultVenueId;
+    els.planSetDefault.hidden = isDefault;
+    els.planSetDefault.disabled = isDefault;
   }
 }
 
@@ -1662,20 +1676,16 @@ function setQuickMode(nextMode) {
       (quickPlanRaceId && getRaceById(state.races, quickPlanRaceId)) || getLatestPlanRace();
     if (selected) {
       activateQuickPlanRace(selected);
-    } else {
-      window.alert("No planned events yet. Create one in Plan Venue.");
-      quickMode = "home";
-      const venue = getQuickHomeVenue();
-      if (venue) {
-        activateQuickHomeVenue(venue);
-      }
-      updateQuickUi();
       return;
     }
+    quickPlanRaceId = null;
+    updateQuickUi();
+    return;
   } else {
     const venue = getQuickHomeVenue();
     if (venue) {
       activateQuickHomeVenue(venue);
+      return;
     }
   }
   updateQuickUi();
@@ -3559,7 +3569,7 @@ function bindStarterEvents() {
 
   if (els.quickSelectPlan) {
     els.quickSelectPlan.addEventListener("click", () => {
-      raceModalMode = "plan-select";
+      raceModalMode = "plan-manage";
       openRaceModal(state.activeRaceId, { reset: true });
     });
   }

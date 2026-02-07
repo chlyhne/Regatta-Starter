@@ -30,15 +30,20 @@ async function expectFullPageModal(page, selector) {
 
 test("modals use full-page layout", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#plan");
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.goto("/#setup");
+  await expect(page.locator("#setup-view")).toBeVisible();
 
-  await page.click("#plan-open-plans");
+  await page.click("#open-quick-race");
+  await expect(page.locator("#quick-view")).toBeVisible();
+
+  await page.click("#quick-mode-plan");
+  await page.click("#quick-select-plan");
   await expectFullPageModal(page, "#race-modal");
   await page.click("#close-race-modal");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "true");
 
-  await page.click("#plan-select-venue");
+  await page.click("#quick-mode-home");
+  await page.click("#quick-change-venue");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   await page.click("#open-venue-marks");
   await expectFullPageModal(page, "#marks-modal");

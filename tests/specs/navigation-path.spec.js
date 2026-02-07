@@ -61,10 +61,11 @@ async function seedStorage(page) {
 
 test("course modal returns to race modal when opened from race", async ({ page }) => {
   await seedStorage(page);
-  await page.goto("/#plan");
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
-  await page.click("#plan-open-plans");
+  await page.click("#quick-mode-plan");
+  await page.click("#quick-select-plan");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "false");
 
   await page.getByRole("button", { name: /Race 1/ }).click();

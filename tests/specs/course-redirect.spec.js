@@ -14,11 +14,11 @@ async function resetStorage(page) {
 
 test("course redirects to marks map when venue has no marks", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#plan");
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.click("#plan-edit-course");
+  await page.click("#quick-edit-course");
 
   await expect(page.locator("#map-title")).toHaveText("Venue setup");
   await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
@@ -26,8 +26,8 @@ test("course redirects to marks map when venue has no marks", async ({ page }) =
 
 test("course redirects to lines map when venue has marks but no lines", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#plan");
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
   await page.evaluate(() => {
     const venuesRaw = localStorage.getItem("racetimer-venues");
@@ -45,10 +45,10 @@ test("course redirects to lines map when venue has marks but no lines", async ({
   });
 
   await page.reload();
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await expect(page.locator("#quick-view")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.click("#plan-edit-course");
+  await page.click("#quick-edit-course");
 
   await expect(page.locator("#map-title")).toHaveText("Venue setup");
   await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);

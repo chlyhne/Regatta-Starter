@@ -2,6 +2,7 @@ const { test, expect } = require("@playwright/test");
 
 async function seedStorage(page, { settings, venues, races }) {
   await page.addInitScript((payload) => {
+    if (sessionStorage.getItem("seeded") === "true") return;
     localStorage.clear();
     if (payload.settings) {
       localStorage.setItem("racetimer-settings", JSON.stringify(payload.settings));
@@ -12,6 +13,7 @@ async function seedStorage(page, { settings, venues, races }) {
     if (payload.races) {
       localStorage.setItem("racetimer-races", JSON.stringify(payload.races));
     }
+    sessionStorage.setItem("seeded", "true");
   }, { settings, venues, races });
 }
 
@@ -79,9 +81,10 @@ test("plan venue selection updates default venue", async ({ page }) => {
 
   await page.click("#plan-set-default");
   await expect(page.locator("#plan-default-venue")).toHaveText("Away Harbor");
+  await expect(page.locator("#plan-set-default")).toBeHidden();
 });
 
-test("plan edit lines opens venue setup map without marks", async ({ page }) => {
+test("plan edit venue opens venue setup map without marks", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -113,13 +116,15 @@ test("plan edit lines opens venue setup map without marks", async ({ page }) => 
   await page.goto("/#plan");
   await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#plan-edit-lines");
+  await page.click("#plan-edit-marks");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#open-venue-marks-map");
 
   await expect(page.locator("#map-title")).toHaveText("Venue setup");
   await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 });
 
-test("plan edit lines opens venue setup map and returns", async ({ page }) => {
+test("plan edit venue returns after map", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -161,15 +166,20 @@ test("plan edit lines opens venue setup map and returns", async ({ page }) => {
   await page.goto("/#plan");
   await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#plan-edit-lines");
+  await page.click("#plan-edit-marks");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+
+  await page.click("#open-venue-marks-map");
   await expect(page.locator("#map-title")).toHaveText("Venue setup");
   await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 
   await page.click("#close-map");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#close-marks-modal");
   await expect(page.locator("#plan-view")).toBeVisible();
 });
 
-test("plan default course updates route count", async ({ page }) => {
+test("plan edit venue updates default course", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -185,6 +195,7 @@ test("plan default course updates route count", async ({ page }) => {
           name: "Start line",
           starboardMarkId: "mark-2",
           portMarkId: "mark-1",
+          roles: { start: true, finish: true },
         },
       ],
       defaultStartLineId: "line-1",
@@ -211,30 +222,35 @@ test("plan default course updates route count", async ({ page }) => {
   await page.goto("/#plan");
   await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#plan-edit-course");
-  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#plan-edit-marks");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#open-venue-marks-map");
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
 
-  await page.click("#open-route");
-  await expect(page.locator("#course-keyboard-modal")).toHaveAttribute(
-    "aria-hidden",
-    "false"
-  );
-  await page.getByRole("button", { name: "Add A (port)" }).click();
-  await page.click("#course-keyboard-close");
-  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
+  const routeTab = page.locator("#tab-route");
+  await expect(routeTab).toBeEnabled();
+  await routeTab.click();
+  await page.click("#open-mark-list");
+  await expect(page.locator("#mark-list-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.locator("#map-mark-list").getByRole("button", { name: "A" }).click();
+  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#mark-add-route");
+  await page.click("#close-mark-edit");
 
-  await page.click("#close-course-modal");
-  await expect(page.locator("#plan-route-count")).toHaveText("1");
+  await page.click("#close-map");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#close-marks-modal");
 
   const storedRouteCount = await page.evaluate(() => {
     const raw = localStorage.getItem("racetimer-venues");
     const venuesState = raw ? JSON.parse(raw) : [];
-    return venuesState[0]?.defaultRoute?.length || 0;
+    const venue = venuesState.find((entry) => entry && entry.id === "venue-1");
+    return venue?.defaultRoute?.length || 0;
   });
   expect(storedRouteCount).toBe(1);
 });
 
-test("default course route map uses venue setup mode", async ({ page }) => {
+test("plan edit venue map shows venue setup tabs", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -276,18 +292,17 @@ test("default course route map uses venue setup mode", async ({ page }) => {
   await page.goto("/#plan");
   await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#plan-edit-course");
-  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
-
-  const openRouteMap = page.locator("#open-route-map");
-  await openRouteMap.scrollIntoViewIfNeeded();
-  await openRouteMap.click();
+  await page.click("#plan-edit-marks");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#open-venue-marks-map");
 
   await expect(page.locator("#map-title")).toHaveText("Venue setup");
   await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
+  await expect(page.locator("#map-tabs")).toBeVisible();
+  await expect(page.locator("#tab-lines")).toBeEnabled();
 });
 
-test("plan planned events create plan races", async ({ page }) => {
+test("planned events create plan races from quick view", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -316,17 +331,18 @@ test("plan planned events create plan races", async ({ page }) => {
   ];
 
   await seedStorage(page, { settings, venues, races });
-  await page.goto("/#plan");
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
-  await page.click("#plan-open-plans");
+  await page.click("#quick-mode-plan");
+  await page.click("#quick-select-plan");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "false");
 
   page.once("dialog", (dialog) => dialog.accept("Wednesday"));
   await page.click("#new-race");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "true");
 
-  await page.click("#plan-open-plans");
+  await page.click("#quick-select-plan");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "false");
   await expect(page.getByRole("button", { name: "Wednesday" })).toBeVisible();
 

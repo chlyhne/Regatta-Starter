@@ -80,10 +80,10 @@ test("start and finish line lists respect line roles", async ({ page }) => {
   ];
 
   await seedStorage(page, { settings, venues, races });
-  await page.goto("/#plan");
-  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
-  await page.click("#plan-edit-course");
+  await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
 
   const startLineBtn = page.locator("#select-start-line");
