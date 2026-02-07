@@ -14,6 +14,7 @@ let homeDeps = {
   setReplaySpeed: null,
   setReplayLoop: null,
   formatReplaySpeed: null,
+  goBack: null,
 };
 
 let replayEntries = [];
@@ -239,7 +240,7 @@ function bindHomeEvents() {
     els.openHomeButtons.forEach((button) => {
       button.addEventListener("click", () => {
         if (homeDeps.setView) {
-          homeDeps.setView("home");
+          homeDeps.setView("home", { reset: true });
         }
       });
     });
@@ -393,8 +394,12 @@ function bindHomeEvents() {
   if (closeInfoButton) {
     closeInfoButton.addEventListener("click", (event) => {
       event.preventDefault();
+      if (homeDeps.goBack) {
+        homeDeps.goBack({ fallback: "home" });
+        return;
+      }
       if (homeDeps.setView) {
-        homeDeps.setView("home");
+        homeDeps.setView("home", { reset: true });
       }
     });
   }

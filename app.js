@@ -84,6 +84,7 @@ import {
   updateCourseUi,
   updateStartDisplay,
   openSetupModal,
+  openSetupModalFromReturn,
 } from "./features/starter/starter.js";
 import {
   initHome,
@@ -96,7 +97,7 @@ import {
   bindSettingsEvents,
   syncSettingsInputs,
 } from "./features/settings/settings-view.js";
-import { initNavigation, setView, syncViewFromHash } from "./ui/navigation.js";
+import { initNavigation, setView, syncViewFromHash, goBack } from "./ui/navigation.js";
 import {
   isRecordingEnabled,
   startRecording,
@@ -492,7 +493,11 @@ function openModalFromQuery() {
   if (!modal) return;
   if (window.location.hash !== "#setup") return;
   const raceId = params.get("raceId");
-  openSetupModal(modal, { raceId });
+  if (openSetupModalFromReturn) {
+    openSetupModalFromReturn(modal, { raceId });
+  } else {
+    openSetupModal(modal, { raceId });
+  }
   clearModalParams();
 }
 
@@ -1472,6 +1477,7 @@ updateInputs();
 updateRaceMetricLabels();
 initHome({
   setView,
+  goBack,
   getNoCacheQuery,
   startRecording: startRecordingSession,
   stopRecording: stopRecordingSession,
@@ -1490,11 +1496,12 @@ initReplay({
   onStop: resumeFromReplay,
   onStatus: handleReplayStatus,
 });
-initSettingsView({ saveSettings, setView, updateStartDisplay, updateCourseUi });
+initSettingsView({ saveSettings, setView, goBack, updateStartDisplay, updateCourseUi });
 initStarter({
   saveSettings,
   updateInputs,
   setView,
+  goBack,
   setGpsMode,
   setImuEnabled,
   handlePosition,

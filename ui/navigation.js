@@ -150,12 +150,34 @@ const HASH_TO_VIEW = Object.entries(VIEW_CONFIG).reduce((acc, [key, config]) => 
 }, {});
 
 let currentView = null;
+let viewPath = [];
+
+function pushViewToPath(viewKey, options = {}) {
+  if (!viewKey) return;
+  if (options.reset) {
+    viewPath = [viewKey];
+    return;
+  }
+  if (options.track === false) return;
+  const index = viewPath.indexOf(viewKey);
+  if (index >= 0) {
+    viewPath = viewPath.slice(0, index + 1);
+    return;
+  }
+  viewPath.push(viewKey);
+}
+
+function getFallbackView(options = {}) {
+  const fallback = options.fallback;
+  if (fallback && VIEW_CONFIG[fallback]) return fallback;
+  return "setup";
+}
 
 function initNavigation(deps = {}) {
   navDeps = { ...navDeps, ...deps };
 }
 
-function setView(view) {
+function setView(view, options = {}) {
   const targetKey = VIEW_CONFIG[view] ? view : "home";
   const target = VIEW_CONFIG[targetKey];
   if (!target) return;
@@ -216,16 +238,28 @@ function setView(view) {
     target.onEnter();
   }
 
+  pushViewToPath(targetKey, options);
   currentView = targetKey;
+}
+
+function goBack(options = {}) {
+  if (viewPath.length > 1) {
+    viewPath.pop();
+    const previous = viewPath[viewPath.length - 1];
+    setView(previous, { track: false });
+    return;
+  }
+  const fallback = getFallbackView(options);
+  setView(fallback, { reset: true });
 }
 
 function syncViewFromHash() {
   const view = HASH_TO_VIEW[location.hash];
   if (view) {
-    setView(view);
+    setView(view, { reset: true });
     return;
   }
-  setView("home");
+  setView("home", { reset: true });
 }
 
-export { initNavigation, setView, syncViewFromHash };
+export { initNavigation, setView, syncViewFromHash, goBack };

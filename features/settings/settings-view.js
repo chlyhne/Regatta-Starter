@@ -19,6 +19,7 @@ import { trimTrailingZeros } from "../../core/common.js";
 let settingsDeps = {
   saveSettings: null,
   setView: null,
+  goBack: null,
   updateStartDisplay: null,
   updateCourseUi: null,
 };
@@ -278,8 +279,12 @@ function syncSettingsInputs() {
 function bindSettingsEvents() {
   if (els.closeSettings) {
     els.closeSettings.addEventListener("click", () => {
+      if (settingsDeps.goBack) {
+        settingsDeps.goBack({ fallback: "home" });
+        return;
+      }
       if (settingsDeps.setView) {
-        settingsDeps.setView("home");
+        settingsDeps.setView("home", { reset: true });
       }
     });
   }
@@ -287,8 +292,12 @@ function bindSettingsEvents() {
   if (els.closeBoat) {
     els.closeBoat.addEventListener("click", () => {
       commitBoatInputs();
+      if (settingsDeps.goBack) {
+        settingsDeps.goBack({ fallback: "home" });
+        return;
+      }
       if (settingsDeps.setView) {
-        settingsDeps.setView("home");
+        settingsDeps.setView("home", { reset: true });
       }
     });
   }

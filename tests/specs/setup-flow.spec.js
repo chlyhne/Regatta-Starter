@@ -136,6 +136,9 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
     "aria-hidden",
     "true"
   );
+  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#close-course-modal");
+  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "true");
 
   await expect(page.locator("#status-line-name")).toHaveText("Start line");
 
