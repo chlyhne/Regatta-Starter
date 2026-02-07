@@ -317,16 +317,16 @@ export const modalsView = `
       <button id="select-finish-line" class="ghost">Select finish line</button>
     </div>
     <button id="course-toggle" class="check-toggle" type="button" aria-pressed="false">
-      <span class="check-label">Use course route</span>
+      <span class="check-label">Use course</span>
       <span class="check-box" aria-hidden="true"></span>
     </button>
-    <div class="hint">Route</div>
-    <div id="route-count" class="value">NO ROUTE</div>
+    <div class="hint">Course</div>
+    <div id="route-count" class="value">NO COURSE</div>
     <div class="row stack">
-      <button id="open-route" class="ghost">Edit route</button>
+      <button id="open-route" class="ghost">Edit course</button>
       <button id="open-rounding" class="ghost">Rounding sides</button>
-      <button id="clear-route" class="ghost">Clear route</button>
-      <button id="open-route-map" class="ghost">Edit route on map</button>
+      <button id="clear-route" class="ghost">Clear course</button>
+      <button id="open-route-map" class="ghost">Edit course on map</button>
       <button id="open-race-map" class="ghost">View race map</button>
     </div>
     <div class="modal-actions">
@@ -370,7 +370,7 @@ export const modalsView = `
 
 <section id="course-keyboard-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
-    <h2>Edit Route</h2>
+    <h2>Edit course</h2>
     <p class="info-text">Tap red (port) or green (starboard) to add.</p>
     <div id="course-sequence" class="course-sequence"></div>
     <div id="course-keyboard" class="course-keyboard"></div>

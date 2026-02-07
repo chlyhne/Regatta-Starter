@@ -1481,7 +1481,7 @@ function updateCourseUi(options = {}) {
     els.markCount.textContent = String(markCount || 0);
   }
   if (els.routeCount) {
-    els.routeCount.textContent = routeCount ? String(routeCount) : "NO ROUTE";
+    els.routeCount.textContent = routeCount ? String(routeCount) : "NO COURSE";
   }
   if (els.startLineStatus) {
     els.startLineStatus.textContent = getStartLineStatusText(scope);
@@ -1594,7 +1594,7 @@ function updateQuickHomeUi() {
   }
   if (els.quickRouteCount) {
     const count = getRouteEntries("race").length;
-    els.quickRouteCount.textContent = count ? String(count) : "NO ROUTE";
+    els.quickRouteCount.textContent = count ? String(count) : "NO COURSE";
   }
 }
 
@@ -1626,7 +1626,7 @@ function updatePlanUi() {
   }
   if (els.planRouteCount) {
     const count = selectedVenue?.defaultRoute?.length || 0;
-    els.planRouteCount.textContent = count ? String(count) : "NO ROUTE";
+    els.planRouteCount.textContent = count ? String(count) : "NO COURSE";
   }
   if (els.planSetDefault) {
     els.planSetDefault.disabled =
@@ -1719,7 +1719,7 @@ function renderCourseMarksList() {
   if (!marks.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No route yet.";
+    empty.textContent = "No course yet.";
     els.courseMarksList.appendChild(empty);
     return;
   }
@@ -1794,7 +1794,7 @@ function renderRouteSequence(scope = getCourseScope()) {
   if (!marks.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No route yet.";
+    empty.textContent = "No course yet.";
     els.courseSequence.appendChild(empty);
     return;
   }
@@ -3546,7 +3546,7 @@ function bindStarterEvents() {
       if (!ensureRouteLinesForRoute({ scope: "race", returnModal: "course" })) return;
       const entries = getRouteEntries("race");
       if (!entries.length) return;
-      const confirmed = window.confirm("Clear route?");
+      const confirmed = window.confirm("Clear course?");
       if (!confirmed) return;
       state.race.route = [];
       persistCourseScope("race");
@@ -4691,7 +4691,7 @@ function bindStarterEvents() {
       const scope = getCourseScope();
       if (!ensureRouteLinesForRoute({ scope, returnModal: "course" })) return;
       if (!getRouteEntries(scope).length) return;
-      const confirmed = window.confirm("Clear route?");
+      const confirmed = window.confirm("Clear course?");
       if (!confirmed) return;
       if (scope === "default") {
         if (state.venue) {
@@ -4727,7 +4727,7 @@ function bindStarterEvents() {
     els.courseKeyboardClear.addEventListener("click", () => {
       const scope = getCourseScope();
       if (!getRouteEntries(scope).length) return;
-      const confirmed = window.confirm("Clear route?");
+      const confirmed = window.confirm("Clear course?");
       if (!confirmed) return;
       if (scope === "default") {
         if (state.venue) {

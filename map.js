@@ -174,7 +174,7 @@ function getModeTitle(mode) {
     case MODES.VENUE_SETUP:
       return "Venue setup";
     case MODES.RACE_ROUTE:
-      return "Race route";
+      return "Race course";
     case MODES.RACE_START_LINE:
       return "Select start line";
     case MODES.RACE_FINISH_LINE:
@@ -202,18 +202,18 @@ function getModeCaption(mode) {
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
       }
-      return "Tap a mark, then add it to the route.";
+      return "Tap a mark, then add it to the course.";
     case MODES.RACE_ROUTE:
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
       }
-      return "Tap a mark, then add it to the route.";
+      return "Tap a mark, then add it to the course.";
     case MODES.RACE_START_LINE:
       return "Tap starboard mark, then port mark to select a start line.";
     case MODES.RACE_FINISH_LINE:
       return "Tap starboard mark, then port mark to select a finish line.";
     case MODES.RACE_VIEW:
-      return "Read-only race view: start line, finish line, route.";
+      return "Read-only race view: start line, finish line, course.";
     default:
       return "";
   }
@@ -671,7 +671,7 @@ function updateSelectionStatus() {
     const finishLine = getLineById(lines, finishLineId);
     const startName = startLine ? getLineName(startLine) : "--";
     const finishName = finishLine ? getLineName(finishLine) : "--";
-    els.mapStatus.textContent = `Route: ${routeLength} marks \u00b7 Start: ${startName} \u00b7 Finish: ${finishName}`;
+    els.mapStatus.textContent = `Course: ${routeLength} marks \u00b7 Start: ${startName} \u00b7 Finish: ${finishName}`;
   }
 }
 
@@ -1218,7 +1218,7 @@ function updateModeUi() {
       els.nextStep.disabled = !hasMarks;
     } else {
       setButtonVisible(els.nextStep, true);
-      els.nextStep.textContent = "Next: Route";
+      els.nextStep.textContent = "Next: Course";
       els.nextStep.disabled = !hasRouteStart;
     }
   }
@@ -1247,6 +1247,7 @@ function addMarkAtCenter() {
   state.venue.marks.push(mark);
   saveData();
   updateMapOverlays();
+  updateModeUi();
 }
 
 function handleLineClick(lineId) {
@@ -1795,6 +1796,7 @@ function bindEvents() {
       renderMarkList();
       renderLineList();
       updateMapOverlays();
+      updateModeUi();
     });
   }
 
@@ -1843,7 +1845,7 @@ function bindEvents() {
       if (!isRouteMode()) return;
       const route = ensureRouteEntries();
       if (!route || !route.length) return;
-      const confirmed = window.confirm("Clear route?");
+      const confirmed = window.confirm("Clear course?");
       if (!confirmed) return;
       if (isVenueSetupMode()) {
         state.venue.defaultRoute = [];

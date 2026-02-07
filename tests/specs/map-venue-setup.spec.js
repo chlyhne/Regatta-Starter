@@ -81,11 +81,47 @@ test("venue setup tabs switch modes and next button advances", async ({ page }) 
   await expect(page.locator("#tab-lines")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#open-line-list")).toBeVisible();
   await expect(page.locator("#add-mark")).toBeHidden();
-  await expect(next).toHaveText("Next: Route");
+  await expect(next).toHaveText("Next: Course");
 
   await next.click();
   await expect(page.locator("#tab-route")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#open-mark-list")).toBeVisible();
   await expect(page.locator("#open-line-list")).toBeHidden();
   await expect(page.locator("#undo-route-mark")).toBeVisible();
+});
+
+test("venue setup enables lines tab after adding a mark", async ({ page }) => {
+  const settings = buildBaseSettings({ activeVenueId: "venue-1" });
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [],
+      lines: [],
+      defaultStartLineId: null,
+      defaultFinishLineId: null,
+      defaultRouteStartLineId: null,
+      defaultRouteFinishLineId: null,
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      routeEnabled: false,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=venue-setup&step=marks");
+
+  await expect(page.locator("#tab-lines")).toBeDisabled();
+  await page.click("#add-mark");
+  await expect(page.locator("#tab-lines")).toBeEnabled();
 });

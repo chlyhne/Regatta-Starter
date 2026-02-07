@@ -33,8 +33,8 @@ export const planView = `
 
   <section class="panel">
     <h2>Default course</h2>
-    <div class="hint">Route</div>
-    <div id="plan-route-count" class="value">NO ROUTE</div>
+    <div class="hint">Course</div>
+    <div id="plan-route-count" class="value">NO COURSE</div>
     <div class="row stack">
       <button id="plan-edit-course" class="ghost">Edit default course</button>
       <button id="plan-rounding" class="ghost">Rounding sides</button>

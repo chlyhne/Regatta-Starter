@@ -76,7 +76,7 @@ export const quickView = `
       <button id="quick-change-lines" class="ghost">Change lines</button>
     </div>
     <div class="hint">Course</div>
-    <div id="quick-route-count" class="value">NO ROUTE</div>
+    <div id="quick-route-count" class="value">NO COURSE</div>
     <div class="row stack">
       <button id="quick-edit-course" class="ghost">Edit course</button>
       <button id="quick-rounding" class="ghost">Rounding sides</button>

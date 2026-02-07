@@ -175,7 +175,7 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#course-keyboard-clear");
   await expect(page.locator(".course-chip")).toHaveCount(0);
-  await expect(page.locator("#course-sequence .hint")).toHaveText("No route yet.");
+  await expect(page.locator("#course-sequence .hint")).toHaveText("No course yet.");
 });
 
 test("course length switches to nautical miles over 1000m", async ({ page }) => {
