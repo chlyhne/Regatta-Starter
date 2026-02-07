@@ -103,3 +103,68 @@ test("map route editing adds and clears marks", async ({ page }) => {
   });
   expect(clearedAgain).toBe(0);
 });
+
+test("line arrows point in the start direction", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-port", name: "Port", description: "", lat: 55.0, lon: 12.0 },
+        { id: "mark-star", name: "Starboard", description: "", lat: 55.0, lon: 12.02 },
+      ],
+      lines: [
+        {
+          id: "line-1",
+          name: "",
+          starboardMarkId: "mark-star",
+          portMarkId: "mark-port",
+        },
+      ],
+      defaultStartLineId: "line-1",
+      defaultFinishLineId: "line-1",
+      defaultRouteStartLineId: "line-1",
+      defaultRouteFinishLineId: "line-1",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-1",
+      finishLineId: "line-1",
+      routeEnabled: false,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=venue-lines");
+
+  const arrow = page.locator(".map-line-arrow span");
+  await expect(arrow).toBeVisible();
+
+  const angle = await arrow.evaluate((span) => {
+    const inline = span.getAttribute("style") || "";
+    const inlineMatch = inline.match(/rotate\(([-\d.]+)deg\)/);
+    if (inlineMatch) return Number(inlineMatch[1]);
+    const computed = window.getComputedStyle(span).transform;
+    if (!computed || computed === "none") return null;
+    const matrixMatch = computed.match(/matrix\(([^)]+)\)/);
+    if (!matrixMatch) return null;
+    const values = matrixMatch[1].split(",").map((value) => Number(value.trim()));
+    if (values.length < 2 || values.some((value) => !Number.isFinite(value))) {
+      return null;
+    }
+    const [a, b] = values;
+    return (Math.atan2(b, a) * 180) / Math.PI;
+  });
+  expect(angle).not.toBeNull();
+  expect(Math.abs(angle + 90)).toBeLessThan(12);
+});

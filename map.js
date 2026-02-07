@@ -1258,8 +1258,8 @@ function createLineArrow(coords, isSelected) {
   const dy = pointB.y - pointA.y;
   const len = Math.hypot(dx, dy);
   if (len < 1) return null;
-  const nx = -dy / len;
-  const ny = dx / len;
+  const nx = dy / len;
+  const ny = -dx / len;
   const angle = (Math.atan2(ny, nx) * 180) / Math.PI;
   const mid = L.latLng(
     (coords.a.lat + coords.b.lat) / 2,
