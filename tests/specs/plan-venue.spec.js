@@ -81,7 +81,7 @@ test("plan venue selection updates default venue", async ({ page }) => {
   await expect(page.locator("#plan-default-venue")).toHaveText("Away Harbor");
 });
 
-test("plan edit lines redirects to marks map when no marks", async ({ page }) => {
+test("plan edit lines opens venue setup map without marks", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -113,14 +113,13 @@ test("plan edit lines redirects to marks map when no marks", async ({ page }) =>
   await page.goto("/#plan");
   await expect(page.locator("#plan-view")).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page.click("#plan-edit-lines");
 
-  await expect(page.locator("#map-title")).toHaveText("Venue marks");
-  await expect(page).toHaveURL(/map\.html.*mode=venue-marks/);
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
+  await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 });
 
-test("plan edit lines opens lines map and returns", async ({ page }) => {
+test("plan edit lines opens venue setup map and returns", async ({ page }) => {
   const settings = buildBaseSettings();
   const venues = [
     {
@@ -163,8 +162,8 @@ test("plan edit lines opens lines map and returns", async ({ page }) => {
   await expect(page.locator("#plan-view")).toBeVisible();
 
   await page.click("#plan-edit-lines");
-  await expect(page.locator("#map-title")).toHaveText("Lines");
-  await expect(page).toHaveURL(/map\.html.*mode=venue-lines/);
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
+  await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 
   await page.click("#close-map");
   await expect(page.locator("#plan-view")).toBeVisible();
@@ -233,6 +232,59 @@ test("plan default course updates route count", async ({ page }) => {
     return venuesState[0]?.defaultRoute?.length || 0;
   });
   expect(storedRouteCount).toBe(1);
+});
+
+test("default course route map uses venue setup mode", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-1", name: "A", lat: 55.01, lon: 12.01 },
+        { id: "mark-2", name: "B", lat: 55.02, lon: 12.02 },
+      ],
+      lines: [
+        {
+          id: "line-1",
+          name: "Start line",
+          starboardMarkId: "mark-2",
+          portMarkId: "mark-1",
+        },
+      ],
+      defaultStartLineId: "line-1",
+      defaultFinishLineId: "line-1",
+      defaultRouteStartLineId: "line-1",
+      defaultRouteFinishLineId: "line-1",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Race 1",
+      venueId: "venue-1",
+      routeEnabled: false,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
+
+  await page.click("#plan-edit-course");
+  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
+
+  const openRouteMap = page.locator("#open-route-map");
+  await openRouteMap.scrollIntoViewIfNeeded();
+  await openRouteMap.click();
+
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
+  await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 });
 
 test("plan planned events create plan races", async ({ page }) => {

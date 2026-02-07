@@ -20,8 +20,8 @@ test("course redirects to marks map when venue has no marks", async ({ page }) =
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#plan-edit-course");
 
-  await expect(page.locator("#map-title")).toHaveText("Venue marks");
-  await expect(page).toHaveURL(/map\.html.*mode=venue-marks/);
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
+  await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 });
 
 test("course redirects to lines map when venue has marks but no lines", async ({ page }) => {
@@ -50,6 +50,6 @@ test("course redirects to lines map when venue has marks but no lines", async ({
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#plan-edit-course");
 
-  await expect(page.locator("#map-title")).toHaveText("Lines");
-  await expect(page).toHaveURL(/map\.html.*mode=venue-lines/);
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
+  await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
 });

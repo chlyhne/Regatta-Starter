@@ -945,20 +945,61 @@ function navigateToVenueLines(options = {}) {
   });
 }
 
+function shouldUseVenueSetup(options = {}, returnView) {
+  if (options.useVenueSetup != null) return options.useVenueSetup;
+  if (returnView === "plan") return true;
+  return document.body.classList.contains("plan-mode");
+}
+
+function navigateToVenueSetup(options = {}) {
+  const {
+    returnModal = "venue",
+    returnRaceId = null,
+    returnView = getActiveSetupViewKey(),
+    message = "Add marks first.",
+  } = options;
+  if (message) {
+    window.alert(message);
+  }
+  storeModalPath();
+  window.location.href = getMapHref("venue-setup", {
+    returnModal,
+    returnRaceId,
+    returnView,
+  });
+}
+
 function ensureVenueLinesReady(venue, options = {}) {
   if (!venue) return false;
   const fallbackView = document.body.classList.contains("quick-mode")
     ? "plan"
     : getActiveSetupViewKey();
   const returnView = options.returnView || fallbackView;
+  const useVenueSetup = shouldUseVenueSetup(options, returnView);
   const markCount = Array.isArray(venue.marks) ? venue.marks.length : 0;
   if (!markCount) {
-    navigateToVenueMarks({ ...options, returnView });
+    if (useVenueSetup) {
+      navigateToVenueSetup({
+        ...options,
+        returnView,
+        message: options.message || "Add marks first.",
+      });
+    } else {
+      navigateToVenueMarks({ ...options, returnView });
+    }
     return false;
   }
   const lineCount = Array.isArray(venue.lines) ? venue.lines.length : 0;
   if (!lineCount) {
-    navigateToVenueLines({ ...options, returnView });
+    if (useVenueSetup) {
+      navigateToVenueSetup({
+        ...options,
+        returnView,
+        message: options.message || "Add lines first.",
+      });
+    } else {
+      navigateToVenueLines({ ...options, returnView });
+    }
     return false;
   }
   return true;
@@ -1446,8 +1487,11 @@ function updateCourseUi(options = {}) {
     els.openRoute.disabled = markCount === 0 || !routeLinesReady;
   }
   if (els.openRouteMap) {
-    const mapDisabled = scope === "default";
-    els.openRouteMap.disabled = mapDisabled || markCount === 0 || !routeLinesReady;
+    if (scope === "default") {
+      els.openRouteMap.disabled = !state.venue;
+    } else {
+      els.openRouteMap.disabled = markCount === 0 || !routeLinesReady;
+    }
   }
   if (els.openRaceMap) {
     const mapDisabled = scope === "default";
@@ -3522,18 +3566,8 @@ function bindStarterEvents() {
 
   if (els.planEditLines) {
     els.planEditLines.addEventListener("click", () => {
-      const venue = state.venue;
-      if (!venue) return;
-      if (
-        !ensureVenueLinesReady(venue, {
-          returnModal: "venue",
-          returnView: "plan",
-        })
-      ) {
-        return;
-      }
       storeModalPath();
-      window.location.href = getMapHref("venue-lines", {
+      window.location.href = getMapHref("venue-setup", {
         returnModal: "venue",
         returnView: "plan",
       });
@@ -4141,7 +4175,7 @@ function bindStarterEvents() {
   if (els.openVenueMarksMap) {
     els.openVenueMarksMap.addEventListener("click", () => {
       storeModalPath();
-      window.location.href = getMapHref("venue-marks", {
+      window.location.href = getMapHref("venue-setup", {
         returnModal: "marks",
         returnView: getActiveSetupViewKey(),
       });
@@ -4153,6 +4187,15 @@ function bindStarterEvents() {
       const returnRaceId = venueSelectionTargetRaceId || null;
       const venue = getSelectedVenue();
       if (!venue) return;
+      if (document.body.classList.contains("plan-mode")) {
+        storeModalPath();
+        window.location.href = getMapHref("venue-setup", {
+          returnModal: "venue",
+          returnRaceId,
+          returnView: "plan",
+        });
+        return;
+      }
       if (
         !ensureVenueLinesReady(venue, {
           returnModal: "venue",
@@ -4200,7 +4243,11 @@ function bindStarterEvents() {
     els.openRouteMap.addEventListener("click", () => {
       const scope = getCourseScope();
       if (scope === "default") {
-        window.alert("Map editing is for active races only.");
+        storeModalPath();
+        window.location.href = getMapHref("venue-setup", {
+          returnModal: "course",
+          returnView: getActiveSetupViewKey(),
+        });
         return;
       }
       if (!ensureRouteLinesForRoute({ scope: "race", returnModal: "course" })) return;

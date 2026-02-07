@@ -30,7 +30,7 @@ test("marks modal edits mark details and coordinates", async ({ page }) => {
   await expect(page.locator("#calibrate-mark")).toBeDisabled();
 
   await page.click("#open-venue-marks-map");
-  await expect(page.locator("#map-title")).toHaveText("Venue marks");
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
   const addMark = page.locator("#add-mark");
   await expect(addMark).toBeVisible();
   await addMark.click();

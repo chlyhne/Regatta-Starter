@@ -47,7 +47,7 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
   await page.click("#open-venue-marks-map");
 
-  await expect(page.locator("#map-title")).toHaveText("Venue marks");
+  await expect(page.locator("#map-title")).toHaveText("Venue setup");
   const addMark = page.locator("#add-mark");
   await expect(addMark).toBeVisible();
   for (let i = 0; i < 5; i += 1) {

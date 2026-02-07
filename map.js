@@ -20,6 +20,7 @@ const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
 const MODES = {
   VENUE_MARKS: "venue-marks",
   VENUE_LINES: "venue-lines",
+  VENUE_SETUP: "venue-setup",
   RACE_ROUTE: "race-route",
   RACE_START_LINE: "race-start-line",
   RACE_FINISH_LINE: "race-finish-line",
@@ -36,6 +37,7 @@ const els = {
   addMark: document.getElementById("add-mark"),
   undoMark: document.getElementById("undo-mark"),
   clearMarks: document.getElementById("clear-marks"),
+  toggleLineMode: document.getElementById("toggle-line-mode"),
   openLineList: document.getElementById("open-line-list"),
   clearLineSelection: document.getElementById("clear-line-selection"),
   undoRoute: document.getElementById("undo-route-mark"),
@@ -84,6 +86,7 @@ const state = {
     starboardMarkId: null,
     portMarkId: null,
   },
+  lineEditActive: false,
   trimMode: false,
   trimContext: null,
   markMarkers: [],
@@ -155,6 +158,8 @@ function getModeTitle(mode) {
       return "Venue marks";
     case MODES.VENUE_LINES:
       return "Lines";
+    case MODES.VENUE_SETUP:
+      return "Venue setup";
     case MODES.RACE_ROUTE:
       return "Race route";
     case MODES.RACE_START_LINE:
@@ -174,6 +179,14 @@ function getModeCaption(mode) {
       return "Drag the map. Add marks on the crosshair, then tap a mark to edit.";
     case MODES.VENUE_LINES:
       return "Tap starboard mark, then port mark to define a line.";
+    case MODES.VENUE_SETUP:
+      if (state.lineEditActive) {
+        return "Tap starboard mark, then port mark to define a line.";
+      }
+      if (!hasRouteStartLine()) {
+        return "Select a start line first.";
+      }
+      return "Tap a mark, then add it to the route.";
     case MODES.RACE_ROUTE:
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
@@ -191,19 +204,25 @@ function getModeCaption(mode) {
 }
 
 function isVenueMarksMode(mode = state.mode) {
-  return mode === MODES.VENUE_MARKS;
+  return mode === MODES.VENUE_MARKS || mode === MODES.VENUE_SETUP;
 }
 
 function isRouteMode(mode = state.mode) {
-  return mode === MODES.RACE_ROUTE;
+  return mode === MODES.RACE_ROUTE || mode === MODES.VENUE_SETUP;
 }
 
 function isRaceViewMode(mode = state.mode) {
   return mode === MODES.RACE_VIEW;
 }
 
+function isVenueSetupMode(mode = state.mode) {
+  return mode === MODES.VENUE_SETUP;
+}
+
 function isLineEditMode(mode = state.mode) {
-  return mode === MODES.VENUE_LINES;
+  if (mode === MODES.VENUE_LINES) return true;
+  if (mode === MODES.VENUE_SETUP) return state.lineEditActive;
+  return false;
 }
 
 function isLineSelectMode(mode = state.mode) {
@@ -415,8 +434,31 @@ function hasFinishLine() {
   return Boolean(getLineById(getLinesForType(), lineId));
 }
 
+function getRouteEntries() {
+  if (isVenueSetupMode()) {
+    return Array.isArray(state.venue?.defaultRoute) ? state.venue.defaultRoute : [];
+  }
+  return Array.isArray(state.race?.route) ? state.race.route : [];
+}
+
+function ensureRouteEntries() {
+  if (isVenueSetupMode()) {
+    if (!state.venue) return null;
+    if (!Array.isArray(state.venue.defaultRoute)) {
+      state.venue.defaultRoute = [];
+    }
+    return state.venue.defaultRoute;
+  }
+  if (!state.race) return null;
+  if (!Array.isArray(state.race.route)) {
+    state.race.route = [];
+  }
+  return state.race.route;
+}
+
 function hasRouteStartLine() {
-  return hasStartLine();
+  const { startLineId } = getRouteLineIds();
+  return Boolean(startLineId);
 }
 
 function getLineName(line, type) {
@@ -471,11 +513,32 @@ function fitMapToVenueMarks() {
 }
 
 function getRouteLineIds() {
-  if (!state.race || !state.venue) {
+  if (!state.venue) {
     return { startLineId: null, finishLineId: null };
   }
   const lines = getLinesForType();
   const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  if (isVenueSetupMode()) {
+    const routeStartLineId = hasLine(state.venue.defaultRouteStartLineId)
+      ? state.venue.defaultRouteStartLineId
+      : null;
+    const routeFinishLineId = hasLine(state.venue.defaultRouteFinishLineId)
+      ? state.venue.defaultRouteFinishLineId
+      : null;
+    const startFallback = hasLine(state.venue.defaultStartLineId)
+      ? state.venue.defaultStartLineId
+      : null;
+    const finishFallback = hasLine(state.venue.defaultFinishLineId)
+      ? state.venue.defaultFinishLineId
+      : null;
+    return {
+      startLineId: routeStartLineId || startFallback,
+      finishLineId: routeFinishLineId || finishFallback,
+    };
+  }
+  if (!state.race) {
+    return { startLineId: null, finishLineId: null };
+  }
   const routeStartLineId = hasLine(state.race.routeStartLineId)
     ? state.race.routeStartLineId
     : hasLine(state.venue.defaultRouteStartLineId)
@@ -611,6 +674,10 @@ function closeLineListModal() {
 }
 
 function openLineEditModal(lineId) {
+  if (isVenueSetupMode() && !state.lineEditActive) {
+    state.lineEditActive = true;
+    updateModeUi();
+  }
   if (lineId) {
     setSelectedLine(lineId);
   }
@@ -649,7 +716,8 @@ function updateMarkEditUi() {
     els.deleteMark.disabled = !mark;
   }
   if (els.markAddRoute) {
-    els.markAddRoute.hidden = !isRouteMode();
+    els.markAddRoute.hidden =
+      !isRouteMode() || (isVenueSetupMode() && state.lineEditActive);
   }
   if (els.mapToVenue) {
     els.mapToVenue.hidden = editable;
@@ -808,7 +876,7 @@ function syncRouteButtons() {
     const canAdd = isRouteMode() && routeReady && Boolean(mark);
     els.markAddRoute.disabled = !canAdd;
   }
-  const routeLength = state.race?.route?.length || 0;
+  const routeLength = getRouteEntries().length;
   if (els.undoRoute) {
     els.undoRoute.disabled = !isRouteMode() || routeLength === 0 || !hasRouteStartLine();
   }
@@ -980,17 +1048,34 @@ function updateModeUi() {
   }
 
   const readOnly = isRaceViewMode();
-  setButtonVisible(els.addMark, !readOnly && isVenueMarksMode());
-  setButtonVisible(els.undoMark, !readOnly && isVenueMarksMode());
-  setButtonVisible(els.clearMarks, !readOnly && isVenueMarksMode());
-  setButtonVisible(els.openMarkList, !readOnly && (isVenueMarksMode() || isRouteMode()));
-  setButtonVisible(els.openLineList, !readOnly && isLineEditMode());
+  const isSetup = isVenueSetupMode();
+  const lineEditActive = isSetup && state.lineEditActive;
+  const allowRouteControls = isRouteMode() && (!isSetup || !state.lineEditActive);
+  const showMarkList =
+    !readOnly && (isVenueMarksMode() || isRouteMode()) && (!isSetup || !lineEditActive);
+  const showLineList =
+    !readOnly && (isLineEditMode() || isLineSelectMode()) && (!isSetup || lineEditActive);
+
+  setButtonVisible(els.addMark, !readOnly && isVenueMarksMode() && !lineEditActive);
+  setButtonVisible(els.undoMark, !readOnly && isVenueMarksMode() && !isSetup);
+  setButtonVisible(els.clearMarks, !readOnly && isVenueMarksMode() && !isSetup);
+  setButtonVisible(els.toggleLineMode, !readOnly && isSetup);
+  if (els.toggleLineMode) {
+    els.toggleLineMode.setAttribute(
+      "aria-pressed",
+      state.lineEditActive ? "true" : "false"
+    );
+    els.toggleLineMode.textContent = state.lineEditActive ? "Route edit" : "Line pick";
+  }
+  setButtonVisible(els.openMarkList, showMarkList);
+  setButtonVisible(els.openLineList, showLineList);
   setButtonVisible(els.clearLineSelection, !readOnly && isLineMode());
-  setButtonVisible(els.undoRoute, !readOnly && isRouteMode());
-  setButtonVisible(els.clearRoute, !readOnly && isRouteMode());
+  setButtonVisible(els.undoRoute, !readOnly && allowRouteControls);
+  setButtonVisible(els.clearRoute, !readOnly && allowRouteControls);
 
   if (els.mapCrosshair) {
-    els.mapCrosshair.style.display = isVenueMarksMode() ? "block" : "none";
+    els.mapCrosshair.style.display =
+      isVenueMarksMode() && !lineEditActive ? "block" : "none";
   }
 
   updateSelectionStatus();
@@ -1077,6 +1162,14 @@ function finalizeLineSelection() {
         portMarkId,
       };
       lines.push(line);
+    }
+    if (isVenueSetupMode()) {
+      if (!state.venue.defaultStartLineId) {
+        state.venue.defaultStartLineId = line.id;
+      }
+      if (!state.venue.defaultRouteStartLineId) {
+        state.venue.defaultRouteStartLineId = line.id;
+      }
     }
     state.selectedLineId = line.id;
     saveData();
@@ -1335,11 +1428,11 @@ function createLineArrow(coords, isSelected) {
 }
 
 function getRouteLatLngs() {
-  if (!state.race || !state.venue) return [];
+  if (!state.venue) return [];
   const marksById = new Map(
     (state.venue.marks || []).map((mark) => [mark.id, mark])
   );
-  const routeMarks = (state.race.route || [])
+  const routeMarks = getRouteEntries()
     .map((entry) => marksById.get(entry.markId))
     .filter(Boolean);
   if (!routeMarks.length) return [];
@@ -1551,22 +1644,22 @@ function bindEvents() {
   if (els.markAddRoute) {
     els.markAddRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
-      if (!state.race) return;
       if (!hasRouteStartLine()) {
         window.alert("Select a start line first.");
         return;
       }
       const mark = getSelectedMark();
       if (!mark) return;
-      if (!Array.isArray(state.race.route)) {
-        state.race.route = [];
-      }
-      state.race.route.push({
+      const route = ensureRouteEntries();
+      if (!route) return;
+      route.push({
         markId: mark.id,
         rounding: "port",
         manual: false,
       });
-      syncVenueDefaultRoute();
+      if (!isVenueSetupMode()) {
+        syncVenueDefaultRoute();
+      }
       saveData();
       updateMapOverlays();
       syncRouteButtons();
@@ -1576,9 +1669,12 @@ function bindEvents() {
   if (els.undoRoute) {
     els.undoRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
-      if (!state.race || !Array.isArray(state.race.route) || !state.race.route.length) return;
-      state.race.route.pop();
-      syncVenueDefaultRoute();
+      const route = ensureRouteEntries();
+      if (!route || !route.length) return;
+      route.pop();
+      if (!isVenueSetupMode()) {
+        syncVenueDefaultRoute();
+      }
       saveData();
       updateMapOverlays();
       syncRouteButtons();
@@ -1588,11 +1684,16 @@ function bindEvents() {
   if (els.clearRoute) {
     els.clearRoute.addEventListener("click", () => {
       if (!isRouteMode()) return;
-      if (!state.race || !Array.isArray(state.race.route) || !state.race.route.length) return;
+      const route = ensureRouteEntries();
+      if (!route || !route.length) return;
       const confirmed = window.confirm("Clear route?");
       if (!confirmed) return;
-      state.race.route = [];
-      syncVenueDefaultRoute();
+      if (isVenueSetupMode()) {
+        state.venue.defaultRoute = [];
+      } else if (state.race) {
+        state.race.route = [];
+        syncVenueDefaultRoute();
+      }
       saveData();
       updateMapOverlays();
       syncRouteButtons();
@@ -1607,6 +1708,10 @@ function bindEvents() {
 
   if (els.openLineList) {
     els.openLineList.addEventListener("click", () => {
+      if (isVenueSetupMode() && !state.lineEditActive) {
+        state.lineEditActive = true;
+        updateModeUi();
+      }
       openLineListModal();
     });
   }
@@ -1614,6 +1719,17 @@ function bindEvents() {
   if (els.clearLineSelection) {
     els.clearLineSelection.addEventListener("click", () => {
       clearLineSelection();
+    });
+  }
+
+  if (els.toggleLineMode) {
+    els.toggleLineMode.addEventListener("click", () => {
+      if (!isVenueSetupMode()) return;
+      state.lineEditActive = !state.lineEditActive;
+      if (!state.lineEditActive) {
+        clearLineSelection();
+      }
+      updateModeUi();
     });
   }
 
