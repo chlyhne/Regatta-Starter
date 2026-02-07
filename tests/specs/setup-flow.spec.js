@@ -46,6 +46,9 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   }
   await page.click("#open-venue-marks");
 
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#open-venue-marks-map");
+
   await expect(page.locator("#map-title")).toHaveText("Venue marks");
   const addMark = page.locator("#add-mark");
   await expect(addMark).toBeVisible();
@@ -53,6 +56,8 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
     await addMark.click();
   }
   await page.click("#close-map");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.click("#close-marks-modal");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
 
   await page.evaluate(() => {

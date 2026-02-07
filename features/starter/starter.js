@@ -54,7 +54,11 @@ let startLineReturnModal = null;
 let startLineReturnRaceId = null;
 let finishLineReturnModal = null;
 let finishLineReturnRaceId = null;
+let marksReturnModal = null;
+let marksReturnRaceId = null;
+let selectedMarkId = null;
 const NAUTICAL_MILE_METERS = 1852;
+let lastCalibration = null;
 let starterDeps = {
   saveSettings: null,
   updateInputs: null,
@@ -613,6 +617,59 @@ function getNearestVenueMark(venue, position) {
   return { mark: nearest, distance: bestDistance };
 }
 
+function getSelectedVenue() {
+  if (state.selectedVenueId) {
+    return getVenueById(state.venues, state.selectedVenueId);
+  }
+  return state.venue || null;
+}
+
+function getSelectedMark(venue = getSelectedVenue()) {
+  if (!venue || !selectedMarkId) return null;
+  return (venue.marks || []).find((mark) => mark.id === selectedMarkId) || null;
+}
+
+function getMarkFallbackName(venue, mark) {
+  if (!venue || !mark) return "Mark";
+  const index = (venue.marks || []).findIndex((entry) => entry.id === mark.id);
+  if (index < 0) return "Mark";
+  return `Mark ${index + 1}`;
+}
+
+function formatCalibrationStatus(entry) {
+  if (!entry) return "--";
+  const moved = Math.round(entry.distanceMeters);
+  const unit = moved === 1 ? "meter" : "meters";
+  return `Mark "${entry.markName}" moved ${moved} ${unit}`;
+}
+
+function updateCalibrationUi() {
+  const selectedVenueId = state.selectedVenueId || state.activeVenueId || null;
+  const isActive = Boolean(
+    lastCalibration && selectedVenueId && lastCalibration.venueId === selectedVenueId
+  );
+  if (els.calibrationStatus) {
+    els.calibrationStatus.textContent = isActive
+      ? formatCalibrationStatus(lastCalibration)
+      : "--";
+  }
+  if (els.calibrationUndo) {
+    els.calibrationUndo.disabled = !isActive;
+  }
+}
+
+function updateCalibrationControls() {
+  const selectedVenueId = state.selectedVenueId || state.activeVenueId || null;
+  const selectedVenue = selectedVenueId
+    ? getVenueById(state.venues, selectedVenueId)
+    : null;
+  const hasMarks = Boolean(selectedVenue?.marks?.length);
+  if (els.calibrateMark) {
+    els.calibrateMark.disabled = !selectedVenueId || !hasMarks;
+  }
+  updateCalibrationUi();
+}
+
 function getCourseLengthStatus() {
   const startMid = getStartLineMidpoint();
   if (!startMid) {
@@ -1066,6 +1123,64 @@ function closeVenueModal() {
   }
 }
 
+function openMarksModal(options = {}) {
+  const {
+    returnModal = "venue",
+    returnRaceId = null,
+    selectedVenueId = state.selectedVenueId || state.activeVenueId,
+  } = options;
+  marksReturnModal = returnModal;
+  marksReturnRaceId = returnRaceId;
+  state.selectedVenueId = selectedVenueId || state.activeVenueId;
+  selectedMarkId = null;
+  renderMarksList();
+  document.body.classList.add("modal-open");
+  if (els.marksModal) {
+    els.marksModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeMarksModal() {
+  document.body.classList.remove("modal-open");
+  if (els.marksModal) {
+    els.marksModal.setAttribute("aria-hidden", "true");
+  }
+  selectedMarkId = null;
+  const returnModal = marksReturnModal;
+  const returnRaceId = marksReturnRaceId;
+  marksReturnModal = null;
+  marksReturnRaceId = null;
+  if (returnModal) {
+    openSetupModal(returnModal, { raceId: returnRaceId });
+  }
+}
+
+function openMarkEditModal(markId) {
+  const venue = getSelectedVenue();
+  if (!venue) return;
+  const mark = (venue.marks || []).find((entry) => entry.id === markId);
+  if (!mark) return;
+  selectedMarkId = mark.id;
+  syncMarkEditorInputs();
+  if (els.marksModal) {
+    els.marksModal.setAttribute("aria-hidden", "true");
+  }
+  document.body.classList.add("modal-open");
+  if (els.markEditModal) {
+    els.markEditModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeMarkEditModal() {
+  if (els.markEditModal) {
+    els.markEditModal.setAttribute("aria-hidden", "true");
+  }
+  if (els.marksModal) {
+    els.marksModal.setAttribute("aria-hidden", "false");
+  }
+  renderMarksList();
+}
+
 function openCourseModal() {
   updateCourseUi();
   document.body.classList.add("modal-open");
@@ -1144,7 +1259,17 @@ function openSetupModal(modal, options = {}) {
     return true;
   }
   if (key === "venue") {
-    openVenueModal();
+    openVenueModal({
+      raceId: options.raceId || null,
+      returnToRaceModal: Boolean(options.raceId),
+    });
+    return true;
+  }
+  if (key === "marks") {
+    openMarksModal({
+      returnModal: "venue",
+      returnRaceId: options.raceId || null,
+    });
     return true;
   }
   if (key === "course") {
@@ -1208,6 +1333,7 @@ function renderVenueList() {
     if (els.deleteVenue) els.deleteVenue.disabled = true;
     if (els.renameVenue) els.renameVenue.disabled = true;
     if (els.calibrateMark) els.calibrateMark.disabled = true;
+    updateCalibrationUi();
     return;
   }
 
@@ -1257,13 +1383,49 @@ function renderVenueList() {
   if (els.confirmVenue) els.confirmVenue.disabled = !state.selectedVenueId;
   if (els.deleteVenue) els.deleteVenue.disabled = !state.selectedVenueId;
   if (els.renameVenue) els.renameVenue.disabled = !state.selectedVenueId;
-  if (els.calibrateMark) {
-    const selected = state.selectedVenueId
-      ? getVenueById(state.venues, state.selectedVenueId)
-      : null;
-    const hasMarks = Boolean(selected?.marks?.length);
-    els.calibrateMark.disabled = !state.selectedVenueId || !hasMarks;
+  updateCalibrationControls();
+}
+
+function renderMarksList() {
+  if (!els.marksList) return;
+  els.marksList.innerHTML = "";
+  const venue = getSelectedVenue();
+  if (!venue) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No venue selected.";
+    els.marksList.appendChild(empty);
+    updateCalibrationControls();
+    return;
   }
+  const marks = Array.isArray(venue.marks) ? venue.marks : [];
+  if (!marks.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No marks yet.";
+    els.marksList.appendChild(empty);
+    updateCalibrationControls();
+    return;
+  }
+  if (selectedMarkId && !marks.some((mark) => mark.id === selectedMarkId)) {
+    selectedMarkId = null;
+  }
+  marks.forEach((mark, index) => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = mark.name || `Mark ${index + 1}`;
+    if (selectedMarkId === mark.id) {
+      button.classList.add("selected");
+    }
+    button.addEventListener("click", () => {
+      openMarkEditModal(mark.id);
+    });
+    row.appendChild(button);
+    els.marksList.appendChild(row);
+  });
+  updateCalibrationControls();
 }
 
 function renderStartLineList() {
@@ -1420,6 +1582,12 @@ function syncCoordinateFormatUI() {
   if (els.coordsFormatDD) els.coordsFormatDD.hidden = format !== "dd";
   if (els.coordsFormatDDM) els.coordsFormatDDM.hidden = format !== "ddm";
   if (els.coordsFormatDMS) els.coordsFormatDMS.hidden = format !== "dms";
+  if (els.markCoordsFormatBtn) {
+    els.markCoordsFormatBtn.textContent = `Format: ${getCoordinateFormatLabel(format)}`;
+  }
+  if (els.markFormatDD) els.markFormatDD.hidden = format !== "dd";
+  if (els.markFormatDDM) els.markFormatDDM.hidden = format !== "ddm";
+  if (els.markFormatDMS) els.markFormatDMS.hidden = format !== "dms";
 }
 
 function swapStartLineMarks() {
@@ -1581,6 +1749,8 @@ function initCoordinatePickers() {
     els.ddm.latB.deg,
     els.dms.latA.deg,
     els.dms.latB.deg,
+    els.markDdm.lat.deg,
+    els.markDms.lat.deg,
   ].filter(Boolean);
   latDegreeSelects.forEach((select) => populateNumberSelect(select, { max: 90 }));
 
@@ -1589,6 +1759,8 @@ function initCoordinatePickers() {
     els.ddm.lonB.deg,
     els.dms.lonA.deg,
     els.dms.lonB.deg,
+    els.markDdm.lon.deg,
+    els.markDms.lon.deg,
   ].filter(Boolean);
   lonDegreeSelects.forEach((select) => populateNumberSelect(select, { max: 180 }));
 
@@ -1601,6 +1773,10 @@ function initCoordinatePickers() {
     els.dms.lonA.min,
     els.dms.latB.min,
     els.dms.lonB.min,
+    els.markDdm.lat.min,
+    els.markDdm.lon.min,
+    els.markDms.lat.min,
+    els.markDms.lon.min,
   ].filter(Boolean);
   minuteSelects.forEach((select) => populateNumberSelect(select, { max: 59, pad: 2 }));
 
@@ -1609,6 +1785,8 @@ function initCoordinatePickers() {
     els.dms.lonA.sec,
     els.dms.latB.sec,
     els.dms.lonB.sec,
+    els.markDms.lat.sec,
+    els.markDms.lon.sec,
   ].filter(Boolean);
   secondSelects.forEach((select) => populateNumberSelect(select, { max: 59, pad: 2 }));
 }
@@ -1650,10 +1828,14 @@ function applyCoordinatePickerConstraints() {
   applyDDMDegreeLimit(els.ddm.lonA, 180);
   applyDDMDegreeLimit(els.ddm.latB, 90);
   applyDDMDegreeLimit(els.ddm.lonB, 180);
+  applyDDMDegreeLimit(els.markDdm.lat, 90);
+  applyDDMDegreeLimit(els.markDdm.lon, 180);
   applyDMSDegreeLimit(els.dms.latA, 90);
   applyDMSDegreeLimit(els.dms.lonA, 180);
   applyDMSDegreeLimit(els.dms.latB, 90);
   applyDMSDegreeLimit(els.dms.lonB, 180);
+  applyDMSDegreeLimit(els.markDms.lat, 90);
+  applyDMSDegreeLimit(els.markDms.lon, 180);
 }
 
 function handleCoordinateInputsChanged() {
@@ -1663,6 +1845,12 @@ function handleCoordinateInputsChanged() {
     starterDeps.updateInputs();
   }
   updateLineProjection();
+  refreshHemisphereButtons();
+}
+
+function handleMarkCoordinateInputsChanged() {
+  applyCoordinatePickerConstraints();
+  parseMarkInputs();
   refreshHemisphereButtons();
 }
 
@@ -1684,13 +1872,16 @@ function initHemisphereToggles() {
     if (!input) return;
     const buttons = Array.from(container.querySelectorAll(".coords-hemisphere"));
     if (!buttons.length) return;
+    const scope = container.dataset.scope || "line";
+    const handler =
+      scope === "mark" ? handleMarkCoordinateInputsChanged : handleCoordinateInputsChanged;
     hemisphereGroups[target] = { input, buttons };
     buttons.forEach((button) => {
       button.addEventListener("click", () => {
         const next = button.dataset.value;
         if (input.value === next) return;
         input.value = next;
-        handleCoordinateInputsChanged();
+        handler();
       });
     });
   });
@@ -1733,6 +1924,42 @@ function syncCoordinateInputs() {
     dms: els.dms.lonB,
   });
 
+  applyCoordinatePickerConstraints();
+  refreshHemisphereButtons();
+}
+
+function syncMarkEditorInputs() {
+  const venue = getSelectedVenue();
+  if (!venue) return;
+  const mark = getSelectedMark(venue);
+  if (!mark) return;
+  if (els.markEditTitle) {
+    els.markEditTitle.textContent = mark.name || "Edit mark";
+  }
+  if (els.markNameInput) {
+    els.markNameInput.value = mark.name || "";
+  }
+  if (els.markDescInput) {
+    els.markDescInput.value = mark.description || "";
+  }
+  const activeFormat = normalizeCoordinateFormat(state.coordsFormat);
+  syncCoordinateFormatUI();
+  syncCoordinateField({
+    value: mark.lat,
+    kind: "lat",
+    activeFormat,
+    dd: els.markLat,
+    ddm: els.markDdm.lat,
+    dms: els.markDms.lat,
+  });
+  syncCoordinateField({
+    value: mark.lon,
+    kind: "lon",
+    activeFormat,
+    dd: els.markLon,
+    ddm: els.markDdm.lon,
+    dms: els.markDms.lon,
+  });
   applyCoordinatePickerConstraints();
   refreshHemisphereButtons();
 }
@@ -1886,6 +2113,46 @@ function parseLineInputs(options = {}) {
     starterDeps.saveSettings();
   }
   updateLineNameDisplay();
+}
+
+function parseMarkInputs() {
+  const venue = getSelectedVenue();
+  if (!venue) return;
+  const mark = getSelectedMark(venue);
+  if (!mark) return;
+
+  const format = normalizeCoordinateFormat(state.coordsFormat);
+  let lat = null;
+  let lon = null;
+
+  if (format === "ddm") {
+    lat = parseDDMInput(els.markDdm.lat, "lat");
+    lon = parseDDMInput(els.markDdm.lon, "lon");
+  } else if (format === "dms") {
+    lat = parseDMSInput(els.markDms.lat, "lat");
+    lon = parseDMSInput(els.markDms.lon, "lon");
+  } else {
+    lat = parseDecimalDegreesInput(els.markLat);
+    lon = parseDecimalDegreesInput(els.markLon);
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+  const changed = mark.lat !== lat || mark.lon !== lon;
+  if (!changed) return;
+
+  mark.lat = lat;
+  mark.lon = lon;
+  venue.updatedAt = Date.now();
+  saveVenues(state.venues);
+
+  if (state.venue && state.venue.id === venue.id) {
+    syncDerivedRaceState();
+    updateCourseUi();
+    updateLineProjection();
+  }
+
+  renderMarksList();
 }
 
 function computeStartTimestamp() {
@@ -2058,6 +2325,7 @@ function syncStartUi() {
 function syncStarterInputs() {
   refreshVenueRaceState();
   syncCoordinateInputs();
+  syncMarkEditorInputs();
   syncStartUi();
   updateRaceHintUnits();
   updateCourseUi();
@@ -2124,6 +2392,35 @@ function bindStarterEvents() {
     });
   });
 
+  const markCoordinateInputs = [
+    els.markLat,
+    els.markLon,
+    els.markDdm.lat.deg,
+    els.markDdm.lat.min,
+    els.markDdm.lat.minDec,
+    els.markDdm.lat.hemi,
+    els.markDdm.lon.deg,
+    els.markDdm.lon.min,
+    els.markDdm.lon.minDec,
+    els.markDdm.lon.hemi,
+    els.markDms.lat.deg,
+    els.markDms.lat.min,
+    els.markDms.lat.sec,
+    els.markDms.lat.secDec,
+    els.markDms.lat.hemi,
+    els.markDms.lon.deg,
+    els.markDms.lon.min,
+    els.markDms.lon.sec,
+    els.markDms.lon.secDec,
+    els.markDms.lon.hemi,
+  ].filter(Boolean);
+
+  markCoordinateInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      handleMarkCoordinateInputsChanged();
+    });
+  });
+
   const digitInputs = [
     { input: els.ddm.latA.minDec, maxDigits: COORD_DECIMAL_DIGITS },
     { input: els.ddm.lonA.minDec, maxDigits: COORD_DECIMAL_DIGITS },
@@ -2133,6 +2430,10 @@ function bindStarterEvents() {
     { input: els.dms.lonA.secDec, maxDigits: COORD_DECIMAL_DIGITS },
     { input: els.dms.latB.secDec, maxDigits: COORD_DECIMAL_DIGITS },
     { input: els.dms.lonB.secDec, maxDigits: COORD_DECIMAL_DIGITS },
+    { input: els.markDdm.lat.minDec, maxDigits: COORD_DECIMAL_DIGITS },
+    { input: els.markDdm.lon.minDec, maxDigits: COORD_DECIMAL_DIGITS },
+    { input: els.markDms.lat.secDec, maxDigits: COORD_DECIMAL_DIGITS },
+    { input: els.markDms.lon.secDec, maxDigits: COORD_DECIMAL_DIGITS },
   ].filter(({ input }) => Boolean(input));
 
   digitInputs.forEach(({ input, maxDigits }) => {
@@ -2239,6 +2540,23 @@ function bindStarterEvents() {
       }
       if (starterDeps.updateInputs) {
         starterDeps.updateInputs();
+      }
+    });
+  }
+
+  if (els.markCoordsFormatBtn) {
+    els.markCoordsFormatBtn.addEventListener("click", () => {
+      const formats = ["dd", "ddm", "dms"];
+      const current = normalizeCoordinateFormat(state.coordsFormat);
+      const index = formats.indexOf(current);
+      state.coordsFormat = formats[(index + 1) % formats.length];
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      if (starterDeps.updateInputs) {
+        starterDeps.updateInputs();
+      } else {
+        syncMarkEditorInputs();
       }
     });
   }
@@ -2524,19 +2842,144 @@ function bindStarterEvents() {
             window.alert("No marks to calibrate.");
             return;
           }
+          const previous = { lat: nearest.mark.lat, lon: nearest.mark.lon };
+          const next = {
+            lat: sourcePosition.coords.latitude,
+            lon: sourcePosition.coords.longitude,
+          };
           nearest.mark.lat = sourcePosition.coords.latitude;
           nearest.mark.lon = sourcePosition.coords.longitude;
           venue.updatedAt = Date.now();
           saveVenues(state.venues);
+          lastCalibration = {
+            venueId: venue.id,
+            markId: nearest.mark.id,
+            markName: nearest.mark.name,
+            previous,
+            next,
+            distanceMeters: nearest.distance,
+          };
           if (state.venue && state.venue.id === venue.id) {
             syncDerivedRaceState();
             syncStartFromRace();
             updateCourseUi();
             updateLineProjection();
           }
-          renderVenueList();
+          renderMarksList();
         }
       );
+    });
+  }
+
+  if (els.calibrationUndo) {
+    els.calibrationUndo.addEventListener("click", () => {
+      if (!lastCalibration) return;
+      const venue = getVenueById(state.venues, lastCalibration.venueId);
+      if (!venue) {
+        lastCalibration = null;
+        updateCalibrationUi();
+        return;
+      }
+      const mark = (venue.marks || []).find(
+        (entry) => entry.id === lastCalibration.markId
+      );
+      if (!mark) {
+        lastCalibration = null;
+        updateCalibrationUi();
+        return;
+      }
+      mark.lat = lastCalibration.previous.lat;
+      mark.lon = lastCalibration.previous.lon;
+      venue.updatedAt = Date.now();
+      saveVenues(state.venues);
+      if (state.venue && state.venue.id === venue.id) {
+        syncDerivedRaceState();
+        syncStartFromRace();
+        updateCourseUi();
+        updateLineProjection();
+      }
+      lastCalibration = null;
+      renderMarksList();
+    });
+  }
+
+  if (els.markNameInput) {
+    els.markNameInput.addEventListener("change", () => {
+      const venue = getSelectedVenue();
+      if (!venue) return;
+      const mark = getSelectedMark(venue);
+      if (!mark) return;
+      const fallback = getMarkFallbackName(venue, mark);
+      const nextName = normalizeMarkName(els.markNameInput.value, fallback);
+      if (mark.name === nextName) return;
+      mark.name = nextName;
+      venue.updatedAt = Date.now();
+      saveVenues(state.venues);
+      if (state.venue && state.venue.id === venue.id) {
+        updateCourseUi();
+        updateLineProjection();
+      }
+      if (els.markEditTitle) {
+        els.markEditTitle.textContent = mark.name || "Edit mark";
+      }
+      renderMarksList();
+    });
+  }
+
+  if (els.markDescInput) {
+    els.markDescInput.addEventListener("change", () => {
+      const venue = getSelectedVenue();
+      if (!venue) return;
+      const mark = getSelectedMark(venue);
+      if (!mark) return;
+      const nextDesc = normalizeMarkDescription(els.markDescInput.value);
+      if (mark.description === nextDesc) return;
+      mark.description = nextDesc;
+      venue.updatedAt = Date.now();
+      saveVenues(state.venues);
+    });
+  }
+
+  if (els.markSetGps) {
+    els.markSetGps.addEventListener("click", () => {
+      const venue = getSelectedVenue();
+      if (!venue) return;
+      const mark = getSelectedMark(venue);
+      if (!mark) return;
+      requestHighPrecisionPosition(
+        starterDeps.handlePosition,
+        starterDeps.handlePositionError,
+        () => {
+          const sourcePosition = state.kalmanPosition;
+          if (!sourcePosition) {
+            window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
+            return;
+          }
+          mark.lat = sourcePosition.coords.latitude;
+          mark.lon = sourcePosition.coords.longitude;
+          venue.updatedAt = Date.now();
+          saveVenues(state.venues);
+          if (state.venue && state.venue.id === venue.id) {
+            syncDerivedRaceState();
+            updateCourseUi();
+            updateLineProjection();
+          }
+          syncMarkEditorInputs();
+          renderMarksList();
+        }
+      );
+    });
+  }
+
+  if (els.closeMarkEdit) {
+    els.closeMarkEdit.addEventListener("click", () => {
+      closeMarkEditModal();
+    });
+  }
+
+  if (els.closeMarksModal) {
+    els.closeMarksModal.addEventListener("click", () => {
+      closeMarksModal();
     });
   }
 
@@ -2597,15 +3040,34 @@ function bindStarterEvents() {
 
   if (els.openVenueMarks) {
     els.openVenueMarks.addEventListener("click", () => {
+      const returnRaceId = venueSelectionTargetRaceId || null;
       closeVenueModal();
-      window.location.href = getMapHref("venue-marks", { returnModal: "venue" });
+      openMarksModal({
+        returnModal: "venue",
+        returnRaceId,
+        selectedVenueId: state.selectedVenueId || state.activeVenueId,
+      });
+    });
+  }
+
+  if (els.openVenueMarksMap) {
+    els.openVenueMarksMap.addEventListener("click", () => {
+      const returnRaceId = marksReturnRaceId || venueSelectionTargetRaceId || null;
+      window.location.href = getMapHref("venue-marks", {
+        returnModal: "marks",
+        returnRaceId,
+      });
     });
   }
 
   if (els.openLines) {
     els.openLines.addEventListener("click", () => {
+      const returnRaceId = venueSelectionTargetRaceId || null;
       closeVenueModal();
-      window.location.href = getMapHref("venue-lines", { returnModal: "venue" });
+      window.location.href = getMapHref("venue-lines", {
+        returnModal: "venue",
+        returnRaceId,
+      });
     });
   }
 
