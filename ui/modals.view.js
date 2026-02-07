@@ -39,7 +39,7 @@ export const modalsView = `
 
 <section id="race-modal" class="modal" aria-hidden="true">
   <div class="modal-panel">
-    <h2>Races</h2>
+    <h2 id="race-modal-title">Races</h2>
     <div id="race-list" class="modal-list modal-scroll"></div>
     <div class="row stack">
       <button id="edit-race-venue" class="ghost">Venue</button>

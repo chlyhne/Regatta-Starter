@@ -6,7 +6,7 @@ async function resetStorage(page) {
     localStorage.clear();
     localStorage.setItem(
       "racetimer-settings",
-      JSON.stringify({ version: 19, activeVenueId: null, activeRaceId: null })
+      JSON.stringify({ version: 20, activeVenueId: null, activeRaceId: null })
     );
     sessionStorage.setItem("seeded", "true");
   });
@@ -14,26 +14,18 @@ async function resetStorage(page) {
 
 test("marks modal edits mark details and coordinates", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
 
-  if ((await page.locator("#venue-modal").getAttribute("aria-hidden")) === "true") {
-    await page.click("#select-venue");
-    await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
-  }
+  await page.click("#plan-select-venue");
+  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   page.once("dialog", (dialog) => dialog.accept("Marks Harbor"));
   await page.getByRole("button", { name: "New venue" }).evaluate((button) => {
     button.click();
   });
-  await expect(page.locator("#venue-name")).toHaveText("Marks Harbor");
+  await expect(page.locator("#plan-venue-name")).toHaveText("Marks Harbor");
 
-  const venueHidden = await page.locator("#venue-modal").getAttribute("aria-hidden");
-  if (venueHidden === "true") {
-    await page.click("#select-venue");
-    await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
-  }
-
-  await page.click("#open-venue-marks");
+  await page.click("#plan-edit-marks");
   await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
   await expect(page.locator("#calibrate-mark")).toBeDisabled();
 

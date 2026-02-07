@@ -1,5 +1,8 @@
 import { homeView } from "../features/home/home.view.js";
 import { setupView } from "../features/starter/setup.view.js";
+import { quickView } from "../features/starter/quick.view.js";
+import { planView } from "../features/starter/plan.view.js";
+import { lineView } from "../features/starter/line.view.js";
 import { vmgView } from "../features/vmg/vmg.view.js";
 import { lifterView } from "../features/lifter/lifter.view.js";
 import { raceWindView } from "../features/racewind/racewind.view.js";
@@ -15,6 +18,9 @@ import { modalsView } from "./modals.view.js";
 const appShell = [
   homeView,
   setupView,
+  quickView,
+  planView,
+  lineView,
   vmgView,
   lifterView,
   raceWindView,

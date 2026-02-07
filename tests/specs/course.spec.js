@@ -17,9 +17,10 @@ async function seedStorage(page, { settings, venues, races }) {
 
 function buildBaseSettings(overrides = {}) {
   return {
-    version: 19,
+    version: 20,
     activeVenueId: "venue-1",
     activeRaceId: "race-1",
+    defaultVenueId: "venue-1",
     ...overrides,
   };
 }
@@ -82,10 +83,10 @@ test("rounding modal toggles rounding for the route", async ({ page }) => {
   ];
 
   await seedStorage(page, { settings, venues, races });
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
-  await page.click("#open-course");
+  await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
   const roundingButton = page.locator("#open-rounding");
   await roundingButton.scrollIntoViewIfNeeded();
@@ -142,10 +143,10 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
   ];
 
   await seedStorage(page, { settings, venues, races });
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
-  await page.click("#open-course");
+  await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
   await page.click("#open-route");
   await expect(page.getByRole("button", { name: "Add A (port)" })).toBeVisible();
@@ -241,8 +242,8 @@ test("course length switches to nautical miles over 1000m", async ({ page }) => 
   ];
 
   await seedStorage(page, { settings, venues, races });
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
   const valueText = await page.locator("#status-course-length-value").textContent();
   const unitText = await page.locator("#status-course-length-unit").textContent();

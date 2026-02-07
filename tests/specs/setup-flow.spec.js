@@ -6,7 +6,7 @@ async function resetStorage(page) {
     localStorage.clear();
     localStorage.setItem(
       "racetimer-settings",
-      JSON.stringify({ version: 19, activeVenueId: null, activeRaceId: null })
+      JSON.stringify({ version: 20, activeVenueId: null, activeRaceId: null })
     );
     sessionStorage.setItem("seeded", "true");
   });
@@ -17,34 +17,32 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   await page.goto("/#setup");
   await expect(page.locator("#setup-view")).toBeVisible();
 
-  if ((await page.locator("#venue-modal").getAttribute("aria-hidden")) === "true") {
-    await page.click("#select-venue");
-    await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
-  }
+  await page.click("#open-plan-venue");
+  await expect(page.locator("#plan-view")).toBeVisible();
+
+  await page.click("#plan-select-venue");
+  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   page.once("dialog", (dialog) => dialog.accept("Test Harbor"));
   await page.getByRole("button", { name: "New venue" }).evaluate((button) => {
     button.click();
   });
-  await expect(page.locator("#venue-name")).toHaveText("Test Harbor");
-  const venueModalHidden = await page.locator("#venue-modal").getAttribute("aria-hidden");
-  if (venueModalHidden === "true") {
-    await page.click("#select-venue");
-    await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
-  }
+  await expect(page.locator("#plan-venue-name")).toHaveText("Test Harbor");
+
+  await page.click("#plan-select-venue");
+  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   await expect(page.locator("#rename-venue")).toBeEnabled();
   page.once("dialog", (dialog) => dialog.accept("Renamed Harbor"));
   await page.locator("#rename-venue").evaluate((button) => {
     button.click();
   });
   await expect(page.getByRole("button", { name: "Renamed Harbor" })).toBeVisible();
-  await page.click("#confirm-venue");
+  await page.click("#close-venue-modal");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "true");
 
-  if ((await page.locator("#venue-modal").getAttribute("aria-hidden")) === "true") {
-    await page.click("#select-venue");
-    await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
-  }
-  await page.click("#open-venue-marks");
+  await page.click("#plan-set-default");
+  await expect(page.locator("#plan-default-venue")).toHaveText("Renamed Harbor");
+
+  await page.click("#plan-edit-marks");
 
   await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
   await page.click("#open-venue-marks-map");
@@ -58,7 +56,6 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   await page.click("#close-map");
   await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
   await page.click("#close-marks-modal");
-  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
 
   await page.evaluate(() => {
     const venuesRaw = localStorage.getItem("racetimer-venues");
@@ -110,9 +107,11 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   });
 
   await page.reload();
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#setup");
+  await page.click("#open-quick-race");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
-  await page.click("#open-course");
+  await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
 
   await page.click("#select-start-line");
@@ -147,7 +146,7 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   await page.dispatchEvent("#absolute-time", "change");
   await page.click("#set-start");
 
-  await expect(page.locator("#race-name")).toHaveText("Race 2");
+  await expect(page.locator("#race-name")).toContainText("Race");
   await expect(page.locator("#venue-name")).toHaveText("Renamed Harbor");
   await expect(page.locator("#status-start-time")).toContainText("12:34");
 

@@ -3,7 +3,7 @@ export const setupView = `
   <header class="page-head">
     <div class="head-title">
       <h1 class="brand-mark brand-light">
-        <span class="brand-label">Race</span><span class="brand-accent">Starter</span>
+        <span class="brand-label">Race</span><span class="brand-accent">Plan</span>
       </h1>
     </div>
     <div class="head-bar">
@@ -12,114 +12,15 @@ export const setupView = `
           <span class="brand-label">Race</span><span class="brand-accent">Tools</span>
         </button>
       </div>
-      <div class="head-right">
-        <div class="sensor-row">
-          <button class="status-toggle" type="button" data-sensor="gps" aria-pressed="true">
-            <span>GPS</span>
-            <span id="gps-icon" class="gps-icon" aria-label="GPS status" title="GPS status"></span>
-          </button>
-          <button class="status-toggle" type="button" data-sensor="imu" aria-pressed="false">
-            <span>IMU</span>
-            <span id="imu-icon" class="imu-icon" aria-label="IMU status" title="IMU status"></span>
-          </button>
-        </div>
-      </div>
     </div>
   </header>
 
   <section class="panel">
-    <h2 class="panel-title">My Race</h2>
-    <div class="hint">Race</div>
-    <div id="race-name" class="value">--</div>
-    <div class="hint">Venue</div>
-    <div id="venue-name" class="value">--</div>
-    <div class="hint">Course length</div>
-    <div id="status-course-length" class="value value-split">
-      <span id="status-course-length-value">--</span>
-      <span id="status-course-length-unit" class="value-unit">[m]</span>
-    </div>
-    <div class="hint">Line name</div>
-    <div id="status-line-name" class="value">--</div>
-    <div class="hint">Distance to line</div>
-    <div id="status-distance" class="value value-split">
-      <span id="status-distance-value">--</span>
-      <span id="status-distance-unit" class="value-unit">[m]</span>
-    </div>
-    <div class="hint">Line length</div>
-    <div id="status-line-length" class="value value-split">
-      <span id="status-line-length-value">--</span>
-      <span id="status-line-length-unit" class="value-unit">[m]</span>
-    </div>
-    <div class="hint">Start direction</div>
-    <div id="status-start-direction" class="value">--</div>
-    <div class="hint">Start time</div>
-    <div id="status-start-time" class="value">--</div>
-    <div class="hint">Time until start</div>
-    <div id="status-time" class="value">--</div>
+    <h2 class="panel-title">Race Plan</h2>
     <div class="row stack">
-      <button id="go-race" class="race-enter">Race</button>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Race</h2>
-    <div class="row stack">
-      <button id="select-race" class="ghost">Races</button>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Venue</h2>
-    <div class="row stack">
-      <button id="select-venue" class="ghost">Venues</button>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Course</h2>
-    <div class="row stack">
-      <button id="open-course" class="ghost">Courses</button>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Set Start Time</h2>
-    <div class="row setting-row">
-      <div class="race-toggle horizontal start-toggle" role="group" aria-label="Start mode">
-        <button
-          id="start-mode-absolute"
-          class="race-toggle-btn"
-          type="button"
-          aria-pressed="true"
-        >
-          Time
-        </button>
-        <button
-          id="start-mode-countdown"
-          class="race-toggle-btn"
-          type="button"
-          aria-pressed="false"
-        >
-          Countdown
-        </button>
-      </div>
-    </div>
-    <div class="grid">
-      <div id="start-mode-absolute-panel">
-        <input id="absolute-time" type="time" step="1" aria-label="Start time" />
-      </div>
-      <div id="start-mode-countdown-panel" hidden>
-        <div class="countdown-picker" role="group" aria-label="Countdown duration">
-          <select id="countdown-hours" aria-label="Countdown hours"></select>
-          <span class="countdown-sep" aria-hidden="true">:</span>
-          <select id="countdown-minutes" aria-label="Countdown minutes"></select>
-          <span class="countdown-sep" aria-hidden="true">:</span>
-          <select id="countdown-seconds" aria-label="Countdown seconds"></select>
-        </div>
-      </div>
-    </div>
-    <div class="row stack">
-      <button id="set-start">Set</button>
+      <button id="open-plan-venue" class="race-enter">Plan venue</button>
+      <button id="open-quick-race" class="race-enter">Quick race</button>
+      <button id="open-start-line-only" class="race-enter">Start line only</button>
     </div>
   </section>
 

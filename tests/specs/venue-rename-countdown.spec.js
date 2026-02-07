@@ -6,7 +6,7 @@ async function resetStorage(page) {
     localStorage.clear();
     localStorage.setItem(
       "racetimer-settings",
-      JSON.stringify({ version: 19, activeVenueId: null, activeRaceId: null })
+      JSON.stringify({ version: 20, activeVenueId: null, activeRaceId: null })
     );
     sessionStorage.setItem("seeded", "true");
   });
@@ -24,8 +24,8 @@ function getActiveRaceStart() {
 
 test("renaming venue keeps active countdown", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
 
   await page.selectOption("#countdown-minutes", "1");
   await page.selectOption("#countdown-seconds", "0");
@@ -36,11 +36,15 @@ test("renaming venue keeps active countdown", async ({ page }) => {
   expect(before.activeRaceId).toBeTruthy();
   expect(Number.isFinite(before.startTs)).toBe(true);
 
-  await page.click("#select-venue");
+  await page.click("#close-quick");
+  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.click("#open-plan-venue");
+  await expect(page.locator("#plan-view")).toBeVisible();
+  await page.click("#plan-select-venue");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   page.once("dialog", (dialog) => dialog.accept("Renamed Venue"));
   await page.locator("#rename-venue").evaluate((button) => button.click());
-  await page.click("#confirm-venue");
+  await page.click("#close-venue-modal");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "true");
 
   const after = await page.evaluate(getActiveRaceStart);

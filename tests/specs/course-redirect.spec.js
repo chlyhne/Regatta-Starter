@@ -6,7 +6,7 @@ async function resetStorage(page) {
     localStorage.clear();
     localStorage.setItem(
       "racetimer-settings",
-      JSON.stringify({ version: 19, activeVenueId: null, activeRaceId: null })
+      JSON.stringify({ version: 20, activeVenueId: null, activeRaceId: null })
     );
     sessionStorage.setItem("seeded", "true");
   });
@@ -14,11 +14,11 @@ async function resetStorage(page) {
 
 test("course redirects to marks map when venue has no marks", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.click("#open-course");
+  await page.click("#plan-edit-course");
 
   await expect(page.locator("#map-title")).toHaveText("Venue marks");
   await expect(page).toHaveURL(/map\.html.*mode=venue-marks/);
@@ -26,8 +26,8 @@ test("course redirects to marks map when venue has no marks", async ({ page }) =
 
 test("course redirects to lines map when venue has marks but no lines", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
 
   await page.evaluate(() => {
     const venuesRaw = localStorage.getItem("racetimer-venues");
@@ -45,10 +45,10 @@ test("course redirects to lines map when venue has marks but no lines", async ({
   });
 
   await page.reload();
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await expect(page.locator("#plan-view")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.click("#open-course");
+  await page.click("#plan-edit-course");
 
   await expect(page.locator("#map-title")).toHaveText("Lines");
   await expect(page).toHaveURL(/map\.html.*mode=venue-lines/);

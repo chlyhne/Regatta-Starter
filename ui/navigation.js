@@ -132,6 +132,34 @@ const VIEW_CONFIG = {
     gpsMode: "setup",
     releaseWakeLock: true,
   },
+  quick: {
+    id: "quick-view",
+    hash: "#quick",
+    bodyClass: "quick-mode",
+    scrollTop: true,
+    gpsMode: "setup",
+    releaseWakeLock: true,
+    updateInputs: true,
+    updateImuCalibrationUi: true,
+  },
+  plan: {
+    id: "plan-view",
+    hash: "#plan",
+    bodyClass: "plan-mode",
+    scrollTop: true,
+    gpsMode: "setup",
+    releaseWakeLock: true,
+    updateInputs: true,
+  },
+  line: {
+    id: "line-view",
+    hash: "#line",
+    bodyClass: "line-mode",
+    scrollTop: true,
+    gpsMode: "setup",
+    releaseWakeLock: true,
+    updateInputs: true,
+  },
 };
 
 const BODY_CLASSES = Object.values(VIEW_CONFIG)

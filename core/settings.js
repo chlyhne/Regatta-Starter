@@ -6,7 +6,7 @@ import {
 } from "./units.js";
 
 const STORAGE_KEY = "racetimer-settings";
-const SETTINGS_VERSION = 19;
+const SETTINGS_VERSION = 20;
 const MAX_COUNTDOWN_SECONDS = 24 * 60 * 60 - 1;
 const DEFAULT_HEADING_SOURCE_BY_MODE = { lifter: "kalman" };
 const BOAT_SHAPES = new Set([
@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
   activeVenueId: null,
   activeRaceId: null,
+  defaultVenueId: null,
   line: {
     a: { lat: null, lon: null },
     b: { lat: null, lon: null },
@@ -288,6 +289,7 @@ function normalizeSettings(raw) {
     version: SETTINGS_VERSION,
     activeVenueId: normalizeId(raw?.activeVenueId),
     activeRaceId: normalizeId(raw?.activeRaceId),
+    defaultVenueId: normalizeId(raw?.defaultVenueId),
     line: normalizeLine(raw?.line),
     lineMeta: normalizeLineMeta(raw?.lineMeta),
     coordsFormat: normalizeCoordsFormat(raw?.coordsFormat),
@@ -496,6 +498,10 @@ function migrateSettings(raw) {
     migrated.activeVenueId = null;
     migrated.activeRaceId = null;
     migrated.version = 19;
+  }
+  if (version < 20) {
+    migrated.defaultVenueId = null;
+    migrated.version = 20;
   }
   return migrated;
 }

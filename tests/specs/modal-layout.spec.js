@@ -6,7 +6,7 @@ async function resetStorage(page) {
     localStorage.clear();
     localStorage.setItem(
       "racetimer-settings",
-      JSON.stringify({ version: 19, activeVenueId: null, activeRaceId: null })
+      JSON.stringify({ version: 20, activeVenueId: null, activeRaceId: null })
     );
     sessionStorage.setItem("seeded", "true");
   });
@@ -30,15 +30,15 @@ async function expectFullPageModal(page, selector) {
 
 test("modals use full-page layout", async ({ page }) => {
   await resetStorage(page);
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#select-race");
+  await page.click("#plan-open-plans");
   await expectFullPageModal(page, "#race-modal");
   await page.click("#close-race-modal");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "true");
 
-  await page.click("#select-venue");
+  await page.click("#plan-select-venue");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   await page.click("#open-venue-marks");
   await expectFullPageModal(page, "#marks-modal");

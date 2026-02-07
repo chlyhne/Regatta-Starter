@@ -17,9 +17,10 @@ async function seedStorage(page, { settings, venues, races }) {
 
 function buildBaseSettings(overrides = {}) {
   return {
-    version: 19,
+    version: 20,
     activeVenueId: "venue-1",
     activeRaceId: "race-1",
+    defaultVenueId: "venue-1",
     ...overrides,
   };
 }
@@ -245,4 +246,92 @@ test("line arrows point in the start direction", async ({ page }) => {
   });
   expect(angle).not.toBeNull();
   expect(Math.abs(angle + 90)).toBeLessThan(12);
+});
+
+test("mark labels fit text and arrows are sized", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-port", name: "Port Mark", description: "", lat: 55.0, lon: 12.0 },
+        { id: "mark-star", name: "Starboard Mark", description: "", lat: 55.0, lon: 12.02 },
+      ],
+      lines: [
+        {
+          id: "line-1",
+          name: "",
+          starboardMarkId: "mark-star",
+          portMarkId: "mark-port",
+        },
+      ],
+      defaultStartLineId: "line-1",
+      defaultFinishLineId: "line-1",
+      defaultRouteStartLineId: "line-1",
+      defaultRouteFinishLineId: "line-1",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-1",
+      finishLineId: "line-1",
+      routeEnabled: false,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=venue-lines");
+
+  await expect(page.locator(".mark-label").first()).toBeVisible();
+  await expect(page.locator(".map-line-arrow")).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const label = document.querySelector(".mark-label");
+    const arrow = document.querySelector(".map-line-arrow");
+    const paths = Array.from(document.querySelectorAll("path"));
+    const markPath = paths.find((path) => {
+      const computed = window.getComputedStyle(path);
+      const fill = (path.getAttribute("fill") || computed.fill || "").toLowerCase();
+      if (!fill || fill === "none" || fill === "transparent") return false;
+      if (fill.startsWith("rgba") && fill.includes("0, 0, 0, 0")) return false;
+      return true;
+    });
+
+    if (!label || !arrow || !markPath) {
+      return { textFits: false, markVisible: false, arrowSized: false };
+    }
+
+    const labelRect = label.getBoundingClientRect();
+    const markRect = markPath.getBoundingClientRect();
+    const markCenter = {
+      x: markRect.left + markRect.width / 2,
+      y: markRect.top + markRect.height / 2,
+    };
+    const textFits =
+      label.scrollWidth <= label.clientWidth + 1 &&
+      label.scrollHeight <= label.clientHeight + 1;
+    const markVisible = !(
+      markCenter.x >= labelRect.left &&
+      markCenter.x <= labelRect.right &&
+      markCenter.y >= labelRect.top &&
+      markCenter.y <= labelRect.bottom
+    );
+    const arrowRect = arrow.getBoundingClientRect();
+    const arrowSized = arrowRect.width >= 32 && arrowRect.height >= 24;
+
+    return { textFits, markVisible, arrowSized };
+  });
+
+  expect(metrics.textFits).toBe(true);
+  expect(metrics.markVisible).toBe(true);
+  expect(metrics.arrowSized).toBe(true);
 });

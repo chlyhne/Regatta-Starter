@@ -17,7 +17,7 @@ async function seedStorage(page, { settings, venues, races }) {
 
 function buildBaseSettings(overrides = {}) {
   return {
-    version: 19,
+    version: 20,
     activeVenueId: "venue-1",
     activeRaceId: "race-1",
     ...overrides,
@@ -44,6 +44,7 @@ test("races list is scrollable", async ({ page }) => {
     id: `race-${index + 1}`,
     name: `Race ${index + 1}`,
     venueId: "venue-1",
+    isPlan: true,
     startLineId: null,
     finishLineId: null,
     routeEnabled: false,
@@ -53,10 +54,10 @@ test("races list is scrollable", async ({ page }) => {
   }));
 
   await seedStorage(page, { settings, venues, races });
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#select-race");
+  await page.click("#plan-open-plans");
   await expect(page.locator("#race-modal")).toBeVisible();
 
   const scrollable = await page.evaluate(() => {

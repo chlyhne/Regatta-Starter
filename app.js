@@ -491,7 +491,8 @@ function openModalFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const modal = params.get("modal");
   if (!modal) return;
-  if (window.location.hash !== "#setup") return;
+  const allowedViews = new Set(["#setup", "#plan", "#quick"]);
+  if (!allowedViews.has(window.location.hash)) return;
   const raceId = params.get("raceId");
   if (openSetupModalFromReturn) {
     openSetupModalFromReturn(modal, { raceId });
@@ -924,6 +925,7 @@ function loadSettings() {
   state.lineSourceId = settings.lineMeta?.sourceId || null;
   state.activeVenueId = settings.activeVenueId || null;
   state.activeRaceId = settings.activeRaceId || null;
+  state.defaultVenueId = settings.defaultVenueId || null;
   state.courseTrack = [];
   state.courseTrackActive = false;
   state.useKalman = true;
@@ -990,13 +992,14 @@ function updateStartDefaultsFromState() {
 }
 
 function saveSettings() {
-  if (state.race && Array.isArray(state.races)) {
+  if (state.race && Array.isArray(state.races) && !state.lineOnlyActive) {
     updateRaceStartFromState();
     updateStartDefaultsFromState();
   }
   saveSettingsToStorage({
     activeVenueId: state.activeVenueId,
     activeRaceId: state.activeRaceId,
+    defaultVenueId: state.defaultVenueId,
     line: state.line,
     lineMeta: {
       name: state.lineName,
@@ -1044,6 +1047,9 @@ function ensureVenueAndRace() {
   if (!venues.length) {
     venues.push(createVenue("Local venue"));
     saveVenues(venues);
+  }
+  if (!getVenueById(venues, state.defaultVenueId) && venues.length) {
+    state.defaultVenueId = venues[0].id;
   }
 
   let activeVenue = getVenueById(venues, state.activeVenueId);

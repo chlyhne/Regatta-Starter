@@ -5,7 +5,12 @@ async function seedStorage(page) {
     localStorage.clear();
     localStorage.setItem(
       "racetimer-settings",
-      JSON.stringify({ version: 19, activeVenueId: "venue-1", activeRaceId: "race-1" })
+      JSON.stringify({
+        version: 20,
+        activeVenueId: "venue-1",
+        activeRaceId: "race-1",
+        defaultVenueId: "venue-1",
+      })
     );
     localStorage.setItem(
       "racetimer-venues",
@@ -41,6 +46,7 @@ async function seedStorage(page) {
           id: "race-1",
           name: "Race 1",
           venueId: "venue-1",
+          isPlan: true,
           startLineId: "line-start",
           finishLineId: "line-start",
           routeEnabled: false,
@@ -55,10 +61,10 @@ async function seedStorage(page) {
 
 test("course modal returns to race modal when opened from race", async ({ page }) => {
   await seedStorage(page);
-  await page.goto("/#setup");
-  await expect(page.locator("#setup-view")).toBeVisible();
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
 
-  await page.click("#select-race");
+  await page.click("#plan-open-plans");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "false");
 
   await page.getByRole("button", { name: /Race 1/ }).click();
