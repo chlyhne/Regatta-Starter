@@ -95,6 +95,30 @@ function normalizeRouteEntry(entry) {
   };
 }
 
+function normalizeLineRoles(line) {
+  if (!line || typeof line !== "object") {
+    return { start: true, finish: true };
+  }
+  if (Array.isArray(line.roles)) {
+    const start = line.roles.includes("start");
+    const finish = line.roles.includes("finish");
+    return start || finish ? { start, finish } : { start: true, finish: true };
+  }
+  const roles = line.roles && typeof line.roles === "object" ? line.roles : null;
+  if (roles) {
+    const start = Boolean(roles.start);
+    const finish = Boolean(roles.finish);
+    return start || finish ? { start, finish } : { start: true, finish: true };
+  }
+  const role = typeof line.role === "string" ? line.role.trim().toLowerCase() : "";
+  if (role === "start") return { start: true, finish: false };
+  if (role === "finish") return { start: false, finish: true };
+  if (role === "both") return { start: true, finish: true };
+  if (line.isStartLine || line.startLine) return { start: true, finish: false };
+  if (line.isFinishLine || line.finishLine) return { start: false, finish: true };
+  return { start: true, finish: true };
+}
+
 function normalizeLine(line, marksById) {
   if (!line || typeof line !== "object") return null;
   const starboardMarkId = normalizeId(
@@ -106,11 +130,13 @@ function normalizeLine(line, marksById) {
   if (!starboardMarkId || !portMarkId) return null;
   if (starboardMarkId === portMarkId) return null;
   if (!marksById.has(starboardMarkId) || !marksById.has(portMarkId)) return null;
+  const roles = normalizeLineRoles(line);
   return {
     id: normalizeId(line.id) || generateId("line"),
     name: normalizeOptionalName(line.name),
     starboardMarkId,
     portMarkId,
+    roles,
   };
 }
 
@@ -126,6 +152,10 @@ function getLineDisplayName(line, lines, fallback) {
   const index = lines.findIndex((entry) => entry.id === line.id);
   if (index < 0) return fallback;
   return `${fallback} ${index + 1}`;
+}
+
+function getLineRoles(line) {
+  return normalizeLineRoles(line);
 }
 
 function normalizeVenue(venue) {
@@ -528,6 +558,7 @@ export {
   getRaceById,
   getLineById,
   getLineDisplayName,
+  getLineRoles,
   getStartLineFromVenue,
   getFinishLineFromVenue,
   migrateLineSelections,

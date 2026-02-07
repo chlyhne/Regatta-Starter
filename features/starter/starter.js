@@ -19,6 +19,7 @@ import {
   normalizeRouteEntry,
   getLineById,
   getLineDisplayName,
+  getLineRoles,
   getStartLineFromVenue,
   getFinishLineFromVenue,
   migrateLineSelections,
@@ -1137,15 +1138,24 @@ function createVenueMark(venue, baseName, coords) {
   return mark;
 }
 
-function createVenueLine(venue, baseName, portMarkId, starboardMarkId) {
+function createVenueLine(venue, baseName, portMarkId, starboardMarkId, roles) {
   if (!venue || !portMarkId || !starboardMarkId) return null;
   const names = new Set((venue.lines || []).map((line) => line.name || ""));
   const name = buildUniqueName(names, baseName);
+  const roleFlags = {
+    start: roles ? roles.start !== false : true,
+    finish: roles ? roles.finish !== false : true,
+  };
+  if (!roleFlags.start && !roleFlags.finish) {
+    roleFlags.start = true;
+    roleFlags.finish = true;
+  }
   const line = {
     id: `line-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name,
     starboardMarkId,
     portMarkId,
+    roles: roleFlags,
   };
   venue.lines.push(line);
   return line;
@@ -1157,7 +1167,10 @@ function saveLineToVenue(venue) {
   const portMark = createVenueMark(venue, "Start P", state.line.a);
   const starboardMark = createVenueMark(venue, "Start SB", state.line.b);
   if (!portMark || !starboardMark) return null;
-  const line = createVenueLine(venue, "Start line", portMark.id, starboardMark.id);
+  const line = createVenueLine(venue, "Start line", portMark.id, starboardMark.id, {
+    start: true,
+    finish: false,
+  });
   venue.updatedAt = Date.now();
   saveVenues(state.venues);
   return line;
@@ -2287,19 +2300,22 @@ function renderStartLineList() {
   if (!els.startLineList) return;
   els.startLineList.innerHTML = "";
   const lines = Array.isArray(state.venue?.lines) ? state.venue.lines : [];
-  if (!lines.length) {
+  const filtered = lines.filter(
+    (line) => getLineRoles(line).start || line.id === state.selectedStartLineId
+  );
+  if (!filtered.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No lines yet.";
+    empty.textContent = "No start lines yet.";
     els.startLineList.appendChild(empty);
     if (els.confirmStartLine) els.confirmStartLine.disabled = true;
     return;
   }
-  const lineIds = new Set(lines.map((line) => line.id));
+  const lineIds = new Set(filtered.map((line) => line.id));
   if (!lineIds.has(state.selectedStartLineId)) {
     state.selectedStartLineId = null;
   }
-  lines.forEach((line) => {
+  filtered.forEach((line) => {
     const row = document.createElement("div");
     row.className = "modal-item";
     const button = document.createElement("button");
@@ -2324,19 +2340,22 @@ function renderFinishLineList() {
   if (!els.finishLineList) return;
   els.finishLineList.innerHTML = "";
   const lines = Array.isArray(state.venue?.lines) ? state.venue.lines : [];
-  if (!lines.length) {
+  const filtered = lines.filter(
+    (line) => getLineRoles(line).finish || line.id === state.selectedFinishLineId
+  );
+  if (!filtered.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No lines yet.";
+    empty.textContent = "No finish lines yet.";
     els.finishLineList.appendChild(empty);
     if (els.confirmFinishLine) els.confirmFinishLine.disabled = true;
     return;
   }
-  const lineIds = new Set(lines.map((line) => line.id));
+  const lineIds = new Set(filtered.map((line) => line.id));
   if (!lineIds.has(state.selectedFinishLineId)) {
     state.selectedFinishLineId = null;
   }
-  lines.forEach((line) => {
+  filtered.forEach((line) => {
     const row = document.createElement("div");
     row.className = "modal-item";
     const button = document.createElement("button");

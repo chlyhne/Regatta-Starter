@@ -11,6 +11,7 @@ import {
   getRaceById,
   getLineById,
   getLineDisplayName,
+  getLineRoles,
   migrateLineSelections,
 } from "./core/venues.js";
 
@@ -66,6 +67,8 @@ const els = {
   lineEditTitle: document.getElementById("line-edit-title"),
   lineName: document.getElementById("line-name"),
   lineDetails: document.getElementById("line-details"),
+  lineRoleStart: document.getElementById("line-role-start"),
+  lineRoleFinish: document.getElementById("line-role-finish"),
   swapLineDirection: document.getElementById("swap-line-direction"),
   trimLine: document.getElementById("trim-line"),
   swapTrimSide: document.getElementById("swap-trim-side"),
@@ -243,6 +246,22 @@ function getLineTypeForMode(mode = state.mode) {
   return null;
 }
 
+function formatLineRoleLabel(roles) {
+  if (!roles) return "Start + Finish";
+  if (roles.start && roles.finish) return "Start + Finish";
+  if (roles.start) return "Start";
+  if (roles.finish) return "Finish";
+  return "Start + Finish";
+}
+
+function lineMatchesType(line, type) {
+  if (!type) return true;
+  const roles = getLineRoles(line);
+  if (type === LINE_TYPES.START) return roles.start;
+  if (type === LINE_TYPES.FINISH) return roles.finish;
+  return true;
+}
+
 function setButtonVisible(button, visible) {
   if (!button) return;
   button.hidden = !visible;
@@ -403,7 +422,12 @@ function getSelectedLine() {
 
 function getLinesForType(type) {
   if (!state.venue) return [];
-  return Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  if (!type) return lines;
+  const selectedId = state.selectedLineId;
+  return lines.filter(
+    (line) => line.id === selectedId || lineMatchesType(line, type)
+  );
 }
 
 function getActiveStartLineId() {
@@ -737,6 +761,16 @@ function updateLineEditUi() {
     if (els.lineDetails) {
       els.lineDetails.textContent = "";
     }
+    if (els.lineRoleStart) {
+      els.lineRoleStart.hidden = true;
+      els.lineRoleStart.disabled = true;
+      els.lineRoleStart.setAttribute("aria-pressed", "false");
+    }
+    if (els.lineRoleFinish) {
+      els.lineRoleFinish.hidden = true;
+      els.lineRoleFinish.disabled = true;
+      els.lineRoleFinish.setAttribute("aria-pressed", "false");
+    }
     if (els.swapLineDirection) {
       els.swapLineDirection.hidden = true;
       els.swapLineDirection.disabled = true;
@@ -762,7 +796,21 @@ function updateLineEditUi() {
   if (els.lineDetails) {
     const starboard = getMarkName(line.starboardMarkId);
     const port = getMarkName(line.portMarkId);
-    els.lineDetails.textContent = `Starboard: ${starboard} / Port: ${port}`;
+    const roles = getLineRoles(line);
+    const roleLabel = formatLineRoleLabel(roles);
+    els.lineDetails.textContent = `Starboard: ${starboard} / Port: ${port}\nRole: ${roleLabel}`;
+  }
+  if (els.lineRoleStart) {
+    const roles = getLineRoles(line);
+    els.lineRoleStart.hidden = false;
+    els.lineRoleStart.disabled = !isLineEditMode();
+    els.lineRoleStart.setAttribute("aria-pressed", roles.start ? "true" : "false");
+  }
+  if (els.lineRoleFinish) {
+    const roles = getLineRoles(line);
+    els.lineRoleFinish.hidden = false;
+    els.lineRoleFinish.disabled = !isLineEditMode();
+    els.lineRoleFinish.setAttribute("aria-pressed", roles.finish ? "true" : "false");
   }
   if (els.swapLineDirection) {
     els.swapLineDirection.hidden = !isLineEditMode();
@@ -1020,9 +1068,10 @@ function renderLineList() {
     name.textContent = getLineName(line, type);
     const meta = document.createElement("span");
     meta.className = "map-line-meta";
+    const roleLabel = formatLineRoleLabel(getLineRoles(line));
     meta.textContent = `SB: ${getMarkName(line.starboardMarkId)} / P: ${getMarkName(
       line.portMarkId
-    )}`;
+    )} \u2022 ${roleLabel}`;
     item.appendChild(name);
     item.appendChild(meta);
     item.addEventListener("click", () => {
@@ -1107,6 +1156,13 @@ function handleLineClick(lineId) {
     return;
   }
   if (isLineSelectMode()) {
+    const line = getLineById(getLinesForType(), lineId);
+    const type = getLineTypeForMode();
+    if (line && !lineMatchesType(line, type) && line.id !== state.selectedLineId) {
+      const roleLabel = formatLineRoleLabel(getLineRoles(line));
+      window.alert(`Line is marked ${roleLabel} only.`);
+      return;
+    }
     applyLineSelection(lineId);
   }
 }
@@ -1160,6 +1216,7 @@ function finalizeLineSelection() {
         name: "",
         starboardMarkId,
         portMarkId,
+        roles: { start: true, finish: true },
       };
       lines.push(line);
     }
@@ -1767,6 +1824,32 @@ function bindEvents() {
       updateLineEditUi();
       renderLineList();
       updateMapOverlays();
+    });
+  }
+
+  const toggleLineRole = (roleKey) => {
+    if (!isLineEditMode()) return;
+    const line = getSelectedLine();
+    if (!line) return;
+    const roles = getLineRoles(line);
+    const next = { ...roles, [roleKey]: !roles[roleKey] };
+    if (!next.start && !next.finish) return;
+    line.roles = next;
+    saveData();
+    updateLineEditUi();
+    renderLineList();
+    updateMapOverlays();
+  };
+
+  if (els.lineRoleStart) {
+    els.lineRoleStart.addEventListener("click", () => {
+      toggleLineRole("start");
+    });
+  }
+
+  if (els.lineRoleFinish) {
+    els.lineRoleFinish.addEventListener("click", () => {
+      toggleLineRole("finish");
     });
   }
 

@@ -1,0 +1,108 @@
+const { test, expect } = require("@playwright/test");
+
+async function seedStorage(page, { settings, venues, races }) {
+  await page.addInitScript((payload) => {
+    localStorage.clear();
+    if (payload.settings) {
+      localStorage.setItem("racetimer-settings", JSON.stringify(payload.settings));
+    }
+    if (payload.venues) {
+      localStorage.setItem("racetimer-venues", JSON.stringify(payload.venues));
+    }
+    if (payload.races) {
+      localStorage.setItem("racetimer-races", JSON.stringify(payload.races));
+    }
+  }, { settings, venues, races });
+}
+
+function buildBaseSettings(overrides = {}) {
+  return {
+    version: 20,
+    activeVenueId: "venue-1",
+    activeRaceId: "race-1",
+    defaultVenueId: "venue-1",
+    ...overrides,
+  };
+}
+
+test("start and finish line lists respect line roles", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-1", name: "A", lat: 55.01, lon: 12.01 },
+        { id: "mark-2", name: "B", lat: 55.02, lon: 12.02 },
+        { id: "mark-3", name: "C", lat: 55.03, lon: 12.03 },
+      ],
+      lines: [
+        {
+          id: "line-start",
+          name: "Start Line",
+          starboardMarkId: "mark-2",
+          portMarkId: "mark-1",
+          roles: { start: true, finish: false },
+        },
+        {
+          id: "line-finish",
+          name: "Finish Line",
+          starboardMarkId: "mark-3",
+          portMarkId: "mark-2",
+          roles: { start: false, finish: true },
+        },
+        {
+          id: "line-both",
+          name: "Shared Line",
+          starboardMarkId: "mark-3",
+          portMarkId: "mark-1",
+          roles: { start: true, finish: true },
+        },
+      ],
+      defaultStartLineId: "line-start",
+      defaultFinishLineId: "line-finish",
+      defaultRouteStartLineId: "line-start",
+      defaultRouteFinishLineId: "line-finish",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Race 1",
+      venueId: "venue-1",
+      routeEnabled: false,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
+
+  await page.click("#plan-edit-course");
+  await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
+
+  const startLineBtn = page.locator("#select-start-line");
+  await startLineBtn.scrollIntoViewIfNeeded();
+  await startLineBtn.click();
+  await expect(page.locator("#start-line-modal")).toHaveAttribute("aria-hidden", "false");
+
+  await expect(page.getByRole("button", { name: "Start Line" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Shared Line" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Finish Line" })).toHaveCount(0);
+
+  await page.click("#close-start-line");
+
+  const finishLineBtn = page.locator("#select-finish-line");
+  await finishLineBtn.scrollIntoViewIfNeeded();
+  await finishLineBtn.click();
+  await expect(page.locator("#finish-line-modal")).toHaveAttribute("aria-hidden", "false");
+
+  await expect(page.getByRole("button", { name: "Finish Line" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Shared Line" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Line" })).toHaveCount(0);
+});
