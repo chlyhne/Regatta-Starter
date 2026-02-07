@@ -57,6 +57,7 @@ let finishLineReturnRaceId = null;
 let marksReturnModal = null;
 let marksReturnRaceId = null;
 let selectedMarkId = null;
+let pendingCalibration = null;
 const NAUTICAL_MILE_METERS = 1852;
 let lastCalibration = null;
 let starterDeps = {
@@ -643,6 +644,13 @@ function formatCalibrationStatus(entry) {
   return `Mark "${entry.markName}" moved ${moved} ${unit}`;
 }
 
+function formatDistanceMeters(distance) {
+  if (!Number.isFinite(distance)) return "--";
+  const rounded = Math.round(distance);
+  const unit = rounded === 1 ? "meter" : "meters";
+  return `${rounded} ${unit}`;
+}
+
 function updateCalibrationUi() {
   const selectedVenueId = state.selectedVenueId || state.activeVenueId || null;
   const isActive = Boolean(
@@ -656,6 +664,83 @@ function updateCalibrationUi() {
   if (els.calibrationUndo) {
     els.calibrationUndo.disabled = !isActive;
   }
+}
+
+function updateCalibrationPreviewUi(preview) {
+  if (els.calibrationPreviewMark) {
+    els.calibrationPreviewMark.textContent = preview?.markName || "--";
+  }
+  if (els.calibrationPreviewDistance) {
+    els.calibrationPreviewDistance.textContent = preview
+      ? formatDistanceMeters(preview.distanceMeters)
+      : "--";
+  }
+  if (els.confirmCalibration) {
+    els.confirmCalibration.disabled = !preview;
+  }
+}
+
+function setCalibrationPreviewStatus(message) {
+  if (els.calibrationPreviewStatus) {
+    els.calibrationPreviewStatus.textContent = message || "--";
+  }
+}
+
+function openCalibrationPreviewModal() {
+  const venue = getSelectedVenue();
+  if (!venue) return;
+  pendingCalibration = null;
+  updateCalibrationPreviewUi(null);
+  setCalibrationPreviewStatus("Finding nearest mark...");
+  if (els.marksModal) {
+    els.marksModal.setAttribute("aria-hidden", "true");
+  }
+  document.body.classList.add("modal-open");
+  if (els.calibrationPreviewModal) {
+    els.calibrationPreviewModal.setAttribute("aria-hidden", "false");
+  }
+  requestHighPrecisionPosition(
+    starterDeps.handlePosition,
+    starterDeps.handlePositionError,
+    () => {
+      const sourcePosition = state.kalmanPosition;
+      if (!sourcePosition) {
+        setCalibrationPreviewStatus("Waiting for Kalman GPS fix.");
+        return;
+      }
+      const nearest = getNearestVenueMark(venue, sourcePosition);
+      if (!nearest) {
+        setCalibrationPreviewStatus("No marks to calibrate.");
+        return;
+      }
+      const markName =
+        nearest.mark.name || getMarkFallbackName(venue, nearest.mark);
+      pendingCalibration = {
+        venueId: venue.id,
+        markId: nearest.mark.id,
+        markName,
+        previous: { lat: nearest.mark.lat, lon: nearest.mark.lon },
+        next: {
+          lat: sourcePosition.coords.latitude,
+          lon: sourcePosition.coords.longitude,
+        },
+        distanceMeters: nearest.distance,
+      };
+      updateCalibrationPreviewUi(pendingCalibration);
+      setCalibrationPreviewStatus("Ready to calibrate.");
+    }
+  );
+}
+
+function closeCalibrationPreviewModal() {
+  pendingCalibration = null;
+  if (els.calibrationPreviewModal) {
+    els.calibrationPreviewModal.setAttribute("aria-hidden", "true");
+  }
+  if (els.marksModal) {
+    els.marksModal.setAttribute("aria-hidden", "false");
+  }
+  updateCalibrationPreviewUi(null);
 }
 
 function updateCalibrationControls() {
@@ -1179,6 +1264,33 @@ function closeMarkEditModal() {
     els.marksModal.setAttribute("aria-hidden", "false");
   }
   renderMarksList();
+}
+
+function applyCalibration(preview) {
+  if (!preview) return false;
+  const venue = getVenueById(state.venues, preview.venueId);
+  if (!venue) return false;
+  const mark = (venue.marks || []).find((entry) => entry.id === preview.markId);
+  if (!mark) return false;
+  mark.lat = preview.next.lat;
+  mark.lon = preview.next.lon;
+  venue.updatedAt = Date.now();
+  saveVenues(state.venues);
+  lastCalibration = {
+    venueId: venue.id,
+    markId: mark.id,
+    markName: preview.markName,
+    previous: { ...preview.previous },
+    next: { ...preview.next },
+    distanceMeters: preview.distanceMeters,
+  };
+  if (state.venue && state.venue.id === venue.id) {
+    syncDerivedRaceState();
+    syncStartFromRace();
+    updateCourseUi();
+    updateLineProjection();
+  }
+  return true;
 }
 
 function openCourseModal() {
@@ -2821,53 +2933,32 @@ function bindStarterEvents() {
 
   if (els.calibrateMark) {
     els.calibrateMark.addEventListener("click", () => {
-      if (!state.selectedVenueId) return;
-      const venue = getVenueById(state.venues, state.selectedVenueId);
+      const venue = getSelectedVenue();
       if (!venue) return;
       if (!Array.isArray(venue.marks) || !venue.marks.length) {
         window.alert("No marks yet.");
         return;
       }
-      requestHighPrecisionPosition(
-        starterDeps.handlePosition,
-        starterDeps.handlePositionError,
-        () => {
-          const sourcePosition = state.kalmanPosition;
-          if (!sourcePosition) {
-            window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
-            return;
-          }
-          const nearest = getNearestVenueMark(venue, sourcePosition);
-          if (!nearest) {
-            window.alert("No marks to calibrate.");
-            return;
-          }
-          const previous = { lat: nearest.mark.lat, lon: nearest.mark.lon };
-          const next = {
-            lat: sourcePosition.coords.latitude,
-            lon: sourcePosition.coords.longitude,
-          };
-          nearest.mark.lat = sourcePosition.coords.latitude;
-          nearest.mark.lon = sourcePosition.coords.longitude;
-          venue.updatedAt = Date.now();
-          saveVenues(state.venues);
-          lastCalibration = {
-            venueId: venue.id,
-            markId: nearest.mark.id,
-            markName: nearest.mark.name,
-            previous,
-            next,
-            distanceMeters: nearest.distance,
-          };
-          if (state.venue && state.venue.id === venue.id) {
-            syncDerivedRaceState();
-            syncStartFromRace();
-            updateCourseUi();
-            updateLineProjection();
-          }
-          renderMarksList();
-        }
-      );
+      openCalibrationPreviewModal();
+    });
+  }
+
+  if (els.confirmCalibration) {
+    els.confirmCalibration.addEventListener("click", () => {
+      if (!pendingCalibration) return;
+      const applied = applyCalibration(pendingCalibration);
+      if (applied) {
+        renderMarksList();
+        updateCalibrationUi();
+        setCalibrationPreviewStatus(formatCalibrationStatus(lastCalibration));
+      }
+      closeCalibrationPreviewModal();
+    });
+  }
+
+  if (els.cancelCalibration) {
+    els.cancelCalibration.addEventListener("click", () => {
+      closeCalibrationPreviewModal();
     });
   }
 

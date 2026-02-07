@@ -81,12 +81,27 @@ export const modalsView = `
     <div class="hint">Calibration</div>
     <div id="calibration-status" class="value">--</div>
     <div class="row stack">
-      <button id="calibrate-mark" class="ghost">Calibrate mark</button>
+      <button id="calibrate-mark" class="ghost">Calibrate marks</button>
       <button id="calibration-undo" class="ghost" disabled>Undo calibration</button>
       <button id="open-venue-marks-map" class="ghost">Edit on map</button>
     </div>
     <div class="modal-actions">
       <button id="close-marks-modal" class="ghost">Done</button>
+    </div>
+  </div>
+</section>
+
+<section id="calibration-preview-modal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <h2>Calibrate marks</h2>
+    <div class="hint">Nearest mark</div>
+    <div id="calibration-preview-mark" class="value">--</div>
+    <div class="hint">Move</div>
+    <div id="calibration-preview-distance" class="value">--</div>
+    <div id="calibration-preview-status" class="hint">--</div>
+    <div class="modal-actions">
+      <button id="confirm-calibration">Calibrate</button>
+      <button id="cancel-calibration" class="ghost">Cancel</button>
     </div>
   </div>
 </section>

@@ -48,6 +48,15 @@ test("marks modal edits mark details and coordinates", async ({ page }) => {
   await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
   await expect(page.locator("#calibrate-mark")).toBeEnabled();
 
+  await page.click("#calibrate-mark");
+  await expect(page.locator("#calibration-preview-modal")).toHaveAttribute(
+    "aria-hidden",
+    "false"
+  );
+  await expect(page.locator("#confirm-calibration")).toBeDisabled();
+  await page.click("#cancel-calibration");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+
   await page.getByRole("button", { name: "Mark 1" }).click();
   await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
 
