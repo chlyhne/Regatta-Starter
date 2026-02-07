@@ -49,6 +49,34 @@ body {
   width: 100%;
 }
 
+.map-tabs {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.map-tab {
+  flex: 1 1 0;
+  border: 2px solid #000000;
+  background: #ffffff;
+  color: #000000;
+  border-radius: 14px;
+  padding: 6px 10px;
+  font-weight: 700;
+  font-size: clamp(0.85rem, 3.2vw, 1rem);
+  cursor: pointer;
+}
+
+.map-tab[aria-pressed="true"] {
+  background: #000000;
+  color: #ffffff;
+}
+
+.map-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .map-field {
   display: grid;
   gap: 4px;

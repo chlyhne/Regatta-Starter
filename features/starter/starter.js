@@ -244,10 +244,14 @@ function getMapHref(mode, options = {}) {
     returnView = getActiveSetupViewKey(),
     returnModal = null,
     returnRaceId = null,
+    step = null,
   } = options;
   const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
   const params = new URLSearchParams(suffix.replace(/^\?/, ""));
   params.set("mode", mode);
+  if (step) {
+    params.set("step", step);
+  }
   if (returnView) {
     params.set("return", returnView);
   }
@@ -958,6 +962,7 @@ function navigateToVenueSetup(options = {}) {
     returnRaceId = null,
     returnView = getActiveSetupViewKey(),
     message = "Add marks first.",
+    step = null,
   } = options;
   if (message) {
     window.alert(message);
@@ -967,6 +972,7 @@ function navigateToVenueSetup(options = {}) {
     returnModal,
     returnRaceId,
     returnView,
+    step,
   });
 }
 
@@ -984,6 +990,7 @@ function ensureVenueLinesReady(venue, options = {}) {
         ...options,
         returnView,
         message: options.message || "Add marks first.",
+        step: "marks",
       });
     } else {
       navigateToVenueMarks({ ...options, returnView });
@@ -997,6 +1004,7 @@ function ensureVenueLinesReady(venue, options = {}) {
         ...options,
         returnView,
         message: options.message || "Add lines first.",
+        step: "lines",
       });
     } else {
       navigateToVenueLines({ ...options, returnView });
@@ -3589,6 +3597,7 @@ function bindStarterEvents() {
       window.location.href = getMapHref("venue-setup", {
         returnModal: "venue",
         returnView: "plan",
+        step: "lines",
       });
     });
   }
@@ -4197,6 +4206,7 @@ function bindStarterEvents() {
       window.location.href = getMapHref("venue-setup", {
         returnModal: "marks",
         returnView: getActiveSetupViewKey(),
+        step: "marks",
       });
     });
   }
@@ -4212,6 +4222,7 @@ function bindStarterEvents() {
           returnModal: "venue",
           returnRaceId,
           returnView: "plan",
+          step: "lines",
         });
         return;
       }
@@ -4266,6 +4277,7 @@ function bindStarterEvents() {
         window.location.href = getMapHref("venue-setup", {
           returnModal: "course",
           returnView: getActiveSetupViewKey(),
+          step: "route",
         });
         return;
       }

@@ -14,18 +14,23 @@
   <body>
     <header class="map-head">
       <div id="map-title" class="map-title">Select marks</div>
+      <div id="map-tabs" class="map-tabs" hidden>
+        <button id="tab-marks" class="map-tab" type="button">Marks</button>
+        <button id="tab-lines" class="map-tab" type="button">Lines</button>
+        <button id="tab-route" class="map-tab" type="button">Route</button>
+      </div>
       <div class="map-actions">
         <button id="add-mark" class="map-btn" hidden>Add mark</button>
         <button id="undo-mark" class="map-btn" hidden>Undo</button>
         <button id="clear-marks" class="map-btn" hidden>Clear</button>
-        <button id="toggle-line-mode" class="map-btn" type="button" hidden>
-          Line pick
-        </button>
         <button id="open-line-list" class="map-btn" hidden>Lines</button>
         <button id="clear-line-selection" class="map-btn" hidden>Reset</button>
         <button id="undo-route-mark" class="map-btn" hidden>Undo route</button>
         <button id="clear-route" class="map-btn" hidden>Clear route</button>
         <button id="open-mark-list" class="map-btn" hidden>Marks</button>
+        <button id="map-next-step" class="map-btn" type="button" hidden>
+          Next
+        </button>
         <button id="close-map" class="map-btn">Done</button>
       </div>
     </header>
