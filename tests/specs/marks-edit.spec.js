@@ -77,3 +77,47 @@ test("marks modal edits mark details and coordinates", async ({ page }) => {
   expect(storedMark.lat).toBeCloseTo(55.123456, 6);
   expect(storedMark.lon).toBeCloseTo(12.654321, 6);
 });
+
+test("manual mark edit moves overlapping marks together", async ({ page }) => {
+  await resetStorage(page);
+  await page.goto("/#plan");
+  await expect(page.locator("#plan-view")).toBeVisible();
+
+  await page.click("#plan-select-venue");
+  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
+  page.once("dialog", (dialog) => dialog.accept("Overlap Harbor"));
+  await page.getByRole("button", { name: "New venue" }).evaluate((button) => {
+    button.click();
+  });
+  await expect(page.locator("#plan-venue-name")).toHaveText("Overlap Harbor");
+
+  await page.click("#plan-edit-marks");
+  await expect(page.locator("#marks-modal")).toHaveAttribute("aria-hidden", "false");
+
+  await page.click("#open-venue-marks-map");
+  const addMark = page.locator("#add-mark");
+  await expect(addMark).toBeVisible();
+  await addMark.click();
+  await addMark.click();
+  await page.click("#close-map");
+
+  await page.getByRole("button", { name: "Mark 1" }).click();
+  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
+  await page.fill("#mark-lat", "55.123456");
+  await page.dispatchEvent("#mark-lat", "change");
+  await page.fill("#mark-lon", "12.654321");
+  await page.dispatchEvent("#mark-lon", "change");
+  await page.click("#close-mark-edit");
+
+  const updatedMarks = await page.evaluate(() => {
+    const venues = JSON.parse(localStorage.getItem("racetimer-venues") || "[]");
+    const venue = venues.find((entry) => entry && entry.name === "Overlap Harbor");
+    return Array.isArray(venue?.marks) ? venue.marks : [];
+  });
+
+  expect(updatedMarks).toHaveLength(2);
+  updatedMarks.forEach((mark) => {
+    expect(mark.lat).toBeCloseTo(55.123456, 6);
+    expect(mark.lon).toBeCloseTo(12.654321, 6);
+  });
+});

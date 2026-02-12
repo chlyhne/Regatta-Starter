@@ -2038,8 +2038,15 @@ function applyCalibration(preview) {
   if (!venue) return false;
   const mark = (venue.marks || []).find((entry) => entry.id === preview.markId);
   if (!mark) return false;
+  const previous = { lat: mark.lat, lon: mark.lon };
   mark.lat = preview.next.lat;
   mark.lon = preview.next.lon;
+  moveOverlappingVenueMarks(
+    venue,
+    previous,
+    { lat: mark.lat, lon: mark.lon },
+    mark.id
+  );
   venue.updatedAt = Date.now();
   saveVenues(state.venues);
   lastCalibration = {
@@ -2950,6 +2957,26 @@ function parseDMSInput(group, kind) {
   return sign * (deg + min / 60 + sec / 3600);
 }
 
+function moveOverlappingVenueMarks(venue, from, to, ignoreId) {
+  if (!venue || !Array.isArray(venue.marks)) return false;
+  if (!Number.isFinite(from?.lat) || !Number.isFinite(from?.lon)) return false;
+  if (!Number.isFinite(to?.lat) || !Number.isFinite(to?.lon)) return false;
+  const overlapMeters = 5;
+  let moved = false;
+  venue.marks.forEach((mark) => {
+    if (!mark || mark.id === ignoreId) return;
+    if (!Number.isFinite(mark.lat) || !Number.isFinite(mark.lon)) return;
+    const delta = toMeters(mark, from);
+    const distance = Math.hypot(delta.x, delta.y);
+    if (distance <= overlapMeters) {
+      mark.lat = to.lat;
+      mark.lon = to.lon;
+      moved = true;
+    }
+  });
+  return moved;
+}
+
 function parseLineInputs(options = {}) {
   const preserveLineMeta = Boolean(options.preserveLineMeta);
   const format = normalizeCoordinateFormat(state.coordsFormat);
@@ -3028,11 +3055,13 @@ function parseMarkInputs() {
 
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
+  const previous = { lat: mark.lat, lon: mark.lon };
   const changed = mark.lat !== lat || mark.lon !== lon;
   if (!changed) return;
 
   mark.lat = lat;
   mark.lon = lon;
+  moveOverlappingVenueMarks(venue, previous, { lat, lon }, mark.id);
   venue.updatedAt = Date.now();
   saveVenues(state.venues);
 
@@ -4018,8 +4047,15 @@ function bindStarterEvents() {
         updateCalibrationUi();
         return;
       }
+      const previous = { lat: mark.lat, lon: mark.lon };
       mark.lat = lastCalibration.previous.lat;
       mark.lon = lastCalibration.previous.lon;
+      moveOverlappingVenueMarks(
+        venue,
+        previous,
+        { lat: mark.lat, lon: mark.lon },
+        mark.id
+      );
       venue.updatedAt = Date.now();
       saveVenues(state.venues);
       if (state.venue && state.venue.id === venue.id) {
@@ -4089,8 +4125,15 @@ function bindStarterEvents() {
             window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
             return;
           }
+          const previous = { lat: mark.lat, lon: mark.lon };
           mark.lat = sourcePosition.coords.latitude;
           mark.lon = sourcePosition.coords.longitude;
+          moveOverlappingVenueMarks(
+            venue,
+            previous,
+            { lat: mark.lat, lon: mark.lon },
+            mark.id
+          );
           venue.updatedAt = Date.now();
           saveVenues(state.venues);
           if (state.venue && state.venue.id === venue.id) {

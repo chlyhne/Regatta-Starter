@@ -83,9 +83,7 @@ test("map route editing adds and clears marks", async ({ page }) => {
     const parsed = racesRaw ? JSON.parse(racesRaw) : [];
     return parsed[0]?.route?.length || 0;
   });
-  expect(clearedLength).toBe(0);
-
-  await page.click(".map-mark-mark-a");
+  expect(clearedLength).toBe(2);
 
   await expect(page.locator("#undo-route-mark")).toBeEnabled();
   await page.click("#undo-route-mark");
@@ -95,7 +93,7 @@ test("map route editing adds and clears marks", async ({ page }) => {
     const parsed = racesRaw ? JSON.parse(racesRaw) : [];
     return parsed[0]?.route?.length || 0;
   });
-  expect(afterUndoLength).toBe(0);
+  expect(afterUndoLength).toBe(1);
 
   await page.click(".map-mark-mark-a");
 
@@ -108,6 +106,119 @@ test("map route editing adds and clears marks", async ({ page }) => {
     return parsed[0]?.route?.length || 0;
   });
   expect(clearedAgain).toBe(0);
+});
+
+test("route mark menu opens on right click without adding", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-a", name: "A", description: "Alpha", lat: 55.01, lon: 12.01 },
+        { id: "mark-b", name: "B", description: "Bravo", lat: 55.02, lon: 12.02 },
+      ],
+      lines: [
+        { id: "line-1", name: "", starboardMarkId: "mark-b", portMarkId: "mark-a" },
+      ],
+      defaultStartLineId: "line-1",
+      defaultFinishLineId: "line-1",
+      defaultRouteStartLineId: "line-1",
+      defaultRouteFinishLineId: "line-1",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-1",
+      finishLineId: "line-1",
+      routeStartLineId: "line-1",
+      routeFinishLineId: "line-1",
+      routeEnabled: true,
+      route: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=race-route");
+
+  await expect(page.locator(".map-mark-mark-a")).toBeVisible();
+  await page.click(".map-mark-mark-a", { button: "right" });
+  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
+
+  const routeLength = await page.evaluate(() => {
+    const racesRaw = localStorage.getItem("racetimer-races");
+    const parsed = racesRaw ? JSON.parse(racesRaw) : [];
+    return parsed[0]?.route?.length || 0;
+  });
+  expect(routeLength).toBe(0);
+});
+
+test("route mark menu deletes a specific entry", async ({ page }) => {
+  const settings = buildBaseSettings();
+  const venues = [
+    {
+      id: "venue-1",
+      name: "Harbor",
+      marks: [
+        { id: "mark-a", name: "A", description: "Alpha", lat: 55.01, lon: 12.01 },
+        { id: "mark-b", name: "B", description: "Bravo", lat: 55.02, lon: 12.02 },
+      ],
+      lines: [
+        { id: "line-1", name: "", starboardMarkId: "mark-b", portMarkId: "mark-a" },
+      ],
+      defaultStartLineId: "line-1",
+      defaultFinishLineId: "line-1",
+      defaultRouteStartLineId: "line-1",
+      defaultRouteFinishLineId: "line-1",
+      defaultRoute: [],
+      updatedAt: Date.now(),
+    },
+  ];
+  const races = [
+    {
+      id: "race-1",
+      name: "Morning",
+      venueId: "venue-1",
+      startLineId: "line-1",
+      finishLineId: "line-1",
+      routeStartLineId: "line-1",
+      routeFinishLineId: "line-1",
+      routeEnabled: true,
+      route: [
+        { markId: "mark-a", rounding: "port", manual: false },
+        { markId: "mark-b", rounding: "port", manual: false },
+        { markId: "mark-a", rounding: "port", manual: false },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ];
+
+  await seedStorage(page, { settings, venues, races });
+  await page.goto("/map.html?mode=race-route");
+
+  await expect(page.locator(".map-mark-mark-a")).toBeVisible();
+  await page.dblclick(".map-mark-mark-a");
+  await expect(page.locator("#mark-edit-modal")).toHaveAttribute("aria-hidden", "false");
+
+  await expect(page.getByRole("button", { name: "Delete entry 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete entry 3" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete entry 3" }).click();
+
+  const routeMarks = await page.evaluate(() => {
+    const racesRaw = localStorage.getItem("racetimer-races");
+    const parsed = racesRaw ? JSON.parse(racesRaw) : [];
+    return parsed[0]?.route?.map((entry) => entry.markId) || [];
+  });
+  expect(routeMarks).toEqual(["mark-a", "mark-b"]);
 });
 
 test("route line includes start and finish lines", async ({ page }) => {

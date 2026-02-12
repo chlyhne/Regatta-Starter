@@ -121,6 +121,11 @@ body {
   background: #ffffff;
 }
 
+.map-route-menu {
+  display: grid;
+  gap: 8px;
+}
+
 .map-mark-item {
   display: flex;
   align-items: center;
@@ -133,6 +138,9 @@ body {
   cursor: pointer;
   font-weight: 600;
   font-size: 0.85rem;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
 }
 
 .map-line-item {
@@ -162,6 +170,12 @@ body {
 .map-mark-item.selected {
   background: #000000;
   color: #ffffff;
+}
+
+.map-route-empty {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  padding: 4px 2px;
 }
 
 .map-mark-role {

@@ -61,10 +61,13 @@ const els = {
   markListModal: document.getElementById("mark-list-modal"),
   markEditModal: document.getElementById("mark-edit-modal"),
   markEditTitle: document.getElementById("mark-edit-title"),
+  markEditDetails: document.getElementById("mark-edit-details"),
   mapMarkName: document.getElementById("map-mark-name"),
   mapMarkDesc: document.getElementById("map-mark-desc"),
   deleteMark: document.getElementById("delete-mark"),
   mapMarkList: document.getElementById("map-mark-list"),
+  routeMarkMenu: document.getElementById("route-mark-menu"),
+  routeMarkList: document.getElementById("route-mark-list"),
   closeMarkList: document.getElementById("close-mark-list"),
   closeMarkEdit: document.getElementById("close-mark-edit"),
   markAddRoute: document.getElementById("mark-add-route"),
@@ -107,6 +110,13 @@ const state = {
   lineOverlays: [],
   routeLine: null,
 };
+
+const ROUTE_DOUBLE_CLICK_MS = 350;
+const ROUTE_LONG_PRESS_MS = 500;
+let lastRouteClick = null;
+let suppressRouteClickUntil = 0;
+let suppressRouteClickId = null;
+let routeLongPressTimer = null;
 
 function getNoCacheQuery() {
   const params = new URLSearchParams(window.location.search);
@@ -202,12 +212,12 @@ function getModeCaption(mode) {
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
       }
-      return "Tap marks to add or remove them from the course.";
+      return "Tap marks to add. Right click or hold to remove.";
     case MODES.RACE_ROUTE:
       if (!hasRouteStartLine()) {
         return "Select a start line first.";
       }
-      return "Tap marks to add or remove them from the course.";
+      return "Tap marks to add. Right click or hold to remove.";
     case MODES.RACE_START_LINE:
       return "Tap starboard mark, then port mark to select a start line.";
     case MODES.RACE_FINISH_LINE:
@@ -837,6 +847,7 @@ function closeLineEditModal() {
 function updateMarkEditUi() {
   const mark = getSelectedMark();
   const editable = isVenueMarksMode();
+  const isRoute = isRouteMode();
   if (els.mapMarkName) {
     els.mapMarkName.disabled = !editable || !mark;
   }
@@ -844,18 +855,31 @@ function updateMarkEditUi() {
     els.mapMarkDesc.disabled = !editable || !mark;
   }
   if (els.markEditTitle) {
-    els.markEditTitle.textContent = mark ? `Edit ${mark.name}` : "Edit mark";
+    if (!mark) {
+      els.markEditTitle.textContent = "Edit mark";
+    } else if (isRoute) {
+      els.markEditTitle.textContent = `Course: ${mark.name}`;
+    } else {
+      els.markEditTitle.textContent = `Edit ${mark.name}`;
+    }
+  }
+  if (els.markEditDetails) {
+    els.markEditDetails.hidden = isRoute;
+  }
+  if (els.routeMarkMenu) {
+    els.routeMarkMenu.hidden = !isRoute;
   }
   if (els.deleteMark) {
     els.deleteMark.hidden = !editable;
     els.deleteMark.disabled = !mark;
   }
   if (els.markAddRoute) {
-    els.markAddRoute.hidden = !isRouteMode();
+    els.markAddRoute.hidden = !isRoute;
   }
   if (els.mapToVenue) {
     els.mapToVenue.hidden = editable;
   }
+  renderRouteMarkMenu();
   syncRouteButtons();
 }
 
@@ -940,24 +964,28 @@ function updateLineEditUi() {
   }
 }
 
-function toggleRouteMark(mark) {
-  if (!mark || !isRouteMode()) return;
+function addRouteMark(mark, options = {}) {
+  if (!mark || !isRouteMode()) return false;
   if (!hasRouteStartLine()) {
     window.alert("Select a start line first.");
-    return;
+    return false;
   }
   const syncRace = shouldSyncRaceRouteFromDefault();
   const route = ensureRouteEntries();
-  if (!route) return;
-  const index = route.findIndex((entry) => entry.markId === mark.id);
-  if (index >= 0) {
-    route.splice(index, 1);
-  } else {
-    route.push({
+  if (!route) return false;
+  route.push({
+    markId: mark.id,
+    rounding: "port",
+    manual: false,
+  });
+  if (options.recordClick !== false) {
+    lastRouteClick = {
       markId: mark.id,
-      rounding: "port",
-      manual: false,
-    });
+      index: route.length - 1,
+      ts: Date.now(),
+    };
+  } else {
+    lastRouteClick = null;
   }
   if (!isVenueSetupMode()) {
     syncVenueDefaultRoute();
@@ -967,6 +995,137 @@ function toggleRouteMark(mark) {
   saveData();
   updateMapOverlays();
   syncRouteButtons();
+  return true;
+}
+
+function removeRouteEntryAt(index) {
+  if (!isRouteMode()) return false;
+  const syncRace = shouldSyncRaceRouteFromDefault();
+  const route = ensureRouteEntries();
+  if (!route || !route.length) return false;
+  if (!Number.isFinite(index) || index < 0 || index >= route.length) return false;
+  route.splice(index, 1);
+  lastRouteClick = null;
+  if (!isVenueSetupMode()) {
+    syncVenueDefaultRoute();
+  } else if (syncRace) {
+    syncRaceRouteFromDefault();
+  }
+  saveData();
+  updateMapOverlays();
+  syncRouteButtons();
+  renderRouteMarkMenu();
+  return true;
+}
+
+function renderRouteMarkMenu() {
+  if (!els.routeMarkMenu || !els.routeMarkList) return;
+  const mark = getSelectedMark();
+  if (!mark || !isRouteMode()) {
+    els.routeMarkList.innerHTML = "";
+    return;
+  }
+  const route = getRouteEntries();
+  const indices = [];
+  route.forEach((entry, index) => {
+    if (entry && entry.markId === mark.id) {
+      indices.push(index);
+    }
+  });
+  els.routeMarkList.innerHTML = "";
+  if (!indices.length) {
+    const empty = document.createElement("div");
+    empty.className = "map-route-empty";
+    empty.textContent = "No course entries.";
+    els.routeMarkList.appendChild(empty);
+    return;
+  }
+  indices.forEach((routeIndex) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "map-mark-item";
+    button.textContent = `Delete entry ${routeIndex + 1}`;
+    button.addEventListener("click", () => {
+      removeRouteEntryAt(routeIndex);
+    });
+    els.routeMarkList.appendChild(button);
+  });
+}
+
+function stopMapEvent(event) {
+  const original = event?.originalEvent;
+  if (!original) return;
+  if (typeof original.preventDefault === "function") {
+    original.preventDefault();
+  }
+  if (typeof original.stopPropagation === "function") {
+    original.stopPropagation();
+  }
+}
+
+function suppressRouteClick(markId, duration = ROUTE_DOUBLE_CLICK_MS) {
+  suppressRouteClickId = markId || null;
+  suppressRouteClickUntil = Date.now() + duration;
+}
+
+function shouldSuppressRouteClick(mark) {
+  if (!mark || !suppressRouteClickId) return false;
+  if (Date.now() > suppressRouteClickUntil) {
+    suppressRouteClickId = null;
+    return false;
+  }
+  return mark.id === suppressRouteClickId;
+}
+
+function undoLastRouteClick(mark) {
+  if (!mark || !lastRouteClick) return false;
+  const now = Date.now();
+  if (now - lastRouteClick.ts > ROUTE_DOUBLE_CLICK_MS) return false;
+  if (lastRouteClick.markId !== mark.id) return false;
+  return removeRouteEntryAt(lastRouteClick.index);
+}
+
+function handleRouteMarkClick(mark, event) {
+  if (!mark) return;
+  if (shouldSuppressRouteClick(mark)) return;
+  const original = event?.originalEvent;
+  const detail =
+    original && Number.isFinite(original.detail) ? original.detail : 1;
+  if (detail > 1) {
+    stopMapEvent(event);
+    undoLastRouteClick(mark);
+    suppressRouteClick(mark.id);
+    openMarkEditModal(mark.id);
+    return;
+  }
+  addRouteMark(mark);
+}
+
+function isTouchEvent(event) {
+  const original = event?.originalEvent;
+  if (!original) return false;
+  if (typeof original.pointerType === "string") {
+    return original.pointerType === "touch";
+  }
+  return Boolean(original.touches && original.touches.length);
+}
+
+function startRouteLongPress(mark, event) {
+  if (!mark || !isRouteMode()) return;
+  if (!isTouchEvent(event)) return;
+  clearRouteLongPress();
+  routeLongPressTimer = setTimeout(() => {
+    routeLongPressTimer = null;
+    suppressRouteClick(mark.id, ROUTE_LONG_PRESS_MS);
+    openMarkEditModal(mark.id);
+  }, ROUTE_LONG_PRESS_MS);
+}
+
+function clearRouteLongPress() {
+  if (routeLongPressTimer) {
+    clearTimeout(routeLongPressTimer);
+    routeLongPressTimer = null;
+  }
 }
 
 function trimLineToMark(mark) {
@@ -1177,7 +1336,7 @@ function renderMarkList() {
     item.appendChild(nameSpan);
     item.addEventListener("click", () => {
       if (isRouteMode()) {
-        toggleRouteMark(mark);
+        addRouteMark(mark, { recordClick: false });
         closeMarkListModal();
         return;
       }
@@ -1542,7 +1701,7 @@ function updateMapOverlays() {
       className: `map-mark map-mark-${mark.id}`,
       pane: "markPane",
     }).addTo(state.map);
-    marker.on("click", () => {
+    marker.on("click", (event) => {
       if (isRaceViewMode()) {
         return;
       }
@@ -1551,10 +1710,32 @@ function updateMapOverlays() {
         return;
       }
       if (isRouteMode()) {
-        toggleRouteMark(mark);
+        handleRouteMarkClick(mark, event);
         return;
       }
       openMarkEditModal(mark.id);
+    });
+    marker.on("contextmenu", (event) => {
+      if (!isRouteMode()) return;
+      stopMapEvent(event);
+      suppressRouteClick(mark.id);
+      openMarkEditModal(mark.id);
+    });
+    marker.on("dblclick", (event) => {
+      if (!isRouteMode()) return;
+      stopMapEvent(event);
+    });
+    marker.on("touchstart", (event) => {
+      startRouteLongPress(mark, event);
+    });
+    marker.on("touchend", () => {
+      clearRouteLongPress();
+    });
+    marker.on("touchcancel", () => {
+      clearRouteLongPress();
+    });
+    marker.on("touchmove", () => {
+      clearRouteLongPress();
     });
     state.markMarkers.push(marker);
 
@@ -1717,6 +1898,8 @@ function initMap() {
     zoom: 14,
   });
   state.map.on("zoomend", () => updateMapOverlays());
+  state.map.on("movestart", () => clearRouteLongPress());
+  state.map.on("dragstart", () => clearRouteLongPress());
 
   state.map.createPane("markPane");
   const markPane = state.map.getPane("markPane");
@@ -1876,24 +2059,9 @@ function bindEvents() {
         window.alert("Select a start line first.");
         return;
       }
-      const syncRace = shouldSyncRaceRouteFromDefault();
       const mark = getSelectedMark();
       if (!mark) return;
-      const route = ensureRouteEntries();
-      if (!route) return;
-      route.push({
-        markId: mark.id,
-        rounding: "port",
-        manual: false,
-      });
-      if (!isVenueSetupMode()) {
-        syncVenueDefaultRoute();
-      } else if (syncRace) {
-        syncRaceRouteFromDefault();
-      }
-      saveData();
-      updateMapOverlays();
-      syncRouteButtons();
+      addRouteMark(mark, { recordClick: false });
     });
   }
 
@@ -1904,6 +2072,7 @@ function bindEvents() {
       const route = ensureRouteEntries();
       if (!route || !route.length) return;
       route.pop();
+      lastRouteClick = null;
       if (!isVenueSetupMode()) {
         syncVenueDefaultRoute();
       } else if (syncRace) {
@@ -1929,6 +2098,7 @@ function bindEvents() {
         state.race.route = [];
         syncVenueDefaultRoute();
       }
+      lastRouteClick = null;
       if (isVenueSetupMode() && syncRace) {
         syncRaceRouteFromDefault();
       }

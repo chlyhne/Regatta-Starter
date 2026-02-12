@@ -53,27 +53,32 @@
     <section id="mark-edit-modal" class="map-modal" aria-hidden="true">
       <div class="map-modal-panel">
         <h2 id="mark-edit-title">Edit mark</h2>
-        <div class="map-field">
-          <label for="map-mark-name">Mark name</label>
-          <input
-            id="map-mark-name"
-            class="map-input"
-            type="text"
-            placeholder="Mark 1"
-            autocomplete="off"
-            spellcheck="false"
-          />
+        <div id="mark-edit-details">
+          <div class="map-field">
+            <label for="map-mark-name">Mark name</label>
+            <input
+              id="map-mark-name"
+              class="map-input"
+              type="text"
+              placeholder="Mark 1"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="map-field">
+            <label for="map-mark-desc">Description</label>
+            <input
+              id="map-mark-desc"
+              class="map-input"
+              type="text"
+              placeholder="Optional"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
         </div>
-        <div class="map-field">
-          <label for="map-mark-desc">Description</label>
-          <input
-            id="map-mark-desc"
-            class="map-input"
-            type="text"
-            placeholder="Optional"
-            autocomplete="off"
-            spellcheck="false"
-          />
+        <div id="route-mark-menu" class="map-route-menu" hidden>
+          <div id="route-mark-list" class="map-mark-list"></div>
         </div>
         <div class="map-modal-actions">
           <button id="mark-add-route" class="map-btn" type="button">Add to course</button>
