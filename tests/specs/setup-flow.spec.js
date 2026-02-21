@@ -116,17 +116,23 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
 
   await page.click("#select-start-line");
   await expect(page.locator("#start-line-modal")).toBeVisible();
-  await page.getByRole("button", { name: "Start line" }).click();
+  await page
+    .locator("#start-line-modal")
+    .getByRole("button", { name: "Start line", exact: true })
+    .click();
   await page.click("#confirm-start-line");
   await expect(page.locator("#course-modal")).toBeVisible();
 
+  await page.click("#course-toggle");
   await page.click("#select-finish-line");
   await expect(page.locator("#finish-line-modal")).toBeVisible();
-  await page.getByRole("button", { name: "Finish line" }).click();
+  await page
+    .locator("#finish-line-modal")
+    .getByRole("button", { name: "Finish line", exact: true })
+    .click();
   await page.click("#confirm-finish-line");
   await expect(page.locator("#course-modal")).toBeVisible();
 
-  await page.click("#course-toggle");
   await page.click("#open-route");
   await expect(page.locator("#course-keyboard-modal")).toBeVisible();
   await page.getByRole("button", { name: "Add Mid (port)" }).click();

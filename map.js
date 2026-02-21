@@ -1661,6 +1661,11 @@ function updateMapOverlays() {
   state.lineOverlays.forEach((overlay) => {
     if (overlay.polyline) state.map.removeLayer(overlay.polyline);
     if (overlay.arrow) state.map.removeLayer(overlay.arrow);
+    if (Array.isArray(overlay.arrows)) {
+      overlay.arrows.forEach((marker) => {
+        if (marker) state.map.removeLayer(marker);
+      });
+    }
   });
   state.markMarkers = [];
   state.labelMarkers = [];
@@ -1792,8 +1797,8 @@ function updateMapOverlays() {
     if (isLineMode()) {
       polyline.on("click", () => handleLineClick(line.id));
     }
-    const arrow = createLineArrow(coords, isSelected);
-    state.lineOverlays.push({ id: line.id, type: "line", polyline, arrow });
+    const arrows = createLineArrows(coords, { isSelected, isStart, isFinish });
+    state.lineOverlays.push({ id: line.id, type: "line", polyline, arrows });
   });
 
   const route = getRouteLatLngs();
@@ -1808,25 +1813,66 @@ function updateMapOverlays() {
   }
 }
 
-function createLineArrow(coords, isSelected) {
+function createLineArrows(coords, options = {}) {
+  const isSelected = Boolean(options.isSelected);
+  const isStart = Boolean(options.isStart);
+  const isFinish = Boolean(options.isFinish);
+  if (isStart && isFinish) {
+    return [
+      createLineArrow(coords, {
+        isSelected,
+        role: "start",
+        label: "Start",
+        offsetPx: 18,
+      }),
+      createLineArrow(coords, {
+        isSelected,
+        reverse: true,
+        role: "finish",
+        label: "Finish",
+        offsetPx: 18,
+      }),
+    ].filter(Boolean);
+  }
+  return [
+    createLineArrow(coords, {
+      isSelected,
+      reverse: isFinish && !isStart,
+      role: isFinish ? "finish" : "start",
+    }),
+  ].filter(Boolean);
+}
+
+function createLineArrow(coords, options = {}) {
   if (!state.map || !coords) return null;
+  const { isSelected = false, reverse = false, role = "start", label = "", offsetPx = 0 } =
+    options;
   const pointA = state.map.latLngToLayerPoint([coords.a.lat, coords.a.lon]);
   const pointB = state.map.latLngToLayerPoint([coords.b.lat, coords.b.lon]);
   const dx = pointB.x - pointA.x;
   const dy = pointB.y - pointA.y;
   const len = Math.hypot(dx, dy);
   if (len < 1) return null;
-  const nx = dy / len;
-  const ny = -dx / len;
-  const angle = (Math.atan2(ny, nx) * 180) / Math.PI;
-  const mid = L.latLng(
-    (coords.a.lat + coords.b.lat) / 2,
-    (coords.a.lon + coords.b.lon) / 2
+  const normalX = dy / len;
+  const normalY = -dx / len;
+  const dirX = reverse ? -normalX : normalX;
+  const dirY = reverse ? -normalY : normalY;
+  const angle = (Math.atan2(dirY, dirX) * 180) / Math.PI;
+  const midPoint = L.point((pointA.x + pointB.x) / 2, (pointA.y + pointB.y) / 2);
+  const arrowPoint = L.point(
+    midPoint.x + dirX * offsetPx,
+    midPoint.y + dirY * offsetPx
   );
-  const className = `map-line-arrow${isSelected ? " selected" : ""}`;
+  const mid = state.map.layerPointToLatLng(arrowPoint);
+  const className = `map-line-arrow${isSelected ? " selected" : ""}${
+    role === "finish" ? " role-finish" : " role-start"
+  }${label ? " with-label" : ""}`;
+  const labelHtml = label
+    ? `<span class=\"map-line-arrow-role\">${label}</span>`
+    : "";
   const icon = L.divIcon({
     className,
-    html: `<span style=\"transform: rotate(${angle}deg);\">&#10148;</span>`,
+    html: `${labelHtml}<span class=\"map-line-arrow-glyph\" style=\"transform: rotate(${angle}deg);\">&#10148;</span>`,
   });
   return L.marker(mid, {
     icon,

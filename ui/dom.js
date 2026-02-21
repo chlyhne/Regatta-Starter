@@ -217,6 +217,8 @@ const els = {
   routeCount: document.getElementById("route-count"),
   startLineStatus: document.getElementById("start-line-status"),
   finishStatus: document.getElementById("finish-status"),
+  courseFinishSection: document.getElementById("course-finish-section"),
+  courseRouteSection: document.getElementById("course-route-section"),
   openRoute: document.getElementById("open-route"),
   openRounding: document.getElementById("open-rounding"),
   openCoords: document.getElementById("open-coords"),

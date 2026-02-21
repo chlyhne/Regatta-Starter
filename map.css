@@ -332,10 +332,22 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
   pointer-events: none;
 }
 
-.map-line-arrow span {
+.map-line-arrow.with-label {
+  padding: 4px 8px;
+}
+
+.map-line-arrow-role {
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.map-line-arrow-glyph {
   display: inline-block;
   line-height: 1;
 }

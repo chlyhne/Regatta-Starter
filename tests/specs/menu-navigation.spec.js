@@ -101,6 +101,7 @@ test("menu navigation returns to origin views", async ({ page }) => {
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
 
+  await page.click("#course-toggle");
   const openRoute = page.locator("#open-route");
   await openRoute.scrollIntoViewIfNeeded();
   await openRoute.click();

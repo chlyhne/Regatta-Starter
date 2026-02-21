@@ -59,7 +59,6 @@ let courseScope = "race";
 let raceModalMode = "default";
 let venueModalMode = "default";
 let lineOnlyContext = null;
-let pendingLineFlow = null;
 const modalPath = [];
 const MODAL_PATH_STORAGE_KEY = "racetimer-modal-path";
 const MODAL_NAME_TO_ID = {
@@ -1479,6 +1478,7 @@ function updateCourseUi(options = {}) {
   const markCount = state.venue?.marks?.length || 0;
   const routeCount = getRouteEntries(scope).length;
   const routeLinesReady = Boolean(getStartLineForScope(scope));
+  const showCourseDetails = routeEnabled;
 
   if (els.courseToggle) {
     els.courseToggle.setAttribute("aria-pressed", routeEnabled ? "true" : "false");
@@ -1501,6 +1501,15 @@ function updateCourseUi(options = {}) {
   if (els.finishStatus) {
     els.finishStatus.textContent = getFinishLineStatusText(scope);
   }
+  if (els.courseFinishSection) {
+    els.courseFinishSection.hidden = !showCourseDetails;
+  }
+  if (els.courseRouteSection) {
+    els.courseRouteSection.hidden = !showCourseDetails;
+  }
+  if (els.selectFinishLine) {
+    els.selectFinishLine.disabled = !showCourseDetails || !routeLinesReady;
+  }
   if (els.statusCourseLength) {
     const lengthStatus = getCourseLengthStatus("race");
     const hasLength = Number.isFinite(lengthStatus.value);
@@ -1517,24 +1526,24 @@ function updateCourseUi(options = {}) {
     }
   }
   if (els.openRoute) {
-    els.openRoute.disabled = markCount === 0 || !routeLinesReady;
+    els.openRoute.disabled = !showCourseDetails || markCount === 0 || !routeLinesReady;
   }
   if (els.openRouteMap) {
     if (scope === "default") {
-      els.openRouteMap.disabled = !state.venue;
+      els.openRouteMap.disabled = !showCourseDetails || !state.venue;
     } else {
-      els.openRouteMap.disabled = markCount === 0 || !routeLinesReady;
+      els.openRouteMap.disabled = !showCourseDetails || markCount === 0 || !routeLinesReady;
     }
   }
   if (els.openRaceMap) {
     const mapDisabled = scope === "default";
-    els.openRaceMap.disabled = mapDisabled || !routeLinesReady;
+    els.openRaceMap.disabled = mapDisabled || !showCourseDetails || !routeLinesReady;
   }
   if (els.openRounding) {
-    els.openRounding.disabled = routeCount === 0 || !routeLinesReady;
+    els.openRounding.disabled = !showCourseDetails || routeCount === 0 || !routeLinesReady;
   }
   if (els.clearRoute) {
-    els.clearRoute.disabled = routeCount === 0 || !routeLinesReady;
+    els.clearRoute.disabled = !showCourseDetails || routeCount === 0 || !routeLinesReady;
   }
   updateLineNameDisplay();
   if (els.courseKeyboardModal) {
@@ -1600,9 +1609,6 @@ function updateQuickHomeUi() {
   }
   if (els.quickStartLineName) {
     els.quickStartLineName.textContent = getStartLineStatusText("race");
-  }
-  if (els.quickFinishLineName) {
-    els.quickFinishLineName.textContent = getFinishLineStatusText("race");
   }
   if (els.quickRouteCount) {
     const count = getRouteEntries("race").length;
@@ -3554,7 +3560,6 @@ function bindStarterEvents() {
       ) {
         return;
       }
-      pendingLineFlow = "both";
       openStartLineModal({ scope: "race" });
     });
   }
@@ -4195,10 +4200,6 @@ function bindStarterEvents() {
       updateQuickUi();
       updatePlanUi();
       closeStartLineModal();
-      if (pendingLineFlow === "both" && scope === "race") {
-        pendingLineFlow = "finish";
-        openFinishLineModal({ scope: "race" });
-      }
     });
   }
 
@@ -4221,26 +4222,17 @@ function bindStarterEvents() {
       updateQuickUi();
       updatePlanUi();
       closeFinishLineModal();
-      if (pendingLineFlow) {
-        pendingLineFlow = null;
-      }
     });
   }
 
   if (els.closeStartLine) {
     els.closeStartLine.addEventListener("click", () => {
-      if (pendingLineFlow) {
-        pendingLineFlow = null;
-      }
       closeStartLineModal();
     });
   }
 
   if (els.closeFinishLine) {
     els.closeFinishLine.addEventListener("click", () => {
-      if (pendingLineFlow) {
-        pendingLineFlow = null;
-      }
       closeFinishLineModal();
     });
   }
@@ -4311,6 +4303,8 @@ function bindStarterEvents() {
 
   if (els.selectFinishLine) {
     els.selectFinishLine.addEventListener("click", () => {
+      const scope = getCourseScope();
+      if (!getRouteEnabledForScope(scope)) return;
       if (
         !ensureVenueLinesReady(state.venue, {
           returnModal: "course",
@@ -4318,7 +4312,7 @@ function bindStarterEvents() {
       ) {
         return;
       }
-      openFinishLineModal({ scope: getCourseScope() });
+      openFinishLineModal({ scope });
     });
   }
 

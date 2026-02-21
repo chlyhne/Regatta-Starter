@@ -90,19 +90,29 @@ test("start and finish line lists respect line roles", async ({ page }) => {
   await startLineBtn.scrollIntoViewIfNeeded();
   await startLineBtn.click();
   await expect(page.locator("#start-line-modal")).toHaveAttribute("aria-hidden", "false");
+  const startModal = page.locator("#start-line-modal");
 
-  await expect(page.getByRole("button", { name: "Start Line" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Shared Line" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Finish Line" })).toHaveCount(0);
+  await expect(startModal.getByRole("button", { name: "Start Line", exact: true })).toBeVisible();
+  await expect(startModal.getByRole("button", { name: "Shared Line", exact: true })).toBeVisible();
+  await expect(startModal.getByRole("button", { name: "Finish Line", exact: true })).toHaveCount(0);
 
   await page.click("#close-start-line");
+
+  await expect(page.locator("#course-finish-section")).toBeHidden();
+  await page.click("#course-toggle");
+  await expect(page.locator("#course-finish-section")).toBeVisible();
 
   const finishLineBtn = page.locator("#select-finish-line");
   await finishLineBtn.scrollIntoViewIfNeeded();
   await finishLineBtn.click();
   await expect(page.locator("#finish-line-modal")).toHaveAttribute("aria-hidden", "false");
+  const finishModal = page.locator("#finish-line-modal");
 
-  await expect(page.getByRole("button", { name: "Finish Line" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Shared Line" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start Line" })).toHaveCount(0);
+  await expect(
+    finishModal.getByRole("button", { name: "Finish Line", exact: true })
+  ).toBeVisible();
+  await expect(finishModal.getByRole("button", { name: "Shared Line", exact: true })).toBeVisible();
+  await expect(finishModal.getByRole("button", { name: "Start Line", exact: true })).toHaveCount(
+    0
+  );
 });

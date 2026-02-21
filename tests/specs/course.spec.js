@@ -148,6 +148,7 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
 
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
+  await page.click("#course-toggle");
   await page.click("#open-route");
   await expect(page.getByRole("button", { name: "Add A (port)" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add B (starboard)" })).toBeVisible();
