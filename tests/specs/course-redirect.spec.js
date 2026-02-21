@@ -67,11 +67,16 @@ test("change start line returns to quick after venue setup", async ({ page }) =>
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
+  let dialogSeen = false;
+  page.on("dialog", async (dialog) => {
+    dialogSeen = true;
+    await dialog.dismiss();
+  });
   await page.click("#quick-change-lines");
 
   await expect(page.locator("#map-title")).toHaveText("Venue setup");
   await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
+  expect(dialogSeen).toBe(false);
   await page.click("#close-map");
 
   await expect(page.locator("#quick-view")).toBeVisible();

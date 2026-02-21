@@ -287,7 +287,7 @@ function syncViewFromHash() {
     setView(view, { reset: true });
     return;
   }
-  setView("quick", { reset: true });
+  setView("home", { reset: true });
 }
 
 export { initNavigation, setView, syncViewFromHash, goBack };

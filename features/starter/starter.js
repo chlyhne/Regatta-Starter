@@ -997,13 +997,17 @@ function ensureVenueLinesReady(venue, options = {}) {
   const fallbackView = getActiveSetupViewKey();
   const returnView = options.returnView || fallbackView;
   const useVenueSetup = shouldUseVenueSetup(options, returnView);
+  const noMarksMessage =
+    options.message !== undefined ? options.message : "Add marks first.";
+  const noLinesMessage =
+    options.message !== undefined ? options.message : "Add lines first.";
   const markCount = Array.isArray(venue.marks) ? venue.marks.length : 0;
   if (!markCount) {
     if (useVenueSetup) {
       navigateToVenueSetup({
         ...options,
         returnView,
-        message: options.message || "Add marks first.",
+        message: noMarksMessage,
         step: "marks",
       });
     } else {
@@ -1017,7 +1021,7 @@ function ensureVenueLinesReady(venue, options = {}) {
       navigateToVenueSetup({
         ...options,
         returnView,
-        message: options.message || "Add lines first.",
+        message: noLinesMessage,
         step: "lines",
       });
     } else {
@@ -3585,6 +3589,7 @@ function bindStarterEvents() {
         !ensureVenueLinesReady(state.venue, {
           returnModal: null,
           useVenueSetup: true,
+          message: null,
         })
       ) {
         return;

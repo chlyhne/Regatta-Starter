@@ -207,7 +207,7 @@ function bindHomeEvents() {
   if (els.openSetup) {
     els.openSetup.addEventListener("click", () => {
       if (homeDeps.setView) {
-        homeDeps.setView("setup");
+        homeDeps.setView("quick");
       }
     });
   }
