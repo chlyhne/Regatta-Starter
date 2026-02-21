@@ -921,6 +921,10 @@ function releaseWakeLock() {
 function loadSettings() {
   const settings = loadSettingsFromStorage();
   state.coordsFormat = settings.coordsFormat;
+  state.line = {
+    a: { ...settings.line.a },
+    b: { ...settings.line.b },
+  };
   state.lineName = settings.lineMeta?.name || null;
   state.lineSourceId = settings.lineMeta?.sourceId || null;
   state.activeVenueId = settings.activeVenueId || null;
@@ -1079,6 +1083,19 @@ function ensureVenueAndRace() {
 }
 
 function applyVenueRaceToState() {
+  const previousLine = {
+    a: { ...state.line.a },
+    b: { ...state.line.b },
+  };
+  const hasManualLine =
+    Number.isFinite(previousLine.a.lat) &&
+    Number.isFinite(previousLine.a.lon) &&
+    Number.isFinite(previousLine.b.lat) &&
+    Number.isFinite(previousLine.b.lon);
+  const hasSimpleSource =
+    typeof state.lineSourceId === "string" && state.lineSourceId.startsWith("simple:");
+  const hash = (window.location.hash || "").toLowerCase();
+  const preserveManualLine = hasManualLine && (hash === "#line" || hash === "#quick");
   const venue = state.venue;
   const race = state.race;
   if (venue && race) {
@@ -1140,9 +1157,16 @@ function applyVenueRaceToState() {
   const finishLine = getFinishLineFromVenue(venue, race);
   const courseMarks = buildCourseMarksFromRace(venue, race);
 
-  state.line = startLine
-    ? { a: { ...startLine.a }, b: { ...startLine.b } }
-    : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+  if (hasSimpleSource || preserveManualLine) {
+    state.line = {
+      a: { ...previousLine.a },
+      b: { ...previousLine.b },
+    };
+  } else {
+    state.line = startLine
+      ? { a: { ...startLine.a }, b: { ...startLine.b } }
+      : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+  }
 
   state.course = {
     enabled: Boolean(race?.routeEnabled),

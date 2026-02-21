@@ -398,6 +398,7 @@ test("changing venue hides rename button", async ({ page }) => {
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-change-venue");
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "false");
   await expect(page.locator("#rename-venue")).toBeHidden();

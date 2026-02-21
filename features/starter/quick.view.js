@@ -69,12 +69,12 @@ export const quickView = `
     <h2>Home today</h2>
     <div class="hint">Venue</div>
     <div id="quick-venue-name" class="value">--</div>
-    <div class="row stack">
+    <div id="quick-venue-actions" class="row stack">
       <button id="quick-change-venue" class="ghost">Change venue</button>
     </div>
     <div class="hint">Start line</div>
     <div id="quick-start-line-name" class="value">--</div>
-    <div class="row stack">
+    <div id="quick-line-actions" class="row stack">
       <button id="quick-change-lines" class="ghost">Change start line</button>
     </div>
     <div id="quick-course-panel" class="quick-advanced-only">

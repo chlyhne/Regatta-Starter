@@ -62,7 +62,7 @@ test("course redirects to lines map when venue has marks but no lines", async ({
   await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "true");
 });
 
-test("change start line returns to quick after venue setup", async ({ page }) => {
+test("change start line opens line-only when no simple lines exist", async ({ page }) => {
   await resetStorage(page);
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
@@ -74,12 +74,8 @@ test("change start line returns to quick after venue setup", async ({ page }) =>
   });
   await page.click("#quick-change-lines");
 
-  await expect(page.locator("#map-title")).toHaveText("Venue setup");
-  await expect(page).toHaveURL(/map\.html.*mode=venue-setup/);
+  await expect(page.locator("#line-view")).toBeVisible();
   expect(dialogSeen).toBe(false);
-  await page.click("#close-map");
-
+  await page.click("#close-line");
   await expect(page.locator("#quick-view")).toBeVisible();
-  await expect(page.locator("#venue-modal")).toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator("#start-line-modal")).toHaveAttribute("aria-hidden", "true");
 });

@@ -1,13 +1,15 @@
-const CACHE_NAME = "racetimer-v174";
+const CACHE_NAME = "racetimer-v176";
 const ASSETS = [
   "./",
   "./index.html",
   "./map.html",
+  "./map-simple.html",
   "./style.css",
   "./map.css",
   "./app.js",
   "./build.js",
   "./map.js",
+  "./map-simple.js",
   "./manifest.json",
   "./boat.svg",
   "./cross.svg",
@@ -31,6 +33,7 @@ const ASSETS = [
   "./core/velocity.js",
   "./core/kalman.js",
   "./core/venues.js",
+  "./core/simple-lines.js",
   "./ui/gps-ui.js",
   "./features/starter/starter.js",
   "./features/starter/race.js",

@@ -15,6 +15,11 @@ import {
   getLineRoles,
   migrateLineSelections,
 } from "./core/venues.js";
+import {
+  loadSimpleLines,
+  saveSimpleLines,
+  upsertSimpleLineFromVenueLine,
+} from "./core/simple-lines.js";
 
 const NO_CACHE_KEY = "racetimer-nocache";
 const DEFAULT_CENTER = { lat: 55.0, lon: 12.0 };
@@ -397,6 +402,14 @@ function saveData() {
   }
   saveVenues(state.venues);
   saveRaces(state.races);
+}
+
+function copyVenueStartLineToSimpleList(line) {
+  if (!state.venue || !line || !getLineRoles(line).start) return;
+  const lines = loadSimpleLines();
+  const result = upsertSimpleLineFromVenueLine(lines, state.venue, line);
+  if (!result.changed) return;
+  saveSimpleLines(result.lines);
 }
 
 function syncRaceLineState() {
@@ -1174,6 +1187,7 @@ function trimLineToMark(mark) {
     keepSide,
   };
   saveData();
+  copyVenueStartLineToSimpleList(line);
   setTrimMode(false);
   updateMapOverlays();
   openLineEditModal(line.id);
@@ -1194,6 +1208,7 @@ function swapTrimSide() {
   applyTrimSegment(line, trimMarkId, nextSide, originalPortId, originalStarboardId);
   state.trimContext.keepSide = nextSide;
   saveData();
+  copyVenueStartLineToSimpleList(line);
   updateMapOverlays();
   updateLineEditUi();
 }
@@ -1210,6 +1225,7 @@ function swapLineDirection() {
     state.trimContext = null;
   }
   saveData();
+  copyVenueStartLineToSimpleList(line);
   updateMapOverlays();
   updateLineEditUi();
   renderLineList();
@@ -1554,6 +1570,7 @@ function finalizeLineSelection() {
     }
     state.selectedLineId = line.id;
     saveData();
+    copyVenueStartLineToSimpleList(line);
     updateMapOverlays();
     openLineEditModal(line.id);
   } else if (isLineSelectMode()) {
@@ -2223,6 +2240,7 @@ function bindEvents() {
       if (!line) return;
       line.name = els.lineName.value.trim();
       saveData();
+      copyVenueStartLineToSimpleList(line);
       updateLineEditUi();
       renderLineList();
       updateMapOverlays();
@@ -2238,6 +2256,9 @@ function bindEvents() {
     if (!next.start && !next.finish) return;
     line.roles = next;
     saveData();
+    if (next.start) {
+      copyVenueStartLineToSimpleList(line);
+    }
     updateLineEditUi();
     renderLineList();
     updateMapOverlays();

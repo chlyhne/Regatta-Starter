@@ -16,10 +16,14 @@ export const lineView = `
   </header>
 
   <section class="panel">
-    <h2>Start line</h2>
-    <div class="hint">Status</div>
+    <h2>Define start line</h2>
+    <div class="hint">Line name</div>
     <div id="line-only-status" class="value">--</div>
     <div class="row stack">
+      <button id="open-simple-map" class="ghost">Select on map</button>
+      <button id="swap-marks" class="ghost">Swap marks</button>
+      <button id="load-line" class="ghost">Saved start lines</button>
+      <button id="save-line" class="ghost">Save start line</button>
       <button id="open-location" class="ghost">Use GPS to mark line</button>
       <button id="open-coords" class="ghost">Enter coordinates</button>
     </div>

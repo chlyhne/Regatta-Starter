@@ -47,6 +47,15 @@ import { fitRaceText } from "./race-fit.js";
 import { MAX_COUNTDOWN_SECONDS } from "../../core/settings.js";
 import { trimTrailingZeros } from "../../core/common.js";
 import { setTrackMode } from "./track.js";
+import {
+  getSimpleLineById,
+  loadSimpleLines,
+  migrateSimpleLinesFromVenuesOnce,
+  removeSimpleLineById,
+  saveSimpleLines,
+  upsertSimpleLineFromCoordinates,
+  upsertSimpleLineFromVenueLine,
+} from "../../core/simple-lines.js";
 
 let countdownPickerLive = false;
 let venueSelectionTargetRaceId = null;
@@ -60,6 +69,7 @@ let courseScope = "race";
 let raceModalMode = "default";
 let venueModalMode = "default";
 let lineOnlyContext = null;
+let simpleLinesInitialized = false;
 const modalPath = [];
 const MODAL_PATH_STORAGE_KEY = "racetimer-modal-path";
 const MODAL_NAME_TO_ID = {
@@ -239,6 +249,78 @@ function getCourseScope() {
   return courseScope;
 }
 
+function getSimpleLineSourceId(lineId) {
+  return lineId ? `simple:${lineId}` : null;
+}
+
+function getSimpleLineIdFromSource(sourceId = state.lineSourceId) {
+  if (typeof sourceId !== "string") return null;
+  if (!sourceId.startsWith("simple:")) return null;
+  const id = sourceId.slice(7).trim();
+  return id || null;
+}
+
+function getActiveSimpleLine() {
+  const lineId = getSimpleLineIdFromSource();
+  if (!lineId) return null;
+  return getSimpleLineById(state.savedLines, lineId);
+}
+
+function applySimpleLineToState(simpleLine, options = {}) {
+  if (!simpleLine) return false;
+  const silent = options.silent === true;
+  state.line = {
+    a: { ...simpleLine.a },
+    b: { ...simpleLine.b },
+  };
+  state.lineName = simpleLine.name;
+  state.lineSourceId = getSimpleLineSourceId(simpleLine.id);
+  if (!silent && starterDeps.saveSettings) {
+    starterDeps.saveSettings();
+  }
+  return true;
+}
+
+function loadSimpleLinesIntoState(venues = state.venues) {
+  if (!simpleLinesInitialized) {
+    state.savedLines = migrateSimpleLinesFromVenuesOnce(venues);
+    simpleLinesInitialized = true;
+    return;
+  }
+  state.savedLines = loadSimpleLines();
+}
+
+function persistSimpleLines() {
+  state.savedLines = saveSimpleLines(state.savedLines);
+}
+
+function copyVenueStartLineToSimpleList(venue, line) {
+  const result = upsertSimpleLineFromVenueLine(state.savedLines, venue, line);
+  if (!result.changed) return result.line;
+  state.savedLines = result.lines;
+  persistSimpleLines();
+  return result.line;
+}
+
+function saveCurrentLineAsSimpleLine(options = {}) {
+  if (!hasStartLine()) return null;
+  const result = upsertSimpleLineFromCoordinates(state.savedLines, {
+    a: state.line.a,
+    b: state.line.b,
+    name: options.name || state.lineName || "Simple start line",
+    source: { kind: "manual" },
+  });
+  if (!result.changed && !result.line) return null;
+  state.savedLines = result.lines;
+  if (result.changed) {
+    persistSimpleLines();
+  }
+  if (result.line) {
+    applySimpleLineToState(result.line);
+  }
+  return result.line || null;
+}
+
 function getMapHref(mode, options = {}) {
   const {
     returnView = getActiveSetupViewKey(),
@@ -264,25 +346,38 @@ function getMapHref(mode, options = {}) {
   return `map.html?${params.toString()}`;
 }
 
+function getSimpleMapHref(options = {}) {
+  const { returnView = "line" } = options;
+  const suffix = starterDeps.getNoCacheQuery ? starterDeps.getNoCacheQuery() : "";
+  const params = new URLSearchParams(suffix.replace(/^\?/, ""));
+  params.set("return", returnView);
+  return `map-simple.html?${params.toString()}`;
+}
+
 function isLineOnlyActive() {
   return Boolean(lineOnlyContext);
 }
 
-function enterLineOnlyMode() {
+function enterLineOnlyMode(options = {}) {
   if (lineOnlyContext) return;
+  const clearLine = options.clearLine !== false;
+  const restoreOnExit = options.restoreOnExit === true;
   lineOnlyContext = {
     start: { ...state.start },
     startDefaults: { ...state.startDefaults },
     line: { a: { ...state.line.a }, b: { ...state.line.b } },
     lineName: state.lineName,
     lineSourceId: state.lineSourceId,
+    restoreOnExit,
   };
   state.lineOnlyActive = true;
   const defaults = getDefaultStartState();
   state.start = { ...state.start, ...defaults, freeze: null };
-  state.line = { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
-  state.lineName = null;
-  state.lineSourceId = null;
+  if (clearLine) {
+    state.line = { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+    state.lineName = null;
+    state.lineSourceId = null;
+  }
   updateLineNameDisplay();
   updateLineProjection();
   updateLineOnlyStatus();
@@ -291,14 +386,16 @@ function enterLineOnlyMode() {
 
 function exitLineOnlyMode() {
   if (!lineOnlyContext) return;
-  state.start = { ...state.start, ...lineOnlyContext.start };
-  state.startDefaults = { ...state.startDefaults, ...lineOnlyContext.startDefaults };
-  state.line = {
-    a: { ...lineOnlyContext.line.a },
-    b: { ...lineOnlyContext.line.b },
-  };
-  state.lineName = lineOnlyContext.lineName || null;
-  state.lineSourceId = lineOnlyContext.lineSourceId || null;
+  if (lineOnlyContext.restoreOnExit) {
+    state.start = { ...state.start, ...lineOnlyContext.start };
+    state.startDefaults = { ...state.startDefaults, ...lineOnlyContext.startDefaults };
+    state.line = {
+      a: { ...lineOnlyContext.line.a },
+      b: { ...lineOnlyContext.line.b },
+    };
+    state.lineName = lineOnlyContext.lineName || null;
+    state.lineSourceId = lineOnlyContext.lineSourceId || null;
+  }
   lineOnlyContext = null;
   state.lineOnlyActive = false;
   updateLineNameDisplay();
@@ -613,6 +710,7 @@ function getLineIdForScope(scope, type) {
 
 function syncStartLineMarksFromState() {
   if (isLineOnlyActive()) return;
+  if (getActiveSimpleLine()) return;
   if (!state.venue) return;
   const line = getSelectedStartLine();
   if (!line) return;
@@ -694,6 +792,7 @@ function refreshVenueRaceState() {
   if (isLineOnlyActive()) return;
   const venues = loadVenues();
   const races = loadRaces();
+  loadSimpleLinesIntoState(venues);
   const migrated = migrateLineSelections(venues, races);
   if (migrated) {
     saveVenues(venues);
@@ -737,14 +836,20 @@ function refreshVenueRaceState() {
 
 function syncDerivedRaceState() {
   if (!state.venue || !state.race) return;
+  const previousLine = {
+    a: { ...state.line.a },
+    b: { ...state.line.b },
+  };
+  const hasManualLine = hasLine();
+  const activeSimpleLine = getActiveSimpleLine();
   const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
-  const hasLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
+  const hasVenueLine = (lineId) => Boolean(lineId && getLineById(lines, lineId));
   const resolveLineId = (primary, fallback) => {
     let lineId = primary || null;
-    if (lineId && !hasLine(lineId)) lineId = null;
+    if (lineId && !hasVenueLine(lineId)) lineId = null;
     if (!lineId && fallback) {
       lineId = fallback;
-      if (lineId && !hasLine(lineId)) lineId = null;
+      if (lineId && !hasVenueLine(lineId)) lineId = null;
     }
     return lineId;
   };
@@ -808,9 +913,29 @@ function syncDerivedRaceState() {
   const finishLine = getFinishLineFromVenue(state.venue, state.race);
   const courseMarks = buildCourseMarksFromRace(state.venue, state.race);
 
-  state.line = startLine
-    ? { a: { ...startLine.a }, b: { ...startLine.b } }
-    : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+  const inQuickSimpleMode =
+    document.body.classList.contains("quick-mode") && !quickAdvanced && quickMode === "home";
+  const preserveManualLine =
+    hasManualLine &&
+    (isLineOnlyActive() || document.body.classList.contains("line-mode") || inQuickSimpleMode);
+  const useSimpleLine =
+    Boolean(activeSimpleLine) &&
+    (isLineOnlyActive() || document.body.classList.contains("line-mode") || inQuickSimpleMode);
+  if (useSimpleLine) {
+    state.line = {
+      a: { ...activeSimpleLine.a },
+      b: { ...activeSimpleLine.b },
+    };
+  } else if (preserveManualLine) {
+    state.line = {
+      a: { ...previousLine.a },
+      b: { ...previousLine.b },
+    };
+  } else {
+    state.line = startLine
+      ? { a: { ...startLine.a }, b: { ...startLine.b } }
+      : { a: { lat: null, lon: null }, b: { lat: null, lon: null } };
+  }
 
   state.course = {
     enabled: routeEnabled,
@@ -1067,6 +1192,15 @@ function ensureRouteLinesForRoute(options = {}) {
 }
 
 function getStartLineDisplayName(scope = "race") {
+  if (
+    scope === "race" &&
+    document.body.classList.contains("quick-mode") &&
+    !quickAdvanced &&
+    quickMode === "home"
+  ) {
+    const simpleLine = getActiveSimpleLine();
+    if (simpleLine) return simpleLine.name;
+  }
   const venue = state.venue;
   if (!venue) return null;
   const lines = Array.isArray(venue.lines) ? venue.lines : [];
@@ -1199,6 +1333,7 @@ function saveLineToVenue(venue) {
   });
   venue.updatedAt = Date.now();
   saveVenues(state.venues);
+  copyVenueStartLineToSimpleList(venue, line);
   return line;
 }
 
@@ -1571,13 +1706,33 @@ function updateLineNameDisplay() {
   els.statusLineName.textContent = getStartLineDisplayName() || "--";
 }
 
+function syncLineNameWithSavedLines() {
+  const simpleLineId = getSimpleLineIdFromSource();
+  if (!simpleLineId) return;
+  const entry = getSimpleLineById(state.savedLines, simpleLineId);
+  if (!entry) {
+    state.lineName = null;
+    state.lineSourceId = null;
+    if (starterDeps.saveSettings) {
+      starterDeps.saveSettings();
+    }
+    return;
+  }
+  if (state.lineName !== entry.name) {
+    state.lineName = entry.name;
+    if (starterDeps.saveSettings) {
+      starterDeps.saveSettings();
+    }
+  }
+}
+
 function updateLineOnlyStatus() {
   if (!els.lineOnlyStatus) return;
-  if (hasStartLine()) {
-    els.lineOnlyStatus.textContent = "Line ready";
-  } else {
-    els.lineOnlyStatus.textContent = "No line";
+  if (!hasLine()) {
+    els.lineOnlyStatus.textContent = "NO LINE";
+    return;
   }
+  els.lineOnlyStatus.textContent = state.lineName || "Unnamed line";
 }
 
 function getDefaultVenue() {
@@ -1597,11 +1752,55 @@ function setQuickAdvanced(enabled) {
   const next = Boolean(enabled);
   if (quickAdvanced === next) return;
   quickAdvanced = next;
+  if (quickAdvanced && getActiveSimpleLine()) {
+    state.lineName = null;
+    state.lineSourceId = null;
+    syncDerivedRaceState();
+    syncStartFromRace();
+    syncStartUi();
+  }
   if (!quickAdvanced && quickMode === "plan") {
     setQuickMode("home");
     return;
   }
   updateQuickUi();
+}
+
+function syncQuickHomeStartLineWithVenue() {
+  if (!quickAdvanced || quickMode !== "home") return;
+  if (!document.body.classList.contains("quick-mode")) return;
+  if (!state.venue || !state.race || state.race.isPlan) return;
+  const lines = Array.isArray(state.venue.lines) ? state.venue.lines : [];
+  const resolveVenueLineId = (primary, fallback = null) => {
+    if (primary && getLineById(lines, primary)) return primary;
+    if (fallback && getLineById(lines, fallback)) return fallback;
+    return null;
+  };
+  const venueStartLineId = state.race.routeEnabled
+    ? resolveVenueLineId(state.venue.defaultRouteStartLineId, state.venue.defaultStartLineId)
+    : resolveVenueLineId(state.venue.defaultStartLineId);
+  let changed = false;
+  if (state.race.startLineId !== venueStartLineId) {
+    state.race.startLineId = venueStartLineId;
+    changed = true;
+  }
+  if (state.race.routeStartLineId !== venueStartLineId) {
+    state.race.routeStartLineId = venueStartLineId;
+    changed = true;
+  }
+  if (!changed) return;
+  syncDerivedRaceState();
+  syncStartFromRace();
+  syncStartUi();
+  updateCourseUi({ scope: "race" });
+}
+
+function syncQuickSimpleLineSelection() {
+  if (quickAdvanced || quickMode !== "home") return;
+  if (!document.body.classList.contains("quick-mode")) return;
+  const simpleLine = getActiveSimpleLine();
+  if (!simpleLine) return;
+  applySimpleLineToState(simpleLine, { silent: true });
 }
 
 function updateQuickModeUi() {
@@ -1614,6 +1813,14 @@ function updateQuickModeUi() {
   }
   if (els.quickCoursePanel) {
     els.quickCoursePanel.hidden = !quickAdvanced;
+  }
+  if (els.quickVenueActions) {
+    els.quickVenueActions.hidden = !quickAdvanced;
+    els.quickVenueActions.classList.toggle("hidden", !quickAdvanced);
+  }
+  if (els.quickLineActions) {
+    els.quickLineActions.hidden = quickAdvanced;
+    els.quickLineActions.classList.toggle("hidden", quickAdvanced);
   }
   if (els.quickModeHome) {
     els.quickModeHome.setAttribute("aria-pressed", isPlan ? "false" : "true");
@@ -1655,6 +1862,8 @@ function updateQuickPlanUi() {
 }
 
 function updateQuickUi() {
+  syncQuickSimpleLineSelection();
+  syncQuickHomeStartLineWithVenue();
   updateQuickModeUi();
   updateQuickHomeUi();
   updateQuickPlanUi();
@@ -2115,8 +2324,8 @@ function closeCourseModal() {
 }
 
 function openStartLineModal(options = {}) {
-  if (!state.venue) return;
   const scope = options.scope || getCourseScope();
+  if (!state.venue) return;
   setCourseScope(scope);
   state.selectedStartLineId = getLineIdForScope(scope, "start");
   renderStartLineList();
@@ -2436,7 +2645,7 @@ function renderFinishLineList() {
 
 function openLoadModal() {
   if (!els.savedLinesList) return;
-  state.selectedLineId = null;
+  state.selectedLineId = getSimpleLineIdFromSource();
   renderSavedLinesList();
   openModalScreen("load-line-modal");
 }
@@ -2456,17 +2665,23 @@ function renderSavedLinesList() {
     updateModalButtons();
     return;
   }
-  state.savedLines.forEach((line) => {
+  const sortedLines = [...state.savedLines].sort((a, b) => {
+    if ((b.updatedAt || 0) !== (a.updatedAt || 0)) {
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    }
+    return (a.name || "").localeCompare(b.name || "");
+  });
+  sortedLines.forEach((entry) => {
     const row = document.createElement("div");
     row.className = "modal-item";
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = line.name;
-    if (state.selectedLineId === line.id) {
+    button.textContent = entry.name;
+    if (state.selectedLineId === entry.id) {
       button.classList.add("selected");
     }
     button.addEventListener("click", () => {
-      state.selectedLineId = line.id;
+      state.selectedLineId = entry.id;
       renderSavedLinesList();
     });
     row.appendChild(button);
@@ -2530,6 +2745,7 @@ function swapStartLineMarks() {
       starterDeps.updateInputs();
     }
     updateLineProjection();
+    updateLineOnlyStatus();
     return;
   }
 
@@ -2547,6 +2763,7 @@ function swapStartLineMarks() {
     starterDeps.updateInputs();
   }
   updateLineProjection();
+  updateLineOnlyStatus();
 }
 
 function formatCoordinateValue(value, digits) {
@@ -3063,6 +3280,7 @@ function parseLineInputs(options = {}) {
     starterDeps.saveSettings();
   }
   updateLineNameDisplay();
+  updateLineOnlyStatus();
 }
 
 function parseMarkInputs() {
@@ -3281,6 +3499,7 @@ function syncStartUi() {
 
 function syncStarterInputs() {
   refreshVenueRaceState();
+  syncLineNameWithSavedLines();
   syncCoordinateInputs();
   syncMarkEditorInputs();
   syncStartUi();
@@ -3293,7 +3512,7 @@ function syncStarterInputs() {
     setQuickMode(quickMode);
   }
   if (document.body.classList.contains("line-mode") && !isLineOnlyActive()) {
-    enterLineOnlyMode();
+    enterLineOnlyMode({ clearLine: false });
   }
 }
 
@@ -3585,6 +3804,13 @@ function bindStarterEvents() {
 
   if (els.quickChangeLines) {
     els.quickChangeLines.addEventListener("click", () => {
+      if (!quickAdvanced) {
+        enterLineOnlyMode({ clearLine: false });
+        if (starterDeps.setView) {
+          starterDeps.setView("line");
+        }
+        return;
+      }
       if (
         !ensureVenueLinesReady(state.venue, {
           returnModal: null,
@@ -3766,6 +3992,97 @@ function bindStarterEvents() {
       if (starterDeps.setView) {
         starterDeps.setView("location");
       }
+    });
+  }
+
+  if (els.openSimpleMap) {
+    els.openSimpleMap.addEventListener("click", () => {
+      window.location.href = getSimpleMapHref({ returnView: "line" });
+    });
+  }
+
+  if (els.saveLine) {
+    els.saveLine.addEventListener("click", () => {
+      if (!hasLine()) {
+        window.alert("No start line defined. Set port and starboard marks first.");
+        return;
+      }
+      const fallbackName =
+        state.lineName || `Line ${Array.isArray(state.savedLines) ? state.savedLines.length + 1 : 1}`;
+      const nameInput = window.prompt("Name this start line:", fallbackName);
+      if (nameInput === null) return;
+      const name = (nameInput || "").trim() || fallbackName;
+      const savedLine = saveCurrentLineAsSimpleLine({ name });
+      if (!savedLine) return;
+      state.selectedLineId = savedLine.id;
+      if (starterDeps.updateInputs) {
+        starterDeps.updateInputs();
+      }
+      updateLineNameDisplay();
+      updateLineOnlyStatus();
+      updateLineProjection();
+      updateQuickUi();
+      updatePlanUi();
+    });
+  }
+
+  if (els.loadLine) {
+    els.loadLine.addEventListener("click", () => {
+      openLoadModal();
+    });
+  }
+
+  if (els.confirmLoad) {
+    els.confirmLoad.addEventListener("click", () => {
+      if (!state.selectedLineId) return;
+      const entry = getSimpleLineById(state.savedLines, state.selectedLineId);
+      if (!entry) return;
+      applySimpleLineToState(entry);
+      if (starterDeps.updateInputs) {
+        starterDeps.updateInputs();
+      }
+      updateLineNameDisplay();
+      updateLineOnlyStatus();
+      updateLineProjection();
+      updateQuickUi();
+      updatePlanUi();
+      closeLoadModal();
+    });
+  }
+
+  if (els.confirmDelete) {
+    els.confirmDelete.addEventListener("click", () => {
+      if (!state.selectedLineId) return;
+      const entry = getSimpleLineById(state.savedLines, state.selectedLineId);
+      if (!entry) return;
+      const confirmed = window.confirm(`Delete "${entry.name}"?`);
+      if (!confirmed) return;
+      const result = removeSimpleLineById(state.savedLines, entry.id);
+      if (!result.removed) return;
+      state.savedLines = result.lines;
+      persistSimpleLines();
+      const activeSimpleLineId = getSimpleLineIdFromSource();
+      if (activeSimpleLineId === entry.id) {
+        state.lineName = null;
+        state.lineSourceId = null;
+        if (starterDeps.saveSettings) {
+          starterDeps.saveSettings();
+        }
+      }
+      state.selectedLineId = null;
+      renderSavedLinesList();
+      updateLineNameDisplay();
+      updateLineOnlyStatus();
+      updateLineProjection();
+      updateCourseUi({ scope: "race" });
+      updateQuickUi();
+      updatePlanUi();
+    });
+  }
+
+  if (els.closeLoad) {
+    els.closeLoad.addEventListener("click", () => {
+      closeLoadModal();
     });
   }
 
@@ -4591,6 +4908,7 @@ function bindStarterEvents() {
         window.alert("Set the start line first.");
         return;
       }
+      saveCurrentLineAsSimpleLine();
       promptSaveLineToVenue();
       if (starterDeps.setView) {
         starterDeps.setView("race");
