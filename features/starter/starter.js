@@ -965,7 +965,11 @@ function navigateToVenueLines(options = {}) {
 function shouldUseVenueSetup(options = {}, returnView) {
   if (options.useVenueSetup != null) return options.useVenueSetup;
   if (returnView === "plan") return true;
-  return document.body.classList.contains("plan-mode");
+  if (returnView === "quick") return true;
+  return (
+    document.body.classList.contains("plan-mode") ||
+    document.body.classList.contains("quick-mode")
+  );
 }
 
 function navigateToVenueSetup(options = {}) {
@@ -990,9 +994,7 @@ function navigateToVenueSetup(options = {}) {
 
 function ensureVenueLinesReady(venue, options = {}) {
   if (!venue) return false;
-  const fallbackView = document.body.classList.contains("quick-mode")
-    ? "plan"
-    : getActiveSetupViewKey();
+  const fallbackView = getActiveSetupViewKey();
   const returnView = options.returnView || fallbackView;
   const useVenueSetup = shouldUseVenueSetup(options, returnView);
   const markCount = Array.isArray(venue.marks) ? venue.marks.length : 0;
@@ -3581,8 +3583,8 @@ function bindStarterEvents() {
     els.quickChangeLines.addEventListener("click", () => {
       if (
         !ensureVenueLinesReady(state.venue, {
-          returnModal: "venue",
-          returnView: "plan",
+          returnModal: null,
+          useVenueSetup: true,
         })
       ) {
         return;
@@ -3595,8 +3597,8 @@ function bindStarterEvents() {
     els.quickEditCourse.addEventListener("click", () => {
       if (
         !ensureVenueLinesReady(state.venue, {
-          returnModal: "venue",
-          returnView: "plan",
+          returnModal: null,
+          useVenueSetup: true,
         })
       ) {
         return;
