@@ -47,9 +47,13 @@ export const quickView = `
     <div class="row stack">
       <button id="go-race" class="race-enter">Race</button>
     </div>
+    <button id="quick-advanced-toggle" class="check-toggle" type="button" aria-pressed="false">
+      <span class="check-label">Advanced</span>
+      <span class="check-box" aria-hidden="true"></span>
+    </button>
   </section>
 
-  <section class="panel">
+  <section id="quick-mode-panel" class="panel quick-advanced-only">
     <h2>Mode</h2>
     <div class="race-toggle horizontal start-toggle" role="group" aria-label="Quick race mode">
       <button id="quick-mode-home" class="race-toggle-btn" type="button" aria-pressed="true">
@@ -73,14 +77,16 @@ export const quickView = `
     <div class="row stack">
       <button id="quick-change-lines" class="ghost">Change start line</button>
     </div>
-    <div class="hint">Course</div>
-    <div id="quick-route-count" class="value">NO COURSE</div>
-    <div class="row stack">
-      <button id="quick-edit-course" class="ghost">Course setup</button>
+    <div id="quick-course-panel" class="quick-advanced-only">
+      <div class="hint">Course</div>
+      <div id="quick-route-count" class="value">NO COURSE</div>
+      <div class="row stack">
+        <button id="quick-edit-course" class="ghost">Course setup</button>
+      </div>
     </div>
   </section>
 
-  <section id="quick-plan-panel" class="panel" hidden>
+  <section id="quick-plan-panel" class="panel quick-advanced-only" hidden>
     <h2>Planned event</h2>
     <div class="hint">Selected plan</div>
     <div id="quick-plan-name" class="value">--</div>

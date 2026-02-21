@@ -36,6 +36,7 @@ test("modals use full-page layout", async ({ page }) => {
   await page.click("#open-quick-race");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-mode-plan");
   await page.click("#quick-select-plan");
   await expectFullPageModal(page, "#race-modal");

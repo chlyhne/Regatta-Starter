@@ -17,6 +17,7 @@ test("course redirects to marks map when venue has no marks", async ({ page }) =
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#quick-edit-course");
 
@@ -47,6 +48,7 @@ test("course redirects to lines map when venue has marks but no lines", async ({
   await page.reload();
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#quick-edit-course");
 

@@ -98,6 +98,7 @@ test("menu navigation returns to origin views", async ({ page }) => {
   await page.click("#open-quick-race");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
 

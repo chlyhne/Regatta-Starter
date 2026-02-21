@@ -111,6 +111,7 @@ test("setup flow builds a venue course and start time", async ({ page }) => {
   await page.click("#open-quick-race");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
 

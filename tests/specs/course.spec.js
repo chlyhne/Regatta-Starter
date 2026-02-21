@@ -86,6 +86,7 @@ test("rounding modal toggles rounding for the route", async ({ page }) => {
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
   const roundingButton = page.locator("#open-rounding");
@@ -146,6 +147,7 @@ test("route keyboard builds sequence from single-letter marks", async ({ page })
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toBeVisible();
   await page.click("#course-toggle");

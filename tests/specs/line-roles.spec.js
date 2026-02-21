@@ -83,6 +83,7 @@ test("start and finish line lists respect line roles", async ({ page }) => {
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-edit-course");
   await expect(page.locator("#course-modal")).toHaveAttribute("aria-hidden", "false");
 

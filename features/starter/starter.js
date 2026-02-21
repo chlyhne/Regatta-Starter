@@ -53,6 +53,7 @@ let venueSelectionTargetRaceId = null;
 let selectedMarkId = null;
 let pendingCalibration = null;
 let quickMode = "home";
+let quickAdvanced = false;
 let quickPlanRaceId = null;
 let quickHomeVenueId = null;
 let courseScope = "race";
@@ -1586,8 +1587,28 @@ function getQuickHomeVenue() {
   return getVenueById(state.venues, quickHomeVenueId) || getDefaultVenue();
 }
 
+function setQuickAdvanced(enabled) {
+  const next = Boolean(enabled);
+  if (quickAdvanced === next) return;
+  quickAdvanced = next;
+  if (!quickAdvanced && quickMode === "plan") {
+    setQuickMode("home");
+    return;
+  }
+  updateQuickUi();
+}
+
 function updateQuickModeUi() {
-  const isPlan = quickMode === "plan";
+  const isPlan = quickAdvanced && quickMode === "plan";
+  if (els.quickAdvancedToggle) {
+    els.quickAdvancedToggle.setAttribute("aria-pressed", quickAdvanced ? "true" : "false");
+  }
+  if (els.quickModePanel) {
+    els.quickModePanel.hidden = !quickAdvanced;
+  }
+  if (els.quickCoursePanel) {
+    els.quickCoursePanel.hidden = !quickAdvanced;
+  }
   if (els.quickModeHome) {
     els.quickModeHome.setAttribute("aria-pressed", isPlan ? "false" : "true");
   }
@@ -1675,7 +1696,7 @@ function activateQuickPlanRace(race) {
 }
 
 function setQuickMode(nextMode) {
-  const mode = nextMode === "plan" ? "plan" : "home";
+  const mode = quickAdvanced && nextMode === "plan" ? "plan" : "home";
   quickMode = mode;
   if (quickMode === "plan") {
     const selected =
@@ -3538,6 +3559,12 @@ function bindStarterEvents() {
     });
   }
 
+  if (els.quickAdvancedToggle) {
+    els.quickAdvancedToggle.addEventListener("click", () => {
+      setQuickAdvanced(!quickAdvanced);
+    });
+  }
+
   if (els.quickModePlan) {
     els.quickModePlan.addEventListener("click", () => {
       setQuickMode("plan");
@@ -3829,8 +3856,7 @@ function bindStarterEvents() {
       if (!race) return;
       if (raceModalMode === "plan-select") {
         activateQuickPlanRace(race);
-        quickMode = "plan";
-        updateQuickUi();
+        setQuickMode("plan");
       } else {
         if (!activateRaceSelection(race)) return;
       }

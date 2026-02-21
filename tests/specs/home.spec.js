@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
-test("home view loads", async ({ page }) => {
+test("quick view loads by default", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("#home-view")).toBeVisible();
-  await expect(page.locator("#open-setup")).toBeVisible();
+  await expect(page.locator("#quick-view")).toBeVisible();
+  await expect(page.locator("#go-race")).toBeVisible();
 });

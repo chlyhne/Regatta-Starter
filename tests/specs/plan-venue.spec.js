@@ -331,6 +331,7 @@ test("planned events create plan races from quick view", async ({ page }) => {
   await page.goto("/#quick");
   await expect(page.locator("#quick-view")).toBeVisible();
 
+  await page.click("#quick-advanced-toggle");
   await page.click("#quick-mode-plan");
   await page.click("#quick-select-plan");
   await expect(page.locator("#race-modal")).toHaveAttribute("aria-hidden", "false");

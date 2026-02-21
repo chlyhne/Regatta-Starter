@@ -66,6 +66,18 @@ test("quick race defaults to the default venue", async ({ page }) => {
   await expect(page.locator("#venue-name")).toHaveText("Away Harbor");
 });
 
+test("quick race hides advanced controls until toggled", async ({ page }) => {
+  await seedStorage(page);
+  await page.goto("/#quick");
+  await expect(page.locator("#quick-view")).toBeVisible();
+  await expect(page.locator("#quick-mode-panel")).toBeHidden();
+  await expect(page.locator("#quick-course-panel")).toBeHidden();
+
+  await page.click("#quick-advanced-toggle");
+  await expect(page.locator("#quick-mode-panel")).toBeVisible();
+  await expect(page.locator("#quick-course-panel")).toBeVisible();
+});
+
 test("quick race uses the default venue start line", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.clear();
