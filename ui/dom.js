@@ -106,6 +106,7 @@ const els = {
   closeQuick: document.getElementById("close-quick"),
   closePlan: document.getElementById("close-plan"),
   closeLine: document.getElementById("close-line"),
+  lineGpsIcon: document.getElementById("line-gps-icon"),
   quickAdvancedToggle: document.getElementById("quick-advanced-toggle"),
   quickModePanel: document.getElementById("quick-mode-panel"),
   quickCoursePanel: document.getElementById("quick-course-panel"),

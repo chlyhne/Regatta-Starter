@@ -3,7 +3,7 @@ import { els } from "./dom.js";
 import { formatDistanceWithUnit } from "../core/format.js";
 
 function updateGPSDisplay() {
-  const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
+  const icons = [els.gpsIcon, els.lineGpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   if (!state.gpsEnabled) {
     icons.forEach((icon) => {

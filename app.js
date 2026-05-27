@@ -172,7 +172,7 @@ function markGpsUnavailable() {
     updateGPSDisplay();
     return;
   }
-  const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
+  const icons = [els.gpsIcon, els.lineGpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   icons.forEach((icon) => {
     icon.classList.add("bad");
@@ -1403,7 +1403,7 @@ function handlePositionError(err) {
     updateGPSDisplay();
     return;
   }
-  const icons = [els.gpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
+  const icons = [els.gpsIcon, els.lineGpsIcon, els.vmgGpsIcon, els.lifterGpsIcon].filter(Boolean);
   if (!icons.length) return;
   icons.forEach((icon) => {
     icon.classList.add("bad");

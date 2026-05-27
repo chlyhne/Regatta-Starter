@@ -12,6 +12,19 @@ export const lineView = `
           <span class="brand-label">Race</span><span class="brand-accent">Tools</span>
         </button>
       </div>
+      <div class="head-right">
+        <div class="sensor-row">
+          <button class="status-toggle" type="button" data-sensor="gps" aria-pressed="true">
+            <span>GPS</span>
+            <span
+              id="line-gps-icon"
+              class="gps-icon"
+              aria-label="GPS status"
+              title="GPS status"
+            ></span>
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
