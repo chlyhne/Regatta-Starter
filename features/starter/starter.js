@@ -465,18 +465,28 @@ function getCountdownSecondsFromLinePicker() {
 
 function updateStartModeToggle() {
   const isCountdown = state.start.mode === "countdown";
+  const setPanelVisibility = (panelEl, visible) => {
+    if (!panelEl) return;
+    panelEl.hidden = !visible;
+    panelEl.classList.toggle("hidden", !visible);
+  };
+
+  const setControlEnabled = (controlEl, enabled) => {
+    if (!controlEl) return;
+    controlEl.disabled = !enabled;
+  };
   if (els.startModeAbsolute) {
     els.startModeAbsolute.setAttribute("aria-pressed", isCountdown ? "false" : "true");
   }
   if (els.startModeCountdown) {
     els.startModeCountdown.setAttribute("aria-pressed", isCountdown ? "true" : "false");
   }
-  if (els.startModeAbsolutePanel) {
-    els.startModeAbsolutePanel.hidden = isCountdown;
-  }
-  if (els.startModeCountdownPanel) {
-    els.startModeCountdownPanel.hidden = !isCountdown;
-  }
+  setPanelVisibility(els.startModeAbsolutePanel, !isCountdown);
+  setPanelVisibility(els.startModeCountdownPanel, isCountdown);
+  setControlEnabled(els.absoluteTime, !isCountdown);
+  setControlEnabled(els.countdownHours, isCountdown);
+  setControlEnabled(els.countdownMinutes, isCountdown);
+  setControlEnabled(els.countdownSeconds, isCountdown);
   if (els.setStart) {
     els.setStart.textContent = isCountdown ? "Begin" : "Set";
   }
@@ -486,12 +496,12 @@ function updateStartModeToggle() {
   if (els.lineStartModeCountdown) {
     els.lineStartModeCountdown.setAttribute("aria-pressed", isCountdown ? "true" : "false");
   }
-  if (els.lineStartModeAbsolutePanel) {
-    els.lineStartModeAbsolutePanel.hidden = isCountdown;
-  }
-  if (els.lineStartModeCountdownPanel) {
-    els.lineStartModeCountdownPanel.hidden = !isCountdown;
-  }
+  setPanelVisibility(els.lineStartModeAbsolutePanel, !isCountdown);
+  setPanelVisibility(els.lineStartModeCountdownPanel, isCountdown);
+  setControlEnabled(els.lineAbsoluteTime, !isCountdown);
+  setControlEnabled(els.lineCountdownHours, isCountdown);
+  setControlEnabled(els.lineCountdownMinutes, isCountdown);
+  setControlEnabled(els.lineCountdownSeconds, isCountdown);
   if (els.lineSetStart) {
     els.lineSetStart.textContent = isCountdown ? "Begin" : "Set";
   }
