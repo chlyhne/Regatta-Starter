@@ -96,7 +96,6 @@ body {
 
 .vmg-mode #setup-view,
 .lifter-mode #setup-view,
-.racewind-mode #setup-view,
 .race-mode #setup-view,
 .coords-mode #setup-view,
 .location-mode #setup-view,
@@ -160,10 +159,6 @@ body {
 }
 
 .lifter-mode .lifter-view {
-  display: flex;
-}
-
-.racewind-mode .racewind-view {
   display: flex;
 }
 
@@ -592,8 +587,7 @@ body {
 }
 
 .vmg-settings-view,
-.lifter-settings-view,
-.racewind-settings-view {
+.lifter-settings-view {
   display: none;
   position: fixed;
   inset: 0;
@@ -614,19 +608,13 @@ body {
   overflow: hidden;
 }
 
-.racewind-settings-open {
-  overflow: hidden;
-}
-
 .vmg-settings-open .vmg-settings-view,
-.lifter-settings-open .lifter-settings-view,
-.racewind-settings-open .racewind-settings-view {
+.lifter-settings-open .lifter-settings-view {
   display: flex;
 }
 
 .vmg-settings-panel,
-.lifter-settings-panel,
-.racewind-settings-panel {
+.lifter-settings-panel {
   border: 3px solid #000000;
   border-radius: 24px;
   padding: 24px;
@@ -637,8 +625,7 @@ body {
 }
 
 .vmg-settings-panel h2,
-.lifter-settings-panel h2,
-.racewind-settings-panel h2 {
+.lifter-settings-panel h2 {
   margin: 0;
   font-size: 1.2rem;
   font-weight: 700;
@@ -647,8 +634,7 @@ body {
 }
 
 .vmg-settings-group,
-.lifter-settings-group,
-.racewind-settings-group {
+.lifter-settings-group {
   display: grid;
   gap: 12px;
 }
@@ -988,18 +974,13 @@ body {
 }
 
 #open-vmg-settings,
-#open-lifter-settings,
-#open-racewind-settings {
+#open-lifter-settings {
   min-width: 44px;
   min-height: 44px;
   flex-shrink: 0;
   position: relative;
   z-index: 2;
   touch-action: manipulation;
-}
-
-#open-racewind-settings {
-  display: none;
 }
 
 .icon-btn .icon-gear {
@@ -1913,17 +1894,6 @@ button:active {
   color: #000000;
 }
 
-.racewind-view {
-  display: none;
-  min-height: var(--app-height);
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: 0;
-  background: #ffffff;
-  color: #000000;
-}
-
 .track-view {
   display: none;
   position: fixed;
@@ -1955,118 +1925,6 @@ button:active {
   height: 100%;
   display: block;
   touch-action: none;
-}
-
-.racewind-control-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.racewind-control-head h3 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.racewind-window-value {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.racewind-window-slider {
-  width: 100%;
-  background: transparent;
-  margin: 6px 0 0;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-.racewind-window-slider:focus {
-  outline: none;
-}
-
-.racewind-window-slider::-webkit-slider-runnable-track {
-  height: 14px;
-  background: #ffffff;
-  border: 2px solid #000000;
-  border-radius: 999px;
-}
-
-.racewind-window-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #000000;
-  border: 2px solid #000000;
-  margin-top: -10px;
-}
-
-.racewind-window-slider::-moz-range-track {
-  height: 14px;
-  background: #ffffff;
-  border: 2px solid #000000;
-  border-radius: 999px;
-}
-
-.racewind-window-slider::-moz-range-thumb {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #000000;
-  border: 2px solid #000000;
-}
-
-.racewind-history-scale {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-
-.racewind-plot {
-  width: 100%;
-  background: transparent;
-  padding: 0;
-}
-
-.racewind-plot canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.racewind-speed-plot {
-  height: 300px;
-}
-
-.racewind-dir-plot {
-  height: 300px;
-}
-
-.racewind-speed-periodogram-plot {
-  height: 300px;
-}
-
-.racewind-plot-note {
-  margin-top: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: #000000;
-}
-
-.racewind-fit-control {
-  margin-top: 12px;
-}
-
-.racewind-hide-periodogram .racewind-speed-periodogram-panel {
-  display: none;
 }
 
 .track-close {

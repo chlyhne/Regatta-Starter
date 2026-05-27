@@ -59,12 +59,6 @@ import {
   recordLifterHeadingFromPosition,
   requestLifterRender,
 } from "./features/lifter/lifter.js";
-import {
-  initRaceWind,
-  bindRaceWindEvents,
-  syncRaceWindInputs,
-  requestRaceWindRender,
-} from "./features/racewind/racewind.js";
 import { clamp, headingFromVelocity } from "./core/common.js";
 import {
   initReplay,
@@ -233,8 +227,6 @@ function getSettingsSnapshot() {
     boatShape: state.boatShape,
     boatWeightKg: state.boatWeightKg,
     imuCalibration: state.imuCalibration,
-    windEndpoint: state.windEndpoint,
-    windHistoryMinutes: state.windHistoryMinutes,
     replayLoop: state.replay?.loop,
     start: { ...state.start },
     vmg: getVmgSettingsSnapshot(),
@@ -491,7 +483,7 @@ function openModalFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const modal = params.get("modal");
   if (!modal) return;
-  const allowedViews = new Set(["#setup", "#plan", "#quick"]);
+  const allowedViews = new Set(["#setup", "#line"]);
   if (!allowedViews.has(window.location.hash)) return;
   const raceId = params.get("raceId");
   if (openSetupModalFromReturn) {
@@ -941,19 +933,6 @@ function loadSettings() {
   state.boatWeightKg = settings.boatWeightKg || 0;
   state.imuCalibration = settings.imuCalibration || null;
   state.diagUploadToken = settings.diagUploadToken || "";
-  state.windEndpoint = settings.windEndpoint || "/wind";
-  state.windHistoryMinutes = Number.isFinite(settings.windHistoryMinutes)
-    ? settings.windHistoryMinutes
-    : 60;
-  state.windPeriodogramMinutes = Number.isFinite(settings.windPeriodogramMinutes)
-    ? settings.windPeriodogramMinutes
-    : state.windHistoryMinutes;
-  state.windSpeedFitOrder = Number.isFinite(settings.windSpeedFitOrder)
-    ? settings.windSpeedFitOrder
-    : 3;
-  state.windDirFitOrder = Number.isFinite(settings.windDirFitOrder)
-    ? settings.windDirFitOrder
-    : 3;
   state.replay.loop = Boolean(settings.replayLoop);
   state.soundEnabled = settings.soundEnabled;
   state.timeFormat = settings.timeFormat;
@@ -1024,11 +1003,6 @@ function saveSettings() {
     boatWeightKg: state.boatWeightKg,
     imuCalibration: state.imuCalibration,
     diagUploadToken: state.diagUploadToken,
-    windEndpoint: state.windEndpoint,
-    windHistoryMinutes: state.windHistoryMinutes,
-    windPeriodogramMinutes: state.windPeriodogramMinutes,
-    windSpeedFitOrder: state.windSpeedFitOrder,
-    windDirFitOrder: state.windDirFitOrder,
     replayLoop: Boolean(state.replay?.loop),
     soundEnabled: state.soundEnabled,
     timeFormat: state.timeFormat,
@@ -1095,7 +1069,7 @@ function applyVenueRaceToState() {
   const hasSimpleSource =
     typeof state.lineSourceId === "string" && state.lineSourceId.startsWith("simple:");
   const hash = (window.location.hash || "").toLowerCase();
-  const preserveManualLine = hasManualLine && (hash === "#line" || hash === "#quick");
+  const preserveManualLine = hasManualLine && hash === "#line";
   const venue = state.venue;
   const race = state.race;
   if (venue && race) {
@@ -1219,7 +1193,6 @@ function updateInputs() {
   updateVmgSmoothToggle();
   updateVmgCapToggle();
   updateStatusUnitLabels();
-  syncRaceWindInputs();
 }
 
 function handleReplayStatus() {
@@ -1463,7 +1436,6 @@ function bindEvents() {
   bindSettingsEvents();
   bindVmgEvents();
   bindLifterEvents();
-  bindRaceWindEvents();
   bindSensorStatusEvents();
   window.addEventListener("hashchange", syncViewFromHash);
 }
@@ -1556,9 +1528,6 @@ initVmg({
 initLifter({
   setImuEnabled,
 });
-initRaceWind({
-  saveSettings,
-});
 bindEvents();
 initGeolocation();
 startKalmanPredictionLoop();
@@ -1578,9 +1547,6 @@ window.addEventListener("resize", () => {
   updateViewportHeight();
   if (document.body.classList.contains("lifter-mode")) {
     requestLifterRender({ force: true });
-  }
-  if (document.body.classList.contains("racewind-mode")) {
-    requestRaceWindRender();
   }
   if (document.body.classList.contains("track-mode")) {
     renderTrack();

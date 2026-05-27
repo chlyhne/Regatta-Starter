@@ -4,11 +4,6 @@ import {
   leaveLifterView,
   setLifterSettingsOpen,
 } from "../features/lifter/lifter.js";
-import {
-  enterRaceWindView,
-  leaveRaceWindView,
-  setRaceWindSettingsOpen,
-} from "../features/racewind/racewind.js";
 import { renderTrack } from "../features/starter/track.js";
 import { fitRaceText } from "../features/starter/race-fit.js";
 
@@ -49,16 +44,6 @@ const VIEW_CONFIG = {
     releaseWakeLock: true,
     onEnter: enterLifterView,
     onLeave: leaveLifterView,
-  },
-  racewind: {
-    id: "racewind-view",
-    hash: "#racewind",
-    bodyClass: "racewind-mode",
-    scrollTop: true,
-    gpsMode: "setup",
-    releaseWakeLock: true,
-    onEnter: enterRaceWindView,
-    onLeave: leaveRaceWindView,
   },
   race: {
     id: "race-view",
@@ -132,25 +117,6 @@ const VIEW_CONFIG = {
     gpsMode: "setup",
     releaseWakeLock: true,
   },
-  quick: {
-    id: "quick-view",
-    hash: "#quick",
-    bodyClass: "quick-mode",
-    scrollTop: true,
-    gpsMode: "setup",
-    releaseWakeLock: true,
-    updateInputs: true,
-    updateImuCalibrationUi: true,
-  },
-  plan: {
-    id: "plan-view",
-    hash: "#plan",
-    bodyClass: "plan-mode",
-    scrollTop: true,
-    gpsMode: "setup",
-    releaseWakeLock: true,
-    updateInputs: true,
-  },
   line: {
     id: "line-view",
     hash: "#line",
@@ -219,7 +185,6 @@ function setView(view, options = {}) {
 
   setVmgSettingsOpen(false);
   setLifterSettingsOpen(false);
-  setRaceWindSettingsOpen(false);
 
   BODY_CLASSES.forEach((name) => document.body.classList.remove(name));
   VIEW_IDS.forEach((id) => {

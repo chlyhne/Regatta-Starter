@@ -487,13 +487,13 @@ function updateStartModeToggle() {
     els.lineStartModeCountdown.setAttribute("aria-pressed", isCountdown ? "true" : "false");
   }
   if (els.lineStartModeAbsolutePanel) {
-    els.lineStartModeAbsolutePanel.hidden = isCountdown;
+    els.lineStartModeAbsolutePanel.hidden = false;
   }
   if (els.lineStartModeCountdownPanel) {
     els.lineStartModeCountdownPanel.hidden = !isCountdown;
   }
   if (els.lineSetStart) {
-    els.lineSetStart.textContent = isCountdown ? "Begin" : "Set";
+    els.lineSetStart.textContent = "Set start time";
   }
 }
 
@@ -3769,11 +3769,11 @@ function bindStarterEvents() {
     els.closeLine.addEventListener("click", () => {
       exitLineOnlyMode();
       if (starterDeps.goBack) {
-        starterDeps.goBack({ fallback: "setup" });
+        starterDeps.goBack({ fallback: "home" });
         return;
       }
       if (starterDeps.setView) {
-        starterDeps.setView("setup", { reset: true });
+        starterDeps.setView("home", { reset: true });
       }
     });
   }
@@ -4854,32 +4854,15 @@ function bindStarterEvents() {
   if (els.lineSetStart) {
     els.lineSetStart.addEventListener("click", () => {
       unlockAudio();
-      if (state.start.mode === "countdown") {
-        state.start.countdownSeconds = getCountdownSecondsFromLinePicker();
-        if (starterDeps.saveSettings) {
-          starterDeps.saveSettings();
-        }
-        setCountdownPickerLive(true);
-        setStart({ goToRace: false });
-        if (state.start.startTs) {
-          const startDate = new Date(state.start.startTs);
-          const absoluteValue = formatTimeInput(startDate);
-          state.start.absoluteTime = absoluteValue;
-          if (els.lineAbsoluteTime) {
-            els.lineAbsoluteTime.value = absoluteValue;
-          }
-          if (starterDeps.saveSettings) {
-            starterDeps.saveSettings();
-          }
-        }
-      } else {
-        state.start.mode = "absolute";
-        if (starterDeps.saveSettings) {
-          starterDeps.saveSettings();
-        }
-        cancelActiveCountdown();
-        setStart({ goToRace: false });
+      state.start.mode = "absolute";
+      if (els.lineAbsoluteTime) {
+        state.start.absoluteTime = els.lineAbsoluteTime.value || "";
       }
+      if (starterDeps.saveSettings) {
+        starterDeps.saveSettings();
+      }
+      cancelActiveCountdown();
+      setStart({ goToRace: false });
       updateStartDisplay();
       updateLineProjection();
     });

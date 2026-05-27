@@ -207,7 +207,7 @@ function bindHomeEvents() {
   if (els.openSetup) {
     els.openSetup.addEventListener("click", () => {
       if (homeDeps.setView) {
-        homeDeps.setView("quick");
+        homeDeps.setView("line");
       }
     });
   }
@@ -224,14 +224,6 @@ function bindHomeEvents() {
     els.openLifter.addEventListener("click", () => {
       if (homeDeps.setView) {
         homeDeps.setView("lifter");
-      }
-    });
-  }
-
-  if (els.openRaceWind) {
-    els.openRaceWind.addEventListener("click", () => {
-      if (homeDeps.setView) {
-        homeDeps.setView("racewind");
       }
     });
   }

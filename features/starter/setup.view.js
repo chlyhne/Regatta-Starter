@@ -3,7 +3,7 @@ export const setupView = `
   <header class="page-head">
     <div class="head-title">
       <h1 class="brand-mark brand-light">
-        <span class="brand-label">Race</span><span class="brand-accent">Plan</span>
+        <span class="brand-label">Race</span><span class="brand-accent">Starter</span>
       </h1>
     </div>
     <div class="head-bar">
@@ -16,11 +16,10 @@ export const setupView = `
   </header>
 
   <section class="panel">
-    <h2 class="panel-title">Race Plan</h2>
+    <h2 class="panel-title">Start Setup</h2>
+    <p class="hint">Set line and start time.</p>
     <div class="row stack">
-      <button id="open-plan-venue" class="race-enter">Plan venue</button>
-      <button id="open-quick-race" class="race-enter">Quick race</button>
-      <button id="open-start-line-only" class="race-enter">Start line only</button>
+      <button id="open-start-line-only" class="race-enter">Open starter</button>
     </div>
   </section>
 

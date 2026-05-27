@@ -5,7 +5,6 @@ import { planView } from "../features/starter/plan.view.js";
 import { lineView } from "../features/starter/line.view.js";
 import { vmgView } from "../features/vmg/vmg.view.js";
 import { lifterView } from "../features/lifter/lifter.view.js";
-import { raceWindView } from "../features/racewind/racewind.view.js";
 import { raceView } from "../features/starter/race.view.js";
 import { coordsView } from "../features/starter/coords.view.js";
 import { locationView } from "../features/starter/location.view.js";
@@ -23,7 +22,6 @@ const appShell = [
   lineView,
   vmgView,
   lifterView,
-  raceWindView,
   raceView,
   coordsView,
   locationView,
