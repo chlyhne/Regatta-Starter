@@ -39,7 +39,7 @@ function updateGPSDisplay() {
 }
 
 function updateImuDisplay() {
-  const icons = [els.imuIcon, els.vmgImuIcon, els.lifterImuIcon].filter(Boolean);
+  const icons = [els.imuIcon, els.lineImuIcon, els.vmgImuIcon, els.lifterImuIcon].filter(Boolean);
   if (!icons.length) return;
   icons.forEach((icon) => {
     icon.classList.remove("ok", "warn", "bad", "off");

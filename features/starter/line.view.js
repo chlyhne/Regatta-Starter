@@ -23,6 +23,15 @@ export const lineView = `
               title="GPS status"
             ></span>
           </button>
+          <button class="status-toggle" type="button" data-sensor="imu" aria-pressed="false">
+            <span>IMU</span>
+            <span
+              id="line-imu-icon"
+              class="imu-icon"
+              aria-label="IMU status"
+              title="IMU status"
+            ></span>
+          </button>
         </div>
       </div>
     </div>
