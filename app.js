@@ -1061,11 +1061,12 @@ function applyVenueRaceToState() {
     a: { ...state.line.a },
     b: { ...state.line.b },
   };
+  const hasLinePoint = (point) =>
+    Number.isFinite(point?.lat) && Number.isFinite(point?.lon);
   const hasManualLine =
-    Number.isFinite(previousLine.a.lat) &&
-    Number.isFinite(previousLine.a.lon) &&
-    Number.isFinite(previousLine.b.lat) &&
-    Number.isFinite(previousLine.b.lon);
+    hasLinePoint(previousLine.a) && hasLinePoint(previousLine.b);
+  const hasPartialManualLine =
+    !hasManualLine && (hasLinePoint(previousLine.a) || hasLinePoint(previousLine.b));
   const hasSimpleSource =
     typeof state.lineSourceId === "string" && state.lineSourceId.startsWith("simple:");
   const hash = (window.location.hash || "").toLowerCase();
@@ -1132,6 +1133,11 @@ function applyVenueRaceToState() {
   const courseMarks = buildCourseMarksFromRace(venue, race);
 
   if (hasSimpleSource || preserveManualLine) {
+    state.line = {
+      a: { ...previousLine.a },
+      b: { ...previousLine.b },
+    };
+  } else if (!startLine && hasPartialManualLine) {
     state.line = {
       a: { ...previousLine.a },
       b: { ...previousLine.b },

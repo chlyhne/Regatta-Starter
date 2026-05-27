@@ -927,6 +927,8 @@ function syncDerivedRaceState() {
     document.body.classList.contains("quick-mode") && !quickAdvanced && quickMode === "home";
   const hash = (window.location.hash || "").toLowerCase();
   const hashWantsLine = hash === "#line";
+  const hasPartialManualLine =
+    !hasManualLine && (hasLinePoint(previousLine.a) || hasLinePoint(previousLine.b));
   const preserveManualLine =
     hasManualLine &&
     (
@@ -949,6 +951,11 @@ function syncDerivedRaceState() {
       b: { ...activeSimpleLine.b },
     };
   } else if (preserveManualLine) {
+    state.line = {
+      a: { ...previousLine.a },
+      b: { ...previousLine.b },
+    };
+  } else if (!startLine && hasPartialManualLine) {
     state.line = {
       a: { ...previousLine.a },
       b: { ...previousLine.b },
@@ -1274,6 +1281,17 @@ function getNearestVenueMark(venue, position) {
   return { mark: nearest, distance: bestDistance };
 }
 
+function hasLinePoint(point) {
+  return Number.isFinite(point?.lat) && Number.isFinite(point?.lon);
+}
+
+function resolveGpsSourcePosition(position) {
+  if (position?.coords) return position;
+  if (state.kalmanPosition?.coords) return state.kalmanPosition;
+  if (state.position?.coords) return state.position;
+  return null;
+}
+
 function getNearestVenueForLine() {
   const midpoint = getStartLineMidpoint("race");
   if (!midpoint) return null;
@@ -1447,8 +1465,8 @@ function openCalibrationPreviewModal() {
   requestHighPrecisionPosition(
     starterDeps.handlePosition,
     starterDeps.handlePositionError,
-    () => {
-      const sourcePosition = state.kalmanPosition;
+    (position) => {
+      const sourcePosition = resolveGpsSourcePosition(position);
       if (!sourcePosition) {
         setCalibrationPreviewStatus("Waiting for Kalman GPS fix.");
         return;
@@ -3659,8 +3677,8 @@ function bindStarterEvents() {
       requestHighPrecisionPosition(
         starterDeps.handlePosition,
         starterDeps.handlePositionError,
-        () => {
-          const sourcePosition = state.kalmanPosition;
+        (position) => {
+          const sourcePosition = resolveGpsSourcePosition(position);
           if (!sourcePosition) {
             window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
             return;
@@ -3673,6 +3691,9 @@ function bindStarterEvents() {
           state.lineSourceId = null;
           syncStartLineMarksFromState();
           updateLineNameDisplay();
+          if (starterDeps.saveSettings) {
+            starterDeps.saveSettings();
+          }
           if (starterDeps.updateInputs) {
             starterDeps.updateInputs();
           }
@@ -3688,8 +3709,8 @@ function bindStarterEvents() {
       requestHighPrecisionPosition(
         starterDeps.handlePosition,
         starterDeps.handlePositionError,
-        () => {
-          const sourcePosition = state.kalmanPosition;
+        (position) => {
+          const sourcePosition = resolveGpsSourcePosition(position);
           if (!sourcePosition) {
             window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
             return;
@@ -3702,6 +3723,9 @@ function bindStarterEvents() {
           state.lineSourceId = null;
           syncStartLineMarksFromState();
           updateLineNameDisplay();
+          if (starterDeps.saveSettings) {
+            starterDeps.saveSettings();
+          }
           if (starterDeps.updateInputs) {
             starterDeps.updateInputs();
           }
@@ -3756,7 +3780,7 @@ function bindStarterEvents() {
 
   if (els.openStartLineOnly) {
     els.openStartLineOnly.addEventListener("click", () => {
-      enterLineOnlyMode();
+      enterLineOnlyMode({ clearLine: false });
       if (starterDeps.setView) {
         starterDeps.setView("line");
       }
@@ -4496,8 +4520,8 @@ function bindStarterEvents() {
       requestHighPrecisionPosition(
         starterDeps.handlePosition,
         starterDeps.handlePositionError,
-        () => {
-          const sourcePosition = state.kalmanPosition;
+        (position) => {
+          const sourcePosition = resolveGpsSourcePosition(position);
           if (!sourcePosition) {
             window.alert("Waiting for Kalman GPS fix. Try again in a moment.");
             return;

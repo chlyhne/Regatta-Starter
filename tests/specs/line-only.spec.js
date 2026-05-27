@@ -140,3 +140,100 @@ test("line-only map editor returns to line view and stores a manual line", async
   expect(settingsState.bLat).not.toBeNull();
   expect(settingsState.sourceId).toBeNull();
 });
+
+test("line endpoints can be set independently across sessions and input methods", async ({
+  page,
+}) => {
+  await seedStorage(page);
+  await page.addInitScript(() => {
+    const sample = () => ({
+      coords: {
+        latitude: 55.667,
+        longitude: 12.59,
+        accuracy: 5,
+        speed: null,
+        heading: null,
+        altitude: null,
+        altitudeAccuracy: null,
+      },
+      timestamp: Date.now(),
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition(success) {
+          setTimeout(() => success(sample()), 0);
+        },
+        watchPosition(success) {
+          setTimeout(() => success(sample()), 0);
+          return 1;
+        },
+        clearWatch() {},
+      },
+    });
+  });
+  page.on("dialog", (dialog) => dialog.dismiss());
+
+  await page.goto("/#line");
+  await expect(page.locator("#line-view")).toBeVisible();
+
+  await page.click("#open-location");
+  await expect(page.locator("#location-view")).toBeVisible();
+  await page.click("#use-a");
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("racetimer-settings");
+        const settings = raw ? JSON.parse(raw) : {};
+        const point = settings?.line?.a;
+        return {
+          lat: point?.lat ?? null,
+          lon: point?.lon ?? null,
+        };
+      })
+    )
+    .not.toEqual({ lat: null, lon: null });
+  const firstPoint = await page.evaluate(() => {
+    const raw = localStorage.getItem("racetimer-settings");
+    const settings = raw ? JSON.parse(raw) : {};
+    const point = settings?.line?.a;
+    return {
+      lat: point?.lat ?? null,
+      lon: point?.lon ?? null,
+    };
+  });
+  expect(firstPoint.lat).not.toBeNull();
+  expect(firstPoint.lon).not.toBeNull();
+
+  await page.reload();
+  await page.goto("/#line");
+  await expect(page.locator("#line-view")).toBeVisible();
+
+  await page.click("#open-coords");
+  await expect(page.locator("#coords-view")).toBeVisible();
+  await page.fill("#lat-b", "55.700000");
+  await page.fill("#lon-b", "12.650000");
+  await page.dispatchEvent("#lat-b", "change");
+  await page.dispatchEvent("#lon-b", "change");
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("racetimer-settings");
+        const settings = raw ? JSON.parse(raw) : {};
+        return settings?.line || null;
+      })
+    )
+    .not.toBeNull();
+  const finalLine = await page.evaluate(() => {
+    const raw = localStorage.getItem("racetimer-settings");
+    const settings = raw ? JSON.parse(raw) : {};
+    return settings?.line || null;
+  });
+
+  expect(finalLine?.a?.lat).toBeCloseTo(55.667, 3);
+  expect(finalLine?.a?.lon).toBeCloseTo(12.59, 3);
+  expect(finalLine?.b?.lat).toBeCloseTo(55.7, 6);
+  expect(finalLine?.b?.lon).toBeCloseTo(12.65, 6);
+});
