@@ -31,13 +31,43 @@ export const lineView = `
 
   <section class="panel">
     <h2>Set Start Time</h2>
+    <div class="row setting-row">
+      <div class="race-toggle horizontal start-toggle" role="group" aria-label="Start mode">
+        <button
+          id="line-start-mode-absolute"
+          class="race-toggle-btn"
+          type="button"
+          aria-pressed="true"
+        >
+          Time
+        </button>
+        <button
+          id="line-start-mode-countdown"
+          class="race-toggle-btn"
+          type="button"
+          aria-pressed="false"
+        >
+          Countdown
+        </button>
+      </div>
+    </div>
     <div class="grid">
       <div id="line-start-mode-absolute-panel">
         <input id="line-absolute-time" type="time" step="1" aria-label="Start time" />
       </div>
+      <div id="line-start-mode-countdown-panel" hidden>
+        <div class="countdown-picker" role="group" aria-label="Countdown duration">
+          <select id="line-countdown-hours" aria-label="Countdown hours"></select>
+          <span class="countdown-sep" aria-hidden="true">:</span>
+          <select id="line-countdown-minutes" aria-label="Countdown minutes"></select>
+          <span class="countdown-sep" aria-hidden="true">:</span>
+          <select id="line-countdown-seconds" aria-label="Countdown seconds"></select>
+        </div>
+      </div>
     </div>
     <div class="row stack">
-      <button id="line-set-start">Set start time</button>
+      <button id="line-set-start">Set</button>
+      <button id="line-sync-start" class="ghost">Sync to minute</button>
     </div>
   </section>
 

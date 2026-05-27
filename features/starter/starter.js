@@ -487,13 +487,13 @@ function updateStartModeToggle() {
     els.lineStartModeCountdown.setAttribute("aria-pressed", isCountdown ? "true" : "false");
   }
   if (els.lineStartModeAbsolutePanel) {
-    els.lineStartModeAbsolutePanel.hidden = false;
+    els.lineStartModeAbsolutePanel.hidden = isCountdown;
   }
   if (els.lineStartModeCountdownPanel) {
     els.lineStartModeCountdownPanel.hidden = !isCountdown;
   }
   if (els.lineSetStart) {
-    els.lineSetStart.textContent = "Set start time";
+    els.lineSetStart.textContent = isCountdown ? "Begin" : "Set";
   }
 }
 
@@ -915,12 +915,24 @@ function syncDerivedRaceState() {
 
   const inQuickSimpleMode =
     document.body.classList.contains("quick-mode") && !quickAdvanced && quickMode === "home";
+  const hash = (window.location.hash || "").toLowerCase();
+  const hashWantsLine = hash === "#line";
   const preserveManualLine =
     hasManualLine &&
-    (isLineOnlyActive() || document.body.classList.contains("line-mode") || inQuickSimpleMode);
+    (
+      isLineOnlyActive() ||
+      document.body.classList.contains("line-mode") ||
+      inQuickSimpleMode ||
+      hashWantsLine
+    );
   const useSimpleLine =
     Boolean(activeSimpleLine) &&
-    (isLineOnlyActive() || document.body.classList.contains("line-mode") || inQuickSimpleMode);
+    (
+      isLineOnlyActive() ||
+      document.body.classList.contains("line-mode") ||
+      inQuickSimpleMode ||
+      hashWantsLine
+    );
   if (useSimpleLine) {
     state.line = {
       a: { ...activeSimpleLine.a },
@@ -4854,17 +4866,42 @@ function bindStarterEvents() {
   if (els.lineSetStart) {
     els.lineSetStart.addEventListener("click", () => {
       unlockAudio();
-      state.start.mode = "absolute";
-      if (els.lineAbsoluteTime) {
-        state.start.absoluteTime = els.lineAbsoluteTime.value || "";
+      if (state.start.mode === "countdown") {
+        state.start.countdownSeconds = getCountdownSecondsFromLinePicker();
+        if (starterDeps.saveSettings) {
+          starterDeps.saveSettings();
+        }
+        setCountdownPickerLive(true);
+        setStart({ goToRace: false });
+        if (state.start.startTs) {
+          const startDate = new Date(state.start.startTs);
+          const absoluteValue = formatTimeInput(startDate);
+          state.start.absoluteTime = absoluteValue;
+          if (els.lineAbsoluteTime) {
+            els.lineAbsoluteTime.value = absoluteValue;
+          }
+          if (starterDeps.saveSettings) {
+            starterDeps.saveSettings();
+          }
+        }
+      } else {
+        state.start.mode = "absolute";
+        if (starterDeps.saveSettings) {
+          starterDeps.saveSettings();
+        }
+        cancelActiveCountdown();
+        setStart({ goToRace: false });
       }
-      if (starterDeps.saveSettings) {
-        starterDeps.saveSettings();
-      }
-      cancelActiveCountdown();
-      setStart({ goToRace: false });
       updateStartDisplay();
       updateLineProjection();
+    });
+  }
+
+  if (els.lineSyncStart) {
+    els.lineSyncStart.addEventListener("click", () => {
+      if (!state.start.startTs || state.start.startTs <= Date.now()) return;
+      unlockAudio();
+      syncStartToMinute();
     });
   }
 

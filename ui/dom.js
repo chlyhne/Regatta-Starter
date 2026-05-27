@@ -146,6 +146,7 @@ const els = {
   lineCountdownMinutes: document.getElementById("line-countdown-minutes"),
   lineCountdownSeconds: document.getElementById("line-countdown-seconds"),
   lineSetStart: document.getElementById("line-set-start"),
+  lineSyncStart: document.getElementById("line-sync-start"),
   lineGoRace: document.getElementById("line-go-race"),
   openVmg: document.getElementById("open-vmg"),
   openLifter: document.getElementById("open-lifter"),
